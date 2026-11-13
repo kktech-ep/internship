@@ -124,11 +124,27 @@
     break-after: avoid !important;
     page-break-after: avoid !important;
   }
+  /* บังคับหน้าสุดท้ายไม่ให้ขึ้นหน้าใหม่เด็ดขาดตามเงื่อนไข */
+  .workplace-page-no-break {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* ล็อคความสูงหน้ากระดาษพิมพ์ทั้งหมดไม่ให้เกิน A4 และตัดส่วนเกินทิ้ง */
+  #memo-printable-page,
+  #weekly-report-page-1,
+  #weekly-report-page-2,
+  [id*="weekly-report-page"] {
+    max-height: 297mm !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+}
 
   /* Student Guide Manual (Multi-page A4 flow) */
   @page guide-page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 10mm;
   }
 
   body:has(#student-guide-pdf-content),
