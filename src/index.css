@@ -39,6 +39,51 @@
   }
 
   /* Workplace teaching reports: Document 1 and Document 2 */
+  body:has(.workplace-report-print-root),
+  html:has(.workplace-report-print-root) {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body:has(.workplace-report-print-root) #root,
+  body:has(.workplace-report-print-root) #root > div,
+  body:has(.workplace-report-print-root) main,
+  body:has(.workplace-report-print-root) .workplace-report-print-root,
+  body:has(.workplace-report-print-root) .workplace-pages-stack {
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  body:has(.workplace-report-print-root) .workplace-doc-card {
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    overflow: hidden !important;
+  }
+
+  body:has(.workplace-report-print-root) .workplace-doc-card.print\:hidden {
+    display: none !important;
+  }
+
   body:has(#memo-printable-page) #memo-printable-page,
   body:has(#memo-printable-page) #memo-printable-page *,
   body:has(#weekly-report-page-1) #weekly-report-page-1,
@@ -48,52 +93,36 @@
     visibility: visible !important;
   }
 
-  body:has(#memo-printable-page) #memo-printable-page {
+  body:has(.workplace-report-print-root) #memo-printable-page,
+  body:has(.workplace-report-print-root) #weekly-report-page-1,
+  body:has(.workplace-report-print-root) #weekly-report-page-2 {
     position: relative !important;
     left: 0 !important;
     top: 0 !important;
     width: 210mm !important;
-    min-height: 297mm !important;
-    margin: 0 auto !important;
+    height: 296.5mm !important;
+    min-height: 296.5mm !important;
+    max-height: 296.5mm !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     background: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    page-break-after: always !important;
-    break-after: page !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
-  body:has(#weekly-report-page-1) #weekly-report-page-1 {
-    position: relative !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 210mm !important;
-    min-height: 297mm !important;
-    margin: 0 auto !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    page-break-after: always !important;
+  body:has(.workplace-report-print-root) .workplace-page-break-after {
     break-after: page !important;
+    page-break-after: always !important;
   }
 
-  body:has(#weekly-report-page-2) #weekly-report-page-2 {
-    position: relative !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 210mm !important;
-    min-height: 297mm !important;
-    margin: 0 auto !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    page-break-after: avoid !important;
+  body:has(.workplace-report-print-root) .workplace-page-no-break {
     break-after: avoid !important;
+    page-break-after: avoid !important;
   }
 
   /* Student Guide Manual (Multi-page A4 flow) */

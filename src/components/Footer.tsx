@@ -44,7 +44,7 @@ export const Footer: React.FC = () => {
             <div className="space-y-1 text-slate-300 text-xs">
               <p className="flex items-center gap-2">
                 <Phone className="w-3.5 h-3.5 text-slate-400" />
-                <span>โทร: 043-221290 ต่��� 8002</span>
+                <span>โทร: 043-221290 ต่อ 8002</span>
               </p>
               <p className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-slate-400" />

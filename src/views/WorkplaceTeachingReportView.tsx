@@ -890,6 +890,108 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const endDayNum = currentWeekDates[4]?.dateStr.split(' ')[0] || '23';
   const monthFull = THAI_MONTHS_FULL[9]; // ตุลาคม or derived from dates
 
+  // Safe html2canvas capture helper (normalizes Tailwind v4 oklch/oklab/color-mix colors & clamps A4 height)
+  const capturePageToCanvas = async (el: HTMLElement) => {
+    const imgs = Array.from(el.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          img.addEventListener('load', () => resolve(), { once: true });
+          img.addEventListener('error', () => resolve(), { once: true });
+        });
+      })
+    );
+
+    const html2canvasModule = await import('html2canvas');
+    const html2canvas = html2canvasModule.default;
+
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = 1;
+    colorCanvas.height = 1;
+    const colorCtx = colorCanvas.getContext('2d');
+
+    const normalizeColorExpr = (cssText: string): string => {
+      if (!colorCtx || (!cssText.includes('oklch') && !cssText.includes('oklab') && !cssText.includes('color-mix'))) {
+        return cssText;
+      }
+      let result = cssText;
+      for (let pass = 0; pass < 3; pass++) {
+        const prev = result;
+        result = result.replace(/(?:oklch|oklab|color-mix)\([^()]*(?:\([^()]*\)[^()]*)*\)/g, (match) => {
+          try {
+            colorCtx.fillStyle = 'rgba(0, 0, 0, 0)';
+            colorCtx.fillStyle = match;
+            return colorCtx.fillStyle || '#000000';
+          } catch {
+            return '#000000';
+          }
+        });
+        if (result === prev) break;
+      }
+      return result;
+    };
+
+    const targetId = el.id;
+
+    return html2canvas(el, {
+      scale: 2.3,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      onclone: (clonedDoc) => {
+        const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
+        styleTags.forEach((styleTag) => {
+          if (styleTag.textContent) {
+            styleTag.textContent = normalizeColorExpr(styleTag.textContent);
+          }
+        });
+
+        const linkTags = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
+        if (linkTags.length > 0) {
+          try {
+            const combinedRules: string[] = [];
+            Array.from(document.styleSheets).forEach((sheet) => {
+              try {
+                if (sheet.href && sheet.cssRules) {
+                  const text = Array.from(sheet.cssRules).map((r) => r.cssText).join('\n');
+                  combinedRules.push(normalizeColorExpr(text));
+                }
+              } catch {
+                // Skip cross-origin stylesheets
+              }
+            });
+            if (combinedRules.length > 0) {
+              const injected = clonedDoc.createElement('style');
+              injected.textContent = combinedRules.join('\n');
+              clonedDoc.head.appendChild(injected);
+              linkTags.forEach((lnk) => {
+                const href = lnk.getAttribute('href') || '';
+                if (!href.startsWith('http') || href.startsWith(window.location.origin)) {
+                  lnk.remove();
+                }
+              });
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (targetId) {
+          const clonedPage = clonedDoc.getElementById(targetId);
+          if (clonedPage) {
+            clonedPage.style.backgroundColor = '#ffffff';
+            clonedPage.style.width = '210mm';
+            clonedPage.style.height = '296.5mm';
+            clonedPage.style.maxHeight = '296.5mm';
+            clonedPage.style.overflow = 'hidden';
+          }
+        }
+      }
+    });
+  };
+
   // BUTTON 1: "พิมพ์บันทึกข้อความรายงานการจัดการเรียนรู้" (1-Page A4 PDF)
   const handlePrintMemoPDF = async () => {
     const el = document.getElementById('memo-printable-page');
@@ -900,17 +1002,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
     setIsGeneratingMemo(true);
     try {
-      const html2canvasModule = await import('html2canvas');
-      const html2canvas = html2canvasModule.default;
       const { jsPDF } = await import('jspdf');
-
-      const canvas = await html2canvas(el, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
+      const canvas = await capturePageToCanvas(el);
 
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -919,10 +1012,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      const maxPdfHeight = pdf.internal.pageSize.getHeight();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
 
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, pdf.internal.pageSize.getHeight()));
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, maxPdfHeight));
 
       const fileName = `บันทึกข้อความ_รายงานการสอนบูรณาการ_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
       pdf.save(fileName);
@@ -946,8 +1040,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
     setIsGeneratingReport(true);
     try {
-      const html2canvasModule = await import('html2canvas');
-      const html2canvas = html2canvasModule.default;
       const { jsPDF } = await import('jspdf');
 
       const pdf = new jsPDF({
@@ -959,13 +1051,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       const maxPdfHeight = pdf.internal.pageSize.getHeight();
 
       // Render Page 1
-      const canvas1 = await html2canvas(page1El, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
+      const canvas1 = await capturePageToCanvas(page1El);
       const imgData1 = canvas1.toDataURL('image/jpeg', 0.98);
       const height1 = (canvas1.height * pdfWidth) / canvas1.width;
       pdf.addImage(imgData1, 'JPEG', 0, 0, pdfWidth, Math.min(height1, maxPdfHeight));
@@ -974,13 +1060,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       pdf.addPage();
 
       // Render Page 2
-      const canvas2 = await html2canvas(page2El, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
+      const canvas2 = await capturePageToCanvas(page2El);
       const imgData2 = canvas2.toDataURL('image/jpeg', 0.98);
       const height2 = (canvas2.height * pdfWidth) / canvas2.width;
       pdf.addImage(imgData2, 'JPEG', 0, 0, pdfWidth, Math.min(height2, maxPdfHeight));
@@ -995,21 +1075,24 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     }
   };
 
-  // BUTTON 3: "พิมพ์เอกสารทั้งหมด (ครบ 3 หน้า)" (Combined 3-Page A4 PDF in a single file)
-  const handlePrintAllDocsPDF = async () => {
+  // BUTTON 3: "พิมพ์เอกสารทั้งหมด (ครบ 3 หน้า)" or currently previewed tab PDF
+  const handlePrintAllDocsPDF = async (targetScope: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') => {
     const memoEl = document.getElementById('memo-printable-page');
     const page1El = document.getElementById('weekly-report-page-1');
     const page2El = document.getElementById('weekly-report-page-2');
 
-    if (!memoEl || !page1El || !page2El) {
+    const targets: { el: HTMLElement | null; label: string }[] = [];
+    if (targetScope === 'all' || targetScope === 'doc1') targets.push({ el: memoEl, label: 'หน้า1_บันทึกข้อความ' });
+    if (targetScope === 'all' || targetScope === 'doc2_1') targets.push({ el: page1El, label: 'หน้า2_ตารางสอน' });
+    if (targetScope === 'all' || targetScope === 'doc2_2') targets.push({ el: page2El, label: 'หน้า3_ประมวลภาพ' });
+
+    if (targets.some(t => !t.el)) {
       window.print();
       return;
     }
 
     setIsGeneratingAll(true);
     try {
-      const html2canvasModule = await import('html2canvas');
-      const html2canvas = html2canvasModule.default;
       const { jsPDF } = await import('jspdf');
 
       const pdf = new jsPDF({
@@ -1020,45 +1103,18 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const maxPdfHeight = pdf.internal.pageSize.getHeight();
 
-      // Page 1: Memo
-      const canvasMemo = await html2canvas(memoEl, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      const imgDataMemo = canvasMemo.toDataURL('image/jpeg', 0.98);
-      const heightMemo = (canvasMemo.height * pdfWidth) / canvasMemo.width;
-      pdf.addImage(imgDataMemo, 'JPEG', 0, 0, pdfWidth, Math.min(heightMemo, maxPdfHeight));
+      for (let i = 0; i < targets.length; i++) {
+        const el = targets[i].el!;
+        if (i > 0) pdf.addPage();
+        const canvas = await capturePageToCanvas(el);
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const height = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(height, maxPdfHeight));
+      }
 
-      // Page 2: Weekly Report 1/2
-      pdf.addPage();
-      const canvas1 = await html2canvas(page1El, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      const imgData1 = canvas1.toDataURL('image/jpeg', 0.98);
-      const height1 = (canvas1.height * pdfWidth) / canvas1.width;
-      pdf.addImage(imgData1, 'JPEG', 0, 0, pdfWidth, Math.min(height1, maxPdfHeight));
-
-      // Page 3: Weekly Report 2/2 Photos
-      pdf.addPage();
-      const canvas2 = await html2canvas(page2El, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      const imgData2 = canvas2.toDataURL('image/jpeg', 0.98);
-      const height2 = (canvas2.height * pdfWidth) / canvas2.width;
-      pdf.addImage(imgData2, 'JPEG', 0, 0, pdfWidth, Math.min(height2, maxPdfHeight));
-
-      const fileName = `เอกสารรายงานการสอนบูรณาการ_ครบชุด3หน้า_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      const fileName = targetScope === 'all'
+        ? `เอกสารรายงานการสอนบูรณาการ_ครบชุด3หน้า_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`
+        : `เอกสารรายงานการสอนบูรณาการ_${targets[0].label}_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
       pdf.save(fileName);
     } catch (err) {
       console.warn('PDF combined print notice:', err);
@@ -1075,10 +1131,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       className="bg-white text-black font-serif"
       style={{
         width: '210mm',
-        minHeight: '297mm',
+        height: '296.5mm',
         margin: '0 auto',
-        padding: '10mm 20mm 15mm 20mm',
+        padding: '10mm 18mm 12mm 18mm',
         boxSizing: 'border-box',
+        overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         color: '#000000'
       }}
@@ -1253,12 +1310,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const renderReportPage1Content = (isModal: boolean = false) => (
     <div
       id={isModal ? undefined : "weekly-report-page-1"}
-      className="bg-white text-black p-[18mm] relative"
+      className="bg-white text-black p-[15mm] relative"
       style={{
         width: '210mm',
-        minHeight: '297mm',
+        height: '296.5mm',
         margin: '0 auto',
         boxSizing: 'border-box',
+        overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         fontSize: '15pt',
         lineHeight: 1.35,
@@ -1272,7 +1330,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
       {/* Header Box with College Logo */}
       <div className="border border-black p-3 mb-4 flex items-center gap-4">
-        <div className="w-[28mm] flex-shrink-0 flex items-center justify-center border-r border-black pr-3">
+        <div className="w-[28mm] flex-shrink-0 flex items-center justify-center pr-2">
           <img 
             src="/assets/aistudio/LogoKKTech_f25116a9.jpg" 
             alt="ตราวิทยาลัยเทคนิคขอนแก่น" 
@@ -1317,9 +1375,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <thead>
             <tr className="bg-slate-50 font-bold">
               <th className="border border-black p-1.5 w-[12mm]">ลำดับ</th>
-              <th className="border border-black p-1.5 w-[25mm]">รหัสวิชา</th>
-              <th className="border border-black p-1.5">รายวิชา</th>
-              <th className="border border-black p-1.5 w-[28mm]">ห้อง</th>
+              <th className="border border-black p-1.5 w-[30mm]">รหัสวิชา</th>
+              <th className="border border-black p-1.5">ชื่อวิชา</th>
+              <th className="border border-black p-1.5 w-[42mm]">กลุ่มเรียน</th>
             </tr>
           </thead>
           <tbody>
@@ -1392,12 +1450,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const renderReportPage2Content = (isModal: boolean = false) => (
     <div
       id={isModal ? undefined : "weekly-report-page-2"}
-      className="bg-white text-black p-[18mm] relative"
+      className="bg-white text-black p-[15mm] relative"
       style={{
         width: '210mm',
-        minHeight: '297mm',
+        height: '296.5mm',
         margin: '0 auto',
         boxSizing: 'border-box',
+        overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         fontSize: '15pt',
         lineHeight: 1.35,
@@ -1494,8 +1553,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     </div>
   );
 
+  const activePrintScope = isPrintPreviewOpen ? previewTab : 'all';
+  const showDoc1InPrint = activePrintScope === 'all' || activePrintScope === 'doc1';
+  const showDoc2_1InPrint = activePrintScope === 'all' || activePrintScope === 'doc2_1';
+  const showDoc2_2InPrint = activePrintScope === 'all' || activePrintScope === 'doc2_2';
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-0 workplace-report-print-root">
       {/* Control Configuration Bar */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-5 print:hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -1801,13 +1865,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       </div>
 
       {/* DOCUMENT PREVIEWS CONTAINER */}
-      <div className="space-y-10 flex flex-col items-center">
+      <div className="space-y-10 flex flex-col items-center print:block print:space-y-0 workplace-pages-stack">
 
         {/* ------------------------------------------------------------- */}
         {/* DOCUMENT 1: MEMORANDUM PAGE (1-PAGE A4)                       */}
-        {/* Exact match to Screenshot 2026-11-03 154437                  */}
         {/* ------------------------------------------------------------- */}
-        <div className="w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300">
+        <div
+          className={`w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300 workplace-doc-card ${
+            !showDoc1InPrint
+              ? 'print:hidden'
+              : (showDoc2_1InPrint || showDoc2_2InPrint)
+                ? 'workplace-page-break-after'
+                : 'workplace-page-no-break'
+          }`}
+        >
           <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between print:hidden">
             <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-indigo-600" />
@@ -1828,9 +1899,16 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
         {/* ------------------------------------------------------------- */}
         {/* DOCUMENT 2: WEEKLY REPORT PAGE 1 (A4)                         */}
-        {/* Exact match to Screenshot 2026-11-03 162344                  */}
         {/* ------------------------------------------------------------- */}
-        <div className="w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300">
+        <div
+          className={`w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300 workplace-doc-card ${
+            !showDoc2_1InPrint
+              ? 'print:hidden'
+              : showDoc2_2InPrint
+                ? 'workplace-page-break-after'
+                : 'workplace-page-no-break'
+          }`}
+        >
           <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between print:hidden">
             <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
@@ -1848,148 +1926,18 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </div>
           </div>
 
-          <div
-            id="weekly-report-page-1"
-            className="bg-white text-black p-[18mm] relative"
-            style={{
-              width: '210mm',
-              minHeight: '297mm',
-              margin: '0 auto',
-              boxSizing: 'border-box',
-              fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
-              fontSize: '15pt',
-              lineHeight: 1.35,
-              color: '#000000'
-            }}
-          >
-            {/* Top Page number */}
-            <div className="text-right text-[12pt] text-slate-400 mb-1">
-              2
-            </div>
-
-            {/* Header Box with College Logo */}
-            <div className="border border-black p-3 mb-4 flex items-center gap-4">
-              <div className="w-[28mm] flex-shrink-0 flex items-center justify-center border-r border-black pr-3">
-                <img 
-                  src="/assets/aistudio/LogoKKTech_f25116a9.jpg" 
-                  alt="ตราวิทยาลัยเทคนิคขอนแก่น" 
-                  className="w-[24mm] h-auto object-contain"
-                />
-              </div>
-
-              <div className="flex-1 text-center space-y-0.5">
-                <div className="font-bold text-[18pt]">วิทยาลัยเทคนิคขอนแก่น</div>
-                <div className="font-bold text-[16pt]">รายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ</div>
-                <div className="font-bold text-[15pt]">ประจำภาคเรียนที่ 2 ปีการศึกษา 2569</div>
-                <div className="font-bold text-[14pt]">
-                  สัปดาห์ที่ {selectedWeek} ระหว่างวันที่ {startDayFull} ถึงวันที่ {endDayFull}
-                </div>
-              </div>
-            </div>
-
-            {/* Teacher info lines */}
-            <div className="grid grid-cols-12 gap-y-2 text-[15pt] mb-4">
-              <div className="col-span-6 flex items-baseline gap-3">
-                <span className="w-24 shrink-0 text-black">ชื่อครูผู้สอน</span>
-                <span className="text-black">{reporterName}</span>
-              </div>
-              <div className="col-span-6 flex items-baseline gap-3">
-                <span className="w-20 shrink-0 text-black">ตำแหน่ง</span>
-                <span className="text-black">{position}</span>
-              </div>
-
-              <div className="col-span-6 flex items-baseline gap-3">
-                <span className="w-24 shrink-0 text-black">แผนกวิชา</span>
-                <span className="text-black">ช่างไฟฟ้ากำลัง</span>
-              </div>
-              <div className="col-span-6 flex items-baseline gap-3">
-                <span className="w-20 shrink-0 text-black">หน้าที่พิเศษ</span>
-                <span className="text-black">{specialDuty || '-'}</span>
-              </div>
-            </div>
-
-            {/* Table 1: Courses & Teaching Applications */}
-            <div className="mb-4">
-              <table className="w-full border-collapse border border-black text-center text-[14pt]">
-                <thead>
-                  <tr className="bg-slate-50 font-bold">
-                    <th className="border border-black p-1.5 w-[12mm]">ลำดับ</th>
-                    <th className="border border-black p-1.5 w-[30mm]">รหัสวิชา</th>
-                    <th className="border border-black p-1.5">ชื่อวิชา</th>
-                    <th className="border border-black p-1.5 w-[42mm]">กลุ่มเรียน</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {courses.map((c, idx) => (
-                    <tr key={c.id}>
-                      <td className="border border-black p-1.5">{idx + 1}</td>
-                      <td className="border border-black p-1.5 font-bold">{c.subjectCode}</td>
-                      <td className="border border-black p-1.5 text-left px-2">{c.subjectName}</td>
-                      <td className="border border-black p-1.5">{c.room}</td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td className="border border-black p-2 font-bold align-top" colSpan={2}>
-                      โปรแกรม หรือ Application<br />ที่ใช้ในการสอน
-                    </td>
-                    <td className="border border-black p-2 text-left" colSpan={2}>
-                      <div>1. Google Classroom (ใช้ในการสอน/มอบหมายงาน/ส่งงาน)</div>
-                      <div>2. Google Meet (ใช้ในการสอนกลุ่มออนไลน์ และนำเสนองาน)</div>
-                      <div>3. Line (ใช้ในการประสานงาน/แนะนำ)</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Subheader: สัปดาห์ที่ X */}
-            <div className="font-bold text-center text-[16pt] my-3">
-              สัปดาห์ที่ {selectedWeek}
-            </div>
-
-            {/* Table 2: Teaching Schedule */}
-            <div className="mb-5">
-              <table className="w-full border-collapse border border-black text-center text-[14pt]">
-                <thead>
-                  <tr className="bg-slate-50 font-bold">
-                    <th className="border border-black p-1.5 w-[28mm]">วัน/เดือน/ปี</th>
-                    <th className="border border-black p-1.5 w-[26mm]">เวลา</th>
-                    <th className="border border-black p-1.5 w-[28mm]">รหัสวิชา</th>
-                    <th className="border border-black p-1.5">กิจกรรมการเรียนการสอน</th>
-                    <th className="border border-black p-1.5 w-[35mm]">หมายเหตุ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {courses.map((c) => (
-                    <tr key={`sched-${c.id}`}>
-                      <td className="border border-black p-1.5">{formatThaiDateShort(c.teachDate)}</td>
-                      <td className="border border-black p-1.5">{c.teachTime}</td>
-                      <td className="border border-black p-1.5 font-bold">{c.subjectCode}</td>
-                      <td className="border border-black p-1.5 text-left px-2">{c.subjectName}</td>
-                      <td className="border border-black p-1.5">{c.room}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Results / Outcomes */}
-            <div className="mt-6 space-y-3">
-              <div className="font-bold text-[15pt]">
-                ผลที่เกิดจากการจัดการเรียนรู้ (โปรดระบุ)
-              </div>
-              <div className="indent-[1.5cm] leading-relaxed text-justify px-2 text-[15pt]">
-                {learningOutcome}
-              </div>
-            </div>
-          </div>
+          {renderReportPage1Content(false)}
         </div>
 
 
         {/* ------------------------------------------------------------- */}
         {/* DOCUMENT 2: WEEKLY REPORT PAGE 2 (A4 PHOTO GALLERY)           */}
         {/* ------------------------------------------------------------- */}
-        <div className="w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300">
+        <div
+          className={`w-full max-w-[210mm] shadow-lg rounded-sm overflow-hidden bg-white border border-slate-300 workplace-doc-card ${
+            !showDoc2_2InPrint ? 'print:hidden' : 'workplace-page-no-break'
+          }`}
+        >
           {/* Header Bar with Quick Stats & Actions */}
           <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 print:hidden">
             <div className="space-y-0.5">
@@ -2095,104 +2043,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           />
 
           {/* A4 Printable Gallery Page */}
-          <div
-            id="weekly-report-page-2"
-            className="bg-white text-black p-[18mm] relative"
-            style={{
-              width: '210mm',
-              minHeight: '297mm',
-              margin: '0 auto',
-              boxSizing: 'border-box',
-              fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
-              fontSize: '15pt',
-              lineHeight: 1.35,
-              color: '#000000'
-            }}
-          >
-            {/* Top Page number */}
-            <div className="text-right text-[12pt] text-slate-400 mb-2">
-              3
-            </div>
-
-            {/* Page Title */}
-            <div className="text-center space-y-1 mb-5">
-              <div className="font-bold text-[16pt]">
-                ประมวลภาพการรายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ
-              </div>
-              <div className="font-bold text-[15pt]">
-                ประจำภาคเรียนที่ 2 ปีการศึกษา 2569
-              </div>
-              <div className="font-bold text-[14pt]">
-                สัปดาห์ที่ {selectedWeek} ระหว่างวันที่ {startDayNum} - {endDayNum} {monthFull} พ.ศ. 2569
-              </div>
-              <div className="text-[13pt] text-slate-800 pt-0.5">
-                ครูนิเทศก์: <strong>{reporterName}</strong> &bull; รายวิชาบูรณาการ: {courses.map(c => `${c.subjectCode} ${c.subjectName}`).join(' / ') || 'กิจกรรมในสถานประกอบการ 1'}
-              </div>
-            </div>
-
-            {/* 2 x 3 Photos Grid */}
-            <div 
-              className="grid grid-cols-2 border-t border-l border-black" 
-              style={{ width: '100%' }}
-            >
-              {weekPhotos.map((photo, pIdx) => (
-                <div 
-                  key={photo.id || pIdx} 
-                  className="group relative border-r border-b border-black p-2 flex flex-col items-center justify-between text-center"
-                  style={{ height: '68mm' }}
-                >
-                  {/* Photo container */}
-                  <div className="w-full h-[52mm] bg-slate-50 flex items-center justify-center overflow-hidden rounded-xs relative">
-                    {photo.url ? (
-                      <img 
-                        src={photo.url} 
-                        alt={`ภาพที่ ${pIdx + 1}`} 
-                        className="w-full h-full object-cover" 
-                        crossOrigin="anonymous"
-                      />
-                    ) : (
-                      <div className="p-3 text-[13pt] text-slate-600 leading-tight">
-                        รูปภาพจากฐานข้อมูล บันทึกรายงานการนิเทศ<br />หรือ<br />รูปภาพจากฐานข้อมูล ส่งบันทึกปฏิบัติงานประจำสัปดาห์
-                      </div>
-                    )}
-
-                    {/* Source Badge (Hidden when printing/saving PDF) */}
-                    <div className="absolute bottom-1 right-1 print:hidden opacity-0 group-hover:opacity-100 transition duration-150">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shadow-sm font-sans font-medium text-white ${
-                        photo.sourceType === 'supervision' ? 'bg-purple-600/90' :
-                        photo.sourceType === 'internship' ? 'bg-blue-600/90' :
-                        photo.sourceType === 'custom' ? 'bg-amber-600/90' :
-                        'bg-slate-700/90'
-                      }`}>
-                        {photo.sourceTitle || (photo.sourceType === 'supervision' ? 'ภาพจากการนิเทศ' : 'ภาพฝึกงาน')}
-                      </span>
-                    </div>
-
-                    {/* Quick Edit Overlay Button (Hidden in Print) */}
-                    <div className="absolute top-1 right-1 print:hidden opacity-0 group-hover:opacity-100 transition duration-150">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingPhotoIdx(pIdx);
-                          setIsPhotoModalOpen(true);
-                        }}
-                        className="p-1 bg-white/90 hover:bg-white text-slate-800 rounded shadow-xs text-[10px] font-sans flex items-center gap-1 cursor-pointer"
-                        title="แก้ไขรูปภาพหรือคำอธิบาย"
-                      >
-                        <Edit3 className="w-3 h-3 text-indigo-600" />
-                        <span>แก้ไข</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Caption */}
-                  <div className="mt-1 text-[12.5pt] leading-tight text-slate-800 line-clamp-2 w-full px-1 font-normal">
-                    {photo.caption || `ภาพที่ ${pIdx + 1}: การจัดการเรียนการสอนบูรณาการ`}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {renderReportPage2Content(false)}
         </div>
 
         {/* ------------------------------------------------------------- */}
@@ -2730,34 +2581,34 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   </button>
                 </div>
 
-                {/* Print button */}
+                {/* Print button (Prints exact page(s) shown in Print Preview) */}
                 <button
                   type="button"
                   onClick={() => window.print()}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
-                  title="สั่งพิมพ์เอกสารทั้งหมด (ครบทั้ง 3 หน้า A4)"
+                  title={previewTab === 'all' ? 'สั่งพิมพ์เอกสารทั้งหมด (ครบทั้ง 3 หน้า A4)' : 'สั่งพิมพ์เฉพาะหน้านี้ให้ตรงกับตัวอย่างก่อนพิมพ์'}
                 >
                   <Printer className="w-4 h-4" />
-                  <span>สั่งพิมพ์ (Print)</span>
+                  <span>{previewTab === 'all' ? 'สั่งพิมพ์ (ครบ 3 หน้า)' : 'สั่งพิมพ์หน้านี้ (1 หน้า)'}</span>
                 </button>
 
-                {/* Download combined 3 pages */}
+                {/* Download PDF matching Print Preview tab */}
                 <button
                   type="button"
-                  onClick={handlePrintAllDocsPDF}
+                  onClick={() => handlePrintAllDocsPDF(previewTab)}
                   disabled={isGeneratingAll}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-60"
-                  title="ดาวน์โหลด PDF รวมเอกสารที่ 1 และ 2 ทั้งหมด (3 หน้าในไฟล์เดียว)"
+                  title={previewTab === 'all' ? 'ดาวน์โหลด PDF รวมเอกสารที่ 1 และ 2 ทั้งหมด (3 หน้าในไฟล์เดียว)' : 'ดาวน์โหลด PDF เฉพาะหน้าที่กำลังดูตัวอย่าง'}
                 >
                   {isGeneratingAll ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-emerald-200" />
-                      <span>กำลังสร้าง PDF 3 หน้า...</span>
+                      <span>กำลังสร้าง PDF...</span>
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4 text-emerald-200" />
-                      <span>ดาวน์โหลด PDF รวม (3 หน้า)</span>
+                      <span>{previewTab === 'all' ? 'ดาวน์โหลด PDF รวม (3 หน้า)' : 'ดาวน์โหลด PDF หน้านี้'}</span>
                     </>
                   )}
                 </button>
