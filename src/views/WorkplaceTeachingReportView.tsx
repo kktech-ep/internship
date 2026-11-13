@@ -1166,7 +1166,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
             alt="ตราครุฑ" 
             className="h-auto object-contain mb-0.1" 
-            style={{ width: '14.4mm' }}
+            style={{ width: '14.4mm', top: '8mm' }}
           />
         </div>
 
@@ -1222,13 +1222,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           </div>
         </div>
 
-        {/* Paragraph 1 */}
-        <div className="mt-3 text-justify indent-[2.5cm] leading-relaxed">
+     {/* Paragraph 1 */}
+        <div className="mt-3 text-justify indent-[2.5cm]" style={{ lineHeight: 1.2 }}>
           ตามที่วิทยาลัยเทคนิคขอนแก่น ได้กำหนดแนวปฏิบัติในการจัดตารางเรียน ตารางสอน ปีการศึกษา 2569 โดยรายวิชาฝึกประสบการณ์วิชาชีพ (หลักสูตร 2567) จัดให้มีครูผู้สอนรับผิดชอบรายวิชาให้ครบตามแผนการเรียนที่นำไปจัดสอนและฝึกประสบการณ์อาชีพหรือฝึกงานในสถานประกอบการหรือจัดสอนนอกสถานศึกษา ตามแนวทางของสำนักงานคณะกรรมการการอาชีวศึกษา ให้เป็นชั่วโมงสอนที่ครูผู้สอนได้ทำการสอนทั้งการจัดการเรียนการสอนในรูปแบบออนไลน์ เช่น Google Meet, Google Classroom, Zoom Meeting หรือชั่วโมงการนิเทศผ่านระบบสารสนเทศ
         </div>
 
         {/* Paragraph 2 & Assigned courses */}
-        <div className="mt-2.5 text-justify leading-relaxed">
+        <div className="mt-2.5 text-justify" style={{ lineHeight: 1.2 }}>
           <div className="indent-[2.5cm]">
             ข้าพเจ้า <span className="font-bold">{reporterName}</span> ได้รับมอบหมายให้รับผิดชอบสอน
           </div>
