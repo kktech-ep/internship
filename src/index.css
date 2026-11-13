@@ -174,9 +174,3 @@
     print-color-adjust: exact !important;
   }
 }
-@media print {
-  /* ซ่อนทุกอย่างที่เกินหน้าเว็บหรือหน้าหลัก 3 หน้าแรกทิ้งไปเลย */
-  div:nth-of-type(n+4) {
-    display: none !important;
-  }
-}
