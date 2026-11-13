@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Vocational student intern profile and training status for KKTECH",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentCode": { "type": "string", "maxLength": 20 },
+        "name": { "type": "string", "maxLength": 150 },
+        "initials": { "type": "string", "maxLength": 10 },
+        "level": { "type": "string", "maxLength": 50 },
+        "department": { "type": "string", "maxLength": 150 },
+        "room": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 150 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "supervisorTeacher": { "type": "string", "maxLength": 150 },
+        "accumulatedHours": { "type": "number" },
+        "requiredHours": { "type": "number" },
+        "actualWeeks": { "type": "number" },
+        "totalWeeks": { "type": "number" },
+        "currentWeek": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "studentCode", "name", "level", "department", "companyId"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Internship workplace and enterprise host for electrical students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "shortName": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 500 },
+        "zone": { "type": "string", "maxLength": 100 },
+        "distanceKm": { "type": "number" },
+        "sector": { "type": "string", "maxLength": 50 },
+        "sectorLabel": { "type": "string", "maxLength": 100 },
+        "contactPerson": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "studentsCount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "statusText": { "type": "string", "maxLength": 100 },
+        "visitSchedule": { "type": "string", "maxLength": 100 },
+        "assignedTeacher": { "type": "string", "maxLength": 150 },
+        "jobScope": { "type": "string", "maxLength": 500 },
+        "lastScore": { "type": "number" }
+      },
+      "required": ["id", "name", "sector", "phone"]
+    },
+    "WeeklySubmission": {
+      "title": "WeeklySubmission",
+      "description": "Weekly logbook record submitted by student intern and graded by teachers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "weekNumber": { "type": "number" },
+        "dateRange": { "type": "string", "maxLength": 100 },
+        "submittedAt": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "maxLength": 30 },
+        "taskTitle": { "type": "string", "maxLength": 300 },
+        "totalHours": { "type": "number" },
+        "mentorRating": { "type": "number" },
+        "mentorComment": { "type": "string", "maxLength": 500 },
+        "mentorName": { "type": "string", "maxLength": 150 },
+        "mentorPosition": { "type": "string", "maxLength": 150 },
+        "teacherScore": { "type": "number" },
+        "teacherGrade": { "type": "string", "maxLength": 10 },
+        "teacherComment": { "type": "string", "maxLength": 500 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "studentSignature": { "type": "string", "maxLength": 150 },
+        "mentorSignature": { "type": "string", "maxLength": 150 },
+        "teacherSignature": { "type": "string", "maxLength": 150 },
+        "verifiedHash": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "studentId", "weekNumber", "status", "taskTitle"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Broadcast notifications for students and teachers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "content": { "type": "string", "maxLength": 1000 },
+        "date": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "maxLength": 50 },
+        "target": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "title", "content", "date", "type"]
+    },
+    "LoginSheetRow": {
+      "title": "LoginSheetRow",
+      "description": "Mirrored row data from Google Sheet 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28 tab login",
+      "type": "object",
+      "properties": {
+        "user": { "type": "string", "maxLength": 100 },
+        "pass": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "maxLength": 50 },
+        "phoneStudent": { "type": "string", "maxLength": 50 },
+        "Company": { "type": "string", "maxLength": 200 },
+        "CompanyID": { "type": "string", "maxLength": 100 },
+        "CompanyPhone": { "type": "string", "maxLength": 50 },
+        "room": { "type": "string", "maxLength": 50 },
+        "department": { "type": "string", "maxLength": 150 },
+        "leader": { "type": "string", "maxLength": 150 },
+        "leaderPhone": { "type": "string", "maxLength": 50 },
+        "GPS": { "type": "string", "maxLength": 100 },
+        "delial": { "type": "string", "maxLength": 500 },
+        "timestamp": { "type": "string", "maxLength": 100 },
+        "lastSync": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["user", "name"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Individual student intern profile and training records"
+    },
+    "/companies/{companyId}": {
+      "schema": "Company",
+      "description": "Host enterprise training location records and supervision schedule"
+    },
+    "/submissions/{submissionId}": {
+      "schema": "WeeklySubmission",
+      "description": "Weekly logbook entries, hours, and evaluation reports"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Official announcements for academic term 2/2569"
+    },
+    "/login_sheet/{userId}": {
+      "schema": "LoginSheetRow",
+      "description": "Mirrored rows from Google Spreadsheet login tab"
+    }
+  }
+}

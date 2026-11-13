@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+.font-sarabun {
+  font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+}
+
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #a4-printable-document,
+  #a4-printable-document * {
+    visibility: visible;
+  }
+
+  #a4-printable-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 16mm 14mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+  }
+
+  /* Workplace teaching reports: Document 1 and Document 2 */
+  body:has(#memo-printable-page) #memo-printable-page,
+  body:has(#memo-printable-page) #memo-printable-page *,
+  body:has(#weekly-report-page-1) #weekly-report-page-1,
+  body:has(#weekly-report-page-1) #weekly-report-page-1 *,
+  body:has(#weekly-report-page-2) #weekly-report-page-2,
+  body:has(#weekly-report-page-2) #weekly-report-page-2 * {
+    visibility: visible !important;
+  }
+
+  body:has(#memo-printable-page) #memo-printable-page {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  body:has(#weekly-report-page-1) #weekly-report-page-1 {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  body:has(#weekly-report-page-2) #weekly-report-page-2 {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* Student Guide Manual (Multi-page A4 flow) */
+  @page guide-page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body:has(#student-guide-pdf-content),
+  html:has(#student-guide-pdf-content) {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body:has(#student-guide-pdf-content) #root,
+  body:has(#student-guide-pdf-content) #root > div,
+  body:has(#student-guide-pdf-content) main {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  body:has(#student-guide-pdf-content) #student-guide-pdf-content,
+  body:has(#student-guide-pdf-content) #student-guide-pdf-content * {
+    visibility: visible !important;
+  }
+
+  body:has(#student-guide-pdf-content) #student-guide-pdf-content {
+    page: guide-page;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 4mm 6mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

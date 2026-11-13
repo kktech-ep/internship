@@ -1,0 +1,6 @@
+{
+  "name": "KKTECH Power Portal - Vocational Internship System",
+  "description": "ระบบบันทึกและประเมินผลการฝึกประสบการณ์วิชาชีพ แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น เชื่อมโยง Google Workspace และ Looker Studio",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

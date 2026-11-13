@@ -1,0 +1,15 @@
+# KKTECH POWER PORTAL - Apache Configuration for AppServ / XAMPP
+Options -MultiViews
+RewriteEngine On
+
+# Ensure UTF-8 Encoding
+AddDefaultCharset UTF-8
+
+# Prevent directory listings
+Options -Indexes
+
+# Fallback for Single Page Application routing (SPA)
+# If the requested file or directory does not exist, route to index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L,QSA]

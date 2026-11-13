@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    match /students/{studentId} {
+      allow read, write, delete: if true;
+    }
+
+    match /teachers/{teacherId} {
+      allow read, write, delete: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write, delete: if true;
+    }
+
+    match /login_sheet/{userId} {
+      allow read, write, delete: if true;
+    }
+
+    match /companies/{companyId} {
+      allow read, write, delete: if true;
+    }
+
+    match /submissions/{submissionId} {
+      allow read, write, delete: if true;
+    }
+
+    match /announcements/{announcementId} {
+      allow read, write, delete: if true;
+    }
+
+    match /form3_supervisions/{recordId} {
+      allow read, write, delete: if true;
+    }
+
+    match /courses/{courseId} {
+      allow read, write, delete: if true;
+    }
+
+    // Default deny for unlisted collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
