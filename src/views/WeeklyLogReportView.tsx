@@ -18,7 +18,7 @@ import {
   Database
 } from 'lucide-react';
 import { Student, WeeklySubmission, DailyLog, PhotoEvidence, AuthUser } from '../types';
-import { WEEKS_1_TO_15, getDefaultDailyLogsForWeek } from '../data/weeksData';
+import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { saveSubmissionToFirestore } from '../services/firestoreService';
 
 interface WeeklyLogReportViewProps {
@@ -57,7 +57,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const currentWeekMeta = WEEKS_1_TO_15.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_15[7];
+  const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
   const existingSubmission = submissions.find(s => s.weekNumber === selectedWeek);
 
   // When selectedWeek changes, load submission or load default template for that week
@@ -287,26 +287,26 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         </div>
       </div>
 
-      {/* Week Navigation Selector 1-15 */}
+      {/* Week Navigation Selector 1-18 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-sky-600" />
             <h2 className="font-bold text-slate-900 text-xs sm:text-sm">
-              เมนูเลือกรายสัปดาห์ (สัปดาห์ที่ 1 - 15)
+              เมนูเลือกรายสัปดาห์ (สัปดาห์ที่ 1 - 18)
             </h2>
             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-800 border border-sky-200 hidden sm:inline-block">
-              เริ่มฝึกงาน สัปดาห์ 1: 19 ต.ค. 2569
+              เริ่มฝึกงาน สัปดาห์ 1: 19 ต.ค. 2569 (รวม 18 สัปดาห์ / 720 ชม.)
             </span>
           </div>
           <span className="text-xs text-slate-500 font-medium">
-            เลือกสัปดาห์ที่ 1-15 เพื่อบันทึกหรือตรวจสอบ
+            เลือกสัปดาห์ที่ 1-18 เพื่อบันทึกหรือตรวจสอบ
           </span>
         </div>
 
-        {/* Scrollable Week Pills 1-15 */}
+        {/* Scrollable Week Pills 1-18 */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-          {WEEKS_1_TO_15.map((w) => {
+          {WEEKS_1_TO_18.map((w) => {
             const isSelected = selectedWeek === w.weekNumber;
             const sub = submissions.find(s => s.weekNumber === w.weekNumber);
             const isGraded = sub?.status === 'graded';

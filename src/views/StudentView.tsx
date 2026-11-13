@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Student, WeeklySubmission } from '../types';
 import { StudentAvatar } from '../components/StudentAvatar';
+import { WEEKS_1_TO_18 } from '../data/weeksData';
 
 interface StudentViewProps {
   student: Student;
@@ -314,7 +315,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
             <div>
               <h3 className="text-lg font-bold text-slate-900">ส่งบันทึกปฏิบัติงานประจำสัปดาห์</h3>
               <p className="text-xs font-semibold text-sky-800 mt-1">
-                สัปดาห์ที่ 8: งานติดตั้งตู้ Distribution Board (MDB) & Wiring Control สายวงจรไฟฟ้าโรงงาน
+                สัปดาห์ที่ {student.currentWeek}: {WEEKS_1_TO_18.find(w => w.weekNumber === student.currentWeek)?.title || 'งานติดตั้งตู้ Distribution Board (MDB) & Wiring Control สายวงจรไฟฟ้าโรงงาน'}
               </p>
             </div>
 
@@ -356,7 +357,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
               onClick={() => onNavigateWeeklyLog ? onNavigateWeeklyLog(student.currentWeek) : onOpenForm2()}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md hover:shadow-lg transition cursor-pointer"
             >
-              <span>เปิดหน้าบันทึกการปฏิบัติงาน & แนบรูปถ่าย (สัปดาห์ 1 - 15)</span>
+              <span>เปิดหน้าบันทึกการปฏิบัติงาน & แนบรูปถ่าย (สัปดาห์ 1 - 18)</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <button

@@ -13,7 +13,7 @@ import {
   Database
 } from 'lucide-react';
 import { Student, WeeklySubmission, DailyLog, PhotoEvidence } from '../../types';
-import { WEEKS_1_TO_15, getDefaultDailyLogsForWeek } from '../../data/weeksData';
+import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../../data/weeksData';
 
 interface Form2WeeklyReportModalProps {
   isOpen: boolean;
@@ -44,13 +44,13 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const currentWeekMeta = WEEKS_1_TO_15.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_15[7];
+  const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
 
   // Update fields when selectedWeek or modal open state changes
   useEffect(() => {
     if (isOpen) {
       setSelectedWeek(currentWeek || 8);
-      const meta = WEEKS_1_TO_15.find(w => w.weekNumber === (currentWeek || 8)) || WEEKS_1_TO_15[7];
+      const meta = WEEKS_1_TO_18.find(w => w.weekNumber === (currentWeek || 8)) || WEEKS_1_TO_18[7];
       setTaskTitle(meta.defaultTask);
       setDailyTasks(getDefaultDailyLogsForWeek(currentWeek || 8));
       setPhotos(meta.samplePhotos);
@@ -60,7 +60,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   // When user switches week dropdown inside modal
   const handleSelectWeek = (weekNum: number) => {
     setSelectedWeek(weekNum);
-    const meta = WEEKS_1_TO_15.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_15[0];
+    const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
     setTaskTitle(meta.defaultTask);
     setDailyTasks(getDefaultDailyLogsForWeek(weekNum));
     setPhotos(meta.samplePhotos);
@@ -169,7 +169,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
                   บันทึกการปฏิบัติงานวิชาชีพ & รูปถ่ายหน้างาน
                 </span>
                 <span className="px-2 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  สัปดาห์ที่ {selectedWeek} (1-15)
+                  สัปดาห์ที่ {selectedWeek} (1-18)
                 </span>
               </div>
               <h3 className="text-base font-bold text-white">บันทึกการปฏิบัติงานวิชาชีพ & รูปถ่ายหน้างาน</h3>
@@ -202,7 +202,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
                 <p className="text-[11px] text-slate-600">สถานประกอบการ: {student.companyName}</p>
               </div>
 
-              {/* Week Dropdown Selector 1-15 */}
+              {/* Week Dropdown Selector 1-18 */}
               <div className="flex items-center gap-2">
                 <label className="font-semibold text-slate-700 text-xs flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-sky-600" />
@@ -213,7 +213,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
                   onChange={(e) => handleSelectWeek(parseInt(e.target.value))}
                   className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
                 >
-                  {WEEKS_1_TO_15.map((w) => (
+                  {WEEKS_1_TO_18.map((w) => (
                     <option key={w.weekNumber} value={w.weekNumber}>
                       สัปดาห์ที่ {w.weekNumber} ({w.dateRange})
                     </option>

@@ -12,7 +12,7 @@ export interface WeekMeta {
 export const INTERNSHIP_START_DATE = '19 ต.ค. 2569';
 export const ACADEMIC_TERM = 'ภาคเรียนที่ 2 ปีการศึกษา 2569';
 
-export const WEEKS_1_TO_15: WeekMeta[] = [
+export const WEEKS_1_TO_18: WeekMeta[] = [
   {
     weekNumber: 1,
     dateRange: '19 ต.ค. 2569 - 23 ต.ค. 2569',
@@ -394,31 +394,115 @@ export const WEEKS_1_TO_15: WeekMeta[] = [
   {
     weekNumber: 15,
     dateRange: '25 ม.ค. 2570 - 29 ม.ค. 2570',
-    title: 'งานทดสอบระบบไฟฟ้าทั้งระบบ (Commissioning)',
-    defaultTask: 'ทดสอบการทำงานของระบบไฟฟ้าทั้งหมด สรุปบันทึกเวลาฝึกงานครบ 400 ชม. และจัดทำเอกสารส่งมอบ',
-    tools: 'ชุดเครื่องมือวิศวกรรมไฟฟ้าครบชุด, แฟ้มสรุปผลงาน',
+    title: 'งานบำรุงรักษาระบบไฟฟ้าโรงงานเชิงป้องกัน (PM)',
+    defaultTask: 'ตรวจเช็กตู้สวิตช์บอร์ด MDB หม้อแปลงไฟฟ้า และบันทึกค่าทางไฟฟ้าในแผนบำรุงรักษาเชิงป้องกัน',
+    tools: 'Thermal Imaging Camera, Power Quality Analyzer, ชุดเครื่องมือช่างหุ้มฉนวน',
     samplePhotos: [
       {
         id: 'p-w15-1',
+        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 1: สแกนความร้อนขั้วต่อสายไฟด้วยกล้อง Thermal',
+        caption: 'ตรวจสอบอุณหภูมิหน้าสัมผัสเบรกเกอร์หลักและบัสบาร์'
+      },
+      {
+        id: 'p-w15-2',
+        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 2: ตรวจเช็กระดับน้ำมันและซิลิกาเจลหม้อแปลง',
+        caption: 'บันทึกค่าแรงดันและอุณหภูมิหม้อแปลงจำหน่ายประจำเดือน'
+      },
+      {
+        id: 'p-w15-3',
+        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 3: บันทึกแผนการบำรุงรักษาเชิงป้องกัน (PM Plan)',
+        caption: 'ส่งรายงานผลการตรวจสอบให้วิศวกรซ่อมบำรุง'
+      }
+    ]
+  },
+  {
+    weekNumber: 16,
+    dateRange: '1 ก.พ. 2570 - 5 ก.พ. 2570',
+    title: 'งานตรวจสอบระบบไฟฟ้าสำรอง (Generator & ATS/UPS)',
+    defaultTask: 'ตรวจสอบและทดสอบเครื่องกำเนิดไฟฟ้าสำรอง (Generator) สวิตช์สลับแหล่งจ่าย ATS และชุดสำรองไฟ UPS',
+    tools: 'Power Quality Analyzer, Battery Tester, Clamp Meter, หูฟังป้องกันเสียง',
+    samplePhotos: [
+      {
+        id: 'p-w16-1',
+        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 1: ทดสอบสวิตช์สลับแหล่งจ่ายอัตโนมัติ (ATS)',
+        caption: 'จำลองไฟดับและตรวจจับเวลาสลับจ่ายไฟสำรอง'
+      },
+      {
+        id: 'p-w16-2',
+        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 2: ตรวจวัดแรงดันแบตเตอรี่ชุดสำรองไฟ UPS',
+        caption: 'ตรวจสอบความพร้อมของแบตเตอรี่และวงจรชาร์จ'
+      },
+      {
+        id: 'p-w16-3',
+        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 3: บันทึกค่าความถี่และแรงดันเครื่องกำเนิดไฟฟ้า',
+        caption: 'ค่าแรงดัน 380V / 50Hz เสถียรตามมาตรฐาน'
+      }
+    ]
+  },
+  {
+    weekNumber: 17,
+    dateRange: '8 ก.พ. 2570 - 12 ก.พ. 2570',
+    title: 'งานระบบควบคุมอัตโนมัติและ IoT / SCADA โรงงาน',
+    defaultTask: 'ตรวจสอบการเชื่อมต่อข้อมูลมิเตอร์ไฟฟ้าดิจิทัลผ่านโปรโตคอล RS-485 เข้าระบบ SCADA และแจ้งเตือน IoT',
+    tools: 'โน้ตบุ๊กทดสอบระบบ, สายสื่อสาร RS-485, Digital Power Meter, มัลติมิเตอร์',
+    samplePhotos: [
+      {
+        id: 'p-w17-1',
+        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 1: เชื่อมต่อสายสื่อสาร Modbus RS-485',
+        caption: 'ตรวจสอบขั้วสัญญาณ A+/B- ของมิเตอร์พลังงานดิจิทัล'
+      },
+      {
+        id: 'p-w17-2',
+        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 2: ตรวจสอบหน้าจอแสดงผล SCADA Dashboard',
+        caption: 'อ่านค่า kW, kVA และแจ้งเตือนการใช้พลังงานแบบเรียลไทม์'
+      },
+      {
+        id: 'p-w17-3',
+        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
+        title: 'ภาพที่ 3: ทดสอบอุปกรณ์ IoT แจ้งเตือนสถานะเบรกเกอร์',
+        caption: 'จำลองสัญญาณทริปและตรวจสอบการแจ้งเตือนผ่านเครือข่าย'
+      }
+    ]
+  },
+  {
+    weekNumber: 18,
+    dateRange: '15 ก.พ. 2570 - 19 ก.พ. 2570',
+    title: 'งานทดสอบระบบไฟฟ้าทั้งระบบ (Commissioning) & สรุปผล',
+    defaultTask: 'ทดสอบการทำงานของระบบไฟฟ้าทั้งหมด สรุปบันทึกเวลาฝึกงานครบ 720 ชม. (18 สัปดาห์) และจัดทำเอกสารส่งมอบ',
+    tools: 'ชุดเครื่องมือวิศวกรรมไฟฟ้าครบชุด, แฟ้มสรุปผลงาน',
+    samplePhotos: [
+      {
+        id: 'p-w18-1',
         url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
         title: 'ภาพที่ 1: ตรวจสอบความเรียบร้อยของตู้ควบคุม',
         caption: 'ตรวจเช็กจุดต่อสายทุกจุดและทำความสะอาดครั้งสุดท้าย'
       },
       {
-        id: 'p-w15-2',
+        id: 'p-w18-2',
         url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
         title: 'ภาพที่ 2: สรุปผลการประเมินกับพี่เลี้ยง',
         caption: 'รับฟังคำแนะนำและข้อเสนอแนะในการปฏิบัติงานวิชาชีพ'
       },
       {
-        id: 'p-w15-3',
+        id: 'p-w18-3',
         url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
         title: 'ภาพที่ 3: ถ่ายภาพความสำเร็จร่วมกับทีมวิศวกร',
-        caption: 'เสร็จสิ้นการฝึกประสบการณ์วิชาชีพช่างไฟฟ้ากำลัง แผนกวิชาช่างไฟฟ้ากำลัง'
+        caption: 'เสร็จสิ้นการฝึกประสบการณ์วิชาชีพ 18 สัปดาห์ (720 ชม.) แผนกวิชาช่างไฟฟ้ากำลัง'
       }
     ]
   }
 ];
+
+/** @deprecated Use WEEKS_1_TO_18 instead */
+export const WEEKS_1_TO_15: WeekMeta[] = WEEKS_1_TO_18;
 
 /**
  * Computes exact daily dates for each day of the week (Monday - Friday)
@@ -447,7 +531,7 @@ export function getWeekDates(weekNum: number): { day: string; dateStr: string; f
 }
 
 export function getDefaultDailyLogsForWeek(weekNum: number): DailyLog[] {
-  const meta = WEEKS_1_TO_15.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_15[0];
+  const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
   const dates = getWeekDates(weekNum);
 
   return dates.map((d, idx) => ({

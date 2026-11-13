@@ -20,7 +20,7 @@ import { LoginGatewayView } from './views/LoginGatewayView';
 import { StudentGuideView } from './views/StudentGuideView';
 import { mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements } from './data/mockData';
 import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord } from './types';
-import { getCurrentWeekInfo } from './data/weeksData';
+import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
 import { getStoredAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
 import { appendForm1ToGoogleSheet } from './services/googleSheetsService';
 import { 
@@ -238,14 +238,16 @@ export default function App() {
 
   // Callback to submit Form #2 weekly report
   const handleSubmitWeeklyReport = async (submissionData: Partial<WeeklySubmission>) => {
+    const weekNum = submissionData.weekNumber || 8;
+    const weekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum);
     const newSub: WeeklySubmission = {
-      id: `sub-w${submissionData.weekNumber || 8}-${Date.now()}`,
+      id: `sub-w${weekNum}-${Date.now()}`,
       studentId: currentStudent.id,
-      weekNumber: submissionData.weekNumber || 8,
-      dateRange: '10 มิ.ย. 2569 - 14 มิ.ย. 2569',
+      weekNumber: weekNum,
+      dateRange: submissionData.dateRange || weekMeta?.dateRange || '10 มิ.ย. 2569 - 14 มิ.ย. 2569',
       submittedAt: submissionData.submittedAt || new Date().toLocaleString('th-TH'),
       status: 'pending',
-      taskTitle: submissionData.taskTitle || 'งานติดตั้งตู้ Distribution Board (MDB)',
+      taskTitle: submissionData.taskTitle || weekMeta?.defaultTask || 'งานติดตั้งตู้ Distribution Board (MDB)',
       dailyLogs: submissionData.dailyLogs || [],
       photos: submissionData.photos || [],
       totalHours: submissionData.totalHours || 40.0,
@@ -259,7 +261,7 @@ export default function App() {
       studentSignature: currentStudent.name.replace(/^(นาย|นางสาว)\s*/, ''),
       mentorSignature: 'ชาญชัย มงคลศรี',
       teacherSignature: 'ทักษิณ โสภาปิยะ',
-      verifiedHash: `7B8C${currentStudent.studentCode}-KKTECH-2569-W08-OK`,
+      verifiedHash: `7B8C${currentStudent.studentCode}-KKTECH-2569-W${String(weekNum).padStart(2, '0')}-OK`,
       safetyChecklist: submissionData.safetyChecklist || {
         hardHat: true,
         highVoltageGloves: true,

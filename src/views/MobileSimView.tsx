@@ -1154,8 +1154,10 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
                           ></div>
                         </div>
                         <div className="flex justify-between text-[10px] text-slate-500">
-                          <span>ผ่านไปแล้ว {student.actualWeeks || 8} จาก 18 สัปดาห์</span>
-                          <span className="text-emerald-700 font-semibold">สำเร็จ 80% (ตามเกณฑ์)</span>
+                          <span>ผ่านไปแล้ว {student.actualWeeks || 8} จาก {student.totalWeeks || 18} สัปดาห์</span>
+                          <span className="text-emerald-700 font-semibold">
+                            สำเร็จ {Math.min(100, Math.round(((student.accumulatedHours || 0) / (student.requiredHours || 720)) * 100))}% (ตามเกณฑ์)
+                          </span>
                         </div>
                       </div>
                     </div>

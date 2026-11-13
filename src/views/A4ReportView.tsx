@@ -38,7 +38,7 @@ import {
   List
 } from 'lucide-react';
 import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo } from '../types';
-import { WEEKS_1_TO_15, getDefaultDailyLogsForWeek } from '../data/weeksData';
+import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { getCoursesByRoom } from '../services/courseDataService';
 import { getAllLoginSheetStudents, getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { getLocalForm3Rows } from '../services/googleSheetsService';
@@ -673,7 +673,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     return merged;
   }, [submissions, remoteSubmissions]);
 
-  const currentWeekMeta = WEEKS_1_TO_15.find(w => w.weekNumber === parseInt(selectedWeek)) || WEEKS_1_TO_15[7];
+  const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === parseInt(selectedWeek)) || WEEKS_1_TO_18[7];
 
   // Look for matching weekly submission for this student and week from database
   const foundSub = useMemo(() => {
@@ -1871,7 +1871,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                   onChange={(e) => setSelectedWeek(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-900 focus:ring-2 focus:ring-sky-500 text-xs"
                 >
-                  {WEEKS_1_TO_15.map((w) => (
+                  {WEEKS_1_TO_18.map((w) => (
                     <option key={w.weekNumber} value={w.weekNumber.toString()}>
                       สัปดาห์ที่ {w.weekNumber} ({w.dateRange})
                     </option>
