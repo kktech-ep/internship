@@ -1159,17 +1159,16 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div>เวลา..................................................</div>
         </div>
 
-        {/* Garuda Emblem + บันทึกข้อความ */}
+        {/* Garuda Emblem + บันทึกข้อความ (Shifted Garuda down 1cm without affecting text layout) */}
         <div className="flex flex-col items-start pt-0">
           <img 
-            className="absolute top-5"
             src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
             alt="ตราครุฑ" 
-            className="h-auto object-contain mb-0.1" 
-            style={{ width: '14.4mm', top: '15mm' }}
+            className="h-auto object-contain mb-1 relative" 
+            style={{ width: '14.4mm', top: '10mm' }}
           />
         </div>
-
+        
         <div className="text-center font-bold text-[28pt] tracking-wide -mt-8 mb-2">
           บันทึกข้อความ
         </div>
