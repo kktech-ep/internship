@@ -415,12 +415,12 @@ export default function App() {
     if (!currentUser) return;
     const role = currentUser.role;
     if (role === 'student') {
-      const allowedStudentViews = ['hub', 'student', 'weekly-log'];
+      const allowedStudentViews = ['hub', 'student', 'weekly-log', 'guide'];
       if (!allowedStudentViews.includes(currentView)) {
         setCurrentView('student');
       }
     } else if (role === 'teacher') {
-      const allowedTeacherViews = ['hub', 'teacher', 'map', 'a4'];
+      const allowedTeacherViews = ['hub', 'teacher', 'map', 'a4', 'guide'];
       if (!allowedTeacherViews.includes(currentView)) {
         setCurrentView('teacher');
       }
@@ -480,7 +480,10 @@ export default function App() {
       {/* Top Application Header */}
       <Header
         currentView={currentView}
-        onNavigate={(view) => setCurrentView(view)}
+        onNavigate={(view) => {
+          setIsMobileMode(false);
+          setCurrentView(view);
+        }}
         isMobileMode={isMobileMode}
         onToggleMobileMode={() => setIsMobileMode(!isMobileMode)}
         currentRole={currentRole}

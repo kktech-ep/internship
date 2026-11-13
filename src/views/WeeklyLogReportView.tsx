@@ -230,18 +230,18 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800">
+              <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-sky-100 text-sky-800">
                 ภาคเรียนที่ 2 ปีการศึกษา 2569
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                 Firebase: internship2-2569
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">
               บันทึกการปฏิบัติงานวิชาชีพ & รูปถ่ายหน้างาน
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-500 mt-0.5">
               ระบบบันทึกรายงานรายวัน 5 วัน (40 ชม./สัปดาห์) พร้อมแนบรูปถ่ายปฏิบัติงานจริง จัดเก็บลง Firestore
             </p>
           </div>
@@ -252,36 +252,36 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
                 type="button"
                 onClick={handleAdminDeleteThisWeek}
                 disabled={isDeleting}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-semibold text-xs transition cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-semibold text-sm transition cursor-pointer disabled:opacity-50"
                 title="ลบบันทึกปฏิบัติงานของสัปดาห์นี้ออกจาก Firestore (สิทธิ์ Admin)"
               >
-                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <Trash2 className="w-4 h-4 text-rose-600" />
                 <span>{isDeleting ? 'กำลังลบ...' : `ลบบันทึกสัปดาห์ที่ ${selectedWeek} (Admin)`}</span>
               </button>
             )}
             <button
               onClick={() => onNavigateA4(selectedWeek)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-2xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-2xs transition cursor-pointer"
             >
-              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <Printer className="w-4 h-4 text-slate-600" />
               <span>พิมพ์รายงาน A4 สัปดาห์นี้</span>
             </button>
           </div>
         </div>
 
         {/* Student Context Bar */}
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-sm">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-slate-900 text-emerald-400 font-bold flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-slate-900 text-emerald-400 font-bold flex items-center justify-center shrink-0">
               <Zap className="w-4 h-4 fill-emerald-400" />
             </div>
             <div>
               <span className="font-bold text-slate-900">{student.name} ({student.studentCode})</span>
-              <span className="text-slate-500 block text-[11px]">{student.level} {student.department}</span>
+              <span className="text-slate-500 block text-[13px]">{student.level} {student.department}</span>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-slate-400 text-[10px] block">สถานประกอบการ:</span>
+            <span className="text-slate-400 text-xs block">สถานประกอบการ:</span>
             <span className="font-semibold text-slate-800">{student.companyName}</span>
           </div>
         </div>
@@ -292,14 +292,14 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-sky-600" />
-            <h2 className="font-bold text-slate-900 text-xs sm:text-sm">
+            <h2 className="font-bold text-slate-900 text-sm sm:text-base">
               เมนูเลือกรายสัปดาห์ (สัปดาห์ที่ 1 - 18)
             </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-800 border border-sky-200 hidden sm:inline-block">
+            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200 hidden sm:inline-block">
               เริ่มฝึกงาน สัปดาห์ 1: 19 ต.ค. 2569 (รวม 18 สัปดาห์ / 720 ชม.)
             </span>
           </div>
-          <span className="text-xs text-slate-500 font-medium">
+          <span className="text-sm text-slate-500 font-medium">
             เลือกสัปดาห์ที่ 1-18 เพื่อบันทึกหรือตรวจสอบ
           </span>
         </div>
@@ -317,7 +317,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
                 key={w.weekNumber}
                 type="button"
                 onClick={() => setSelectedWeek(w.weekNumber)}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold shrink-0 transition flex flex-col items-center gap-0.5 border ${
+                className={`px-3.5 py-2 rounded-xl text-sm font-semibold shrink-0 transition flex flex-col items-center gap-0.5 border ${
                   isSelected
                     ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-sky-500/40'
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -333,7 +333,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
                   )}
                 </div>
-                <span className={`text-[10px] font-normal ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                <span className={`text-xs font-normal ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
                   {isGraded ? 'ตรวจแล้ว' : isPending ? 'รอตรวจ' : 'ยังไม่ส่ง'}
                 </span>
               </button>
@@ -342,7 +342,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         </div>
 
         {/* Selected Week Info Strip */}
-        <div className="p-3 rounded-xl bg-sky-50 border border-sky-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="p-3 rounded-xl bg-sky-50 border border-sky-100 flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="flex items-center gap-2">
             <span className="font-bold text-sky-900">
               สัปดาห์ที่ {currentWeekMeta.weekNumber}: {currentWeekMeta.title}
@@ -351,17 +351,17 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
           </div>
           <div>
             {existingSubmission?.status === 'graded' ? (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 ได้รับการประเมินแล้ว: เกรด {existingSubmission.teacherGrade} ({existingSubmission.teacherScore}/20 คะแนน)
               </span>
             ) : existingSubmission?.status === 'pending' ? (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                <Clock className="w-4 h-4 text-amber-600" />
                 ส่งแล้วเมื่อ {existingSubmission.submittedAt} (รอตรวจ)
               </span>
             ) : (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-700">
+              <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-slate-200 text-slate-700">
                 ยังไม่มีข้อมูลในระบบ สามารถกรอกและส่งได้ทันที
               </span>
             )}
@@ -373,7 +373,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
       <form onSubmit={handleSaveToFirestore} className="space-y-6">
         {/* Success Alert */}
         {saveSuccessMessage && (
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-3 animate-in fade-in">
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3 animate-in fade-in">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             <div className="flex-1 font-medium">{saveSuccessMessage}</div>
             <button
@@ -387,7 +387,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         )}
 
         {errorMessage && (
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3 animate-in fade-in">
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-3 animate-in fade-in">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
             <div className="flex-1 font-medium">{errorMessage}</div>
           </div>
@@ -396,21 +396,21 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         {/* Section 1: Task Title & Objective */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-4">
           <div className="border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-slate-900 text-sm">
+            <h3 className="font-bold text-slate-900 text-base">
               1. หัวข้องานและสมรรถนะวิชาชีพประจำสัปดาห์ที่ {selectedWeek}
             </h3>
-            <p className="text-xs text-slate-500">ระบุขอบเขตงานทางวิศวกรรมไฟฟ้าที่ได้รับมอบหมาย</p>
+            <p className="text-sm text-slate-500">ระบุขอบเขตงานทางวิศวกรรมไฟฟ้าที่ได้รับมอบหมาย</p>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
               หัวข้องาน / สมรรถนะวิชาชีพที่ปฏิบัติ
             </label>
             <input
               type="text"
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
               placeholder="เช่น งานติดตั้งตู้ Distribution Board (MDB) & Wiring Control..."
               required
             />
@@ -418,10 +418,10 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
 
           {/* Safety Checklist */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
               การปฏิบัติตามมาตรฐานความปลอดภัย (Engineering Safety & PPE Checklist)
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-100">
                 <input
                   type="checkbox"
@@ -471,25 +471,25 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-sky-600" />
-                <h3 className="font-bold text-slate-900 text-sm">
+                <h3 className="font-bold text-slate-900 text-base">
                   2. ช่องแนบไฟล์รูปถ่ายหน้างาน (Photo Evidence)
                 </h3>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-sm text-slate-500 mt-0.5">
                 แนบไฟล์รูปภาพจากการปฏิบัติงานจริง (ระบบจัดเก็บเข้า Firestore โปรเจกต์ internship2-2569)
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 font-semibold text-xs border border-sky-100">
+              <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 font-semibold text-sm border border-sky-100">
                 แนบแล้ว {photos.length} รูป
               </span>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm shadow-xs transition cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
                 <span>เพิ่มรูปภาพจากอุปกรณ์</span>
               </button>
             </div>
@@ -514,15 +514,15 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
               <Upload className="w-6 h-6" />
             </div>
             <div>
-              <p className="font-bold text-xs text-slate-800">
+              <p className="font-bold text-sm text-slate-800">
                 คลิกเพื่อเลือกไฟล์รูปถ่าย หรือถ่ายภาพจากกล้องมือถือ
               </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-[13px] text-slate-500 mt-0.5">
                 รองรับไฟล์ภาพ JPG, PNG, WEBP (บีบอัดอัตโนมัติเพื่อบันทึกคลาวด์รวดเร็ว)
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 text-[10px] text-emerald-700 font-medium bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              <ShieldCheck className="w-3 h-3" />
+            <div className="inline-flex items-center gap-2 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+              <ShieldCheck className="w-3.5 h-3.5" />
               <span>ภาพถ่ายหลักฐาน: ปฏิบัติงานจริง • ตู้ควบคุม • พี่เลี้ยงหน้างาน</span>
             </div>
           </div>
@@ -549,29 +549,29 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-900/80 text-white backdrop-blur-xs">
+                    <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-xs font-bold bg-slate-900/80 text-white backdrop-blur-xs">
                       รูปที่ {i + 1}
                     </span>
                   </div>
 
-                  <div className="p-3 space-y-2 flex-1 flex flex-col justify-between text-xs">
+                  <div className="p-3 space-y-2 flex-1 flex flex-col justify-between text-sm">
                     <div>
-                      <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">ชื่อภาพ</label>
+                      <label className="text-xs font-semibold text-slate-500 block mb-0.5">ชื่อภาพ</label>
                       <input
                         type="text"
                         value={photo.title}
                         onChange={(e) => handleUpdatePhoto(photo.id, 'title', e.target.value)}
-                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-800 focus:bg-white focus:ring-1 focus:ring-sky-500"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-sm font-semibold text-slate-800 focus:bg-white focus:ring-1 focus:ring-sky-500"
                         placeholder="ระบุชื่อภาพ..."
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">คำบรรยายประกอบ</label>
+                      <label className="text-xs font-semibold text-slate-500 block mb-0.5">คำบรรยายประกอบ</label>
                       <input
                         type="text"
                         value={photo.caption}
                         onChange={(e) => handleUpdatePhoto(photo.id, 'caption', e.target.value)}
-                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 focus:bg-white focus:ring-1 focus:ring-sky-500"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-[13px] text-slate-600 focus:bg-white focus:ring-1 focus:ring-sky-500"
                         placeholder="คำอธิบายรายละเอียด..."
                       />
                     </div>
@@ -580,7 +580,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
               ))}
             </div>
           ) : (
-            <div className="p-6 text-center text-slate-400 text-xs border border-slate-200 rounded-xl bg-slate-50">
+            <div className="p-6 text-center text-slate-400 text-sm border border-slate-200 rounded-xl bg-slate-50">
               ยังไม่มีรูปถ่ายแนบสำหรับสัปดาห์นี้ กรุณากดปุ่มเพิ่มรูปภาพด้านบน
             </div>
           )}
@@ -590,46 +590,46 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">
+              <h3 className="font-bold text-slate-900 text-base">
                 3. ตารางบันทึกการปฏิบัติงานรายวัน จันทร์ - ศุกร์ (40 ชม.)
               </h3>
-              <p className="text-xs text-slate-500">บันทึกเวลาทำงาน 08:30 - 16:30 น. วันละ 8.0 ชั่วโมง</p>
+              <p className="text-sm text-slate-500">บันทึกเวลาทำงาน 08:30 - 16:30 น. วันละ 8.0 ชั่วโมง</p>
             </div>
-            <span className="font-mono font-bold text-xs text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
+            <span className="font-mono font-bold text-sm text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
               รวม: 40.0 ชม./สัปดาห์
             </span>
           </div>
 
           <div className="space-y-3">
             {dailyLogs.map((log, idx) => (
-              <div key={log.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2 text-xs">
+              <div key={log.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-800 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-sky-600"></span>
                     วัน{log.day} ({log.date})
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-slate-600">{log.hours} ชม.</span>
+                  <span className="text-[13px] font-mono font-bold text-slate-600">{log.hours} ชม.</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div className="md:col-span-2">
-                    <label className="text-[10px] text-slate-500 block mb-0.5">รายละเอียดงานที่ปฏิบัติ</label>
+                    <label className="text-xs text-slate-500 block mb-0.5">รายละเอียดงานที่ปฏิบัติ</label>
                     <input
                       type="text"
                       value={log.taskDescription}
                       onChange={(e) => handleDailyLogChange(idx, 'taskDescription', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-1 focus:ring-sky-500"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-1 focus:ring-sky-500"
                       placeholder="ระบุรายละเอียดงาน..."
                       required
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-500 block mb-0.5">เครื่องมือ / อุปกรณ์</label>
+                    <label className="text-xs text-slate-500 block mb-0.5">เครื่องมือ / อุปกรณ์</label>
                     <input
                       type="text"
                       value={log.toolsUsed}
                       onChange={(e) => handleDailyLogChange(idx, 'toolsUsed', e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-1 focus:ring-sky-500"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-1 focus:ring-sky-500"
                       placeholder="เครื่องมือ..."
                       required
                     />
@@ -647,10 +647,10 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <div className="font-bold text-sm text-white">
+              <div className="font-bold text-base text-white">
                 บันทึกรายงานสัปดาห์ที่ {selectedWeek} เข้าฐานข้อมูลคลาวด์
               </div>
-              <div className="text-[11px] text-slate-300">
+              <div className="text-[13px] text-slate-300">
                 Firestore Project: <span className="font-mono text-amber-300">internship2-2569</span> • Collection: <span className="font-mono text-amber-300">submissions</span>
               </div>
             </div>
@@ -660,14 +660,14 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
             <button
               type="button"
               onClick={() => onNavigateA4(selectedWeek)}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
             >
               ดูเอกสาร A4
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
+              className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
             >
               {isSaving ? (
                 <>

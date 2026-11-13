@@ -1202,7 +1202,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
           <div className="flex items-baseline pb-1 border-b border-black">
             <span className="font-bold mr-2 whitespace-nowrap">เรื่อง</span>
-            <span>รายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ ประจำภาคเรียนที่ 2/2569 (สัปดาห์ที่ {selectedWeek})</span>
+            <span>รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ ประจำภาคเรียนที่ 2/2569 (สัปดาห์ที่ {selectedWeek})</span>
           </div>
 
           <div className="flex items-baseline pt-1">
@@ -1313,11 +1313,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const renderReportPage1Content = (isModal: boolean = false) => (
     <div
       id={isModal ? undefined : "weekly-report-page-1"}
-      className="bg-white text-black p-[15mm] relative"
+      className="bg-white text-black relative"
       style={{
         width: '210mm',
         height: '296.5mm',
         margin: '0 auto',
+        padding: '15mm 15mm 15mm 15mm',
         boxSizing: 'border-box',
         overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
@@ -1326,8 +1327,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         color: '#000000'
       }}
     >
-      {/* Top Page number */}
-      <div className="text-right text-[14pt] text-slate-400 mb-1">
+      {/* Top Page number (placed in top margin so content starts at exact 15mm) */}
+      <div className="text-[14pt] text-slate-400" style={{ position: 'absolute', top: '7mm', right: '15mm', lineHeight: 1 }}>
         2
       </div>
 
@@ -1453,11 +1454,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const renderReportPage2Content = (isModal: boolean = false) => (
     <div
       id={isModal ? undefined : "weekly-report-page-2"}
-      className="bg-white text-black p-[15mm] relative"
+      className="bg-white text-black relative"
       style={{
         width: '210mm',
         height: '296.5mm',
         margin: '0 auto',
+        padding: '15mm 15mm 15mm 15mm',
         boxSizing: 'border-box',
         overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
@@ -1466,8 +1468,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         color: '#000000'
       }}
     >
-      {/* Top Page number */}
-      <div className="text-right text-[12pt] text-slate-400 mb-2">
+      {/* Top Page number (placed in top margin so content starts at exact 15mm) */}
+      <div className="text-[12pt] text-slate-400" style={{ position: 'absolute', top: '7mm', right: '15mm', lineHeight: 1 }}>
         3
       </div>
 
@@ -1586,11 +1588,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <FileText className="w-5 h-5" />
               </span>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                รายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ (A4 Formatter)
+                รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ
               </h2>
             </div>
             <p className="text-xs text-slate-500">
-              สัดส่วนมาตรฐานกระดาษราชการ A4 (210mm x 297mm) • แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น
+          
             </p>
           </div>
 
@@ -1598,49 +1600,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => handleOpenPrintPreview('all')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition cursor-pointer"
+              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-text-base shadow-md hover:shadow-lg transition cursor-pointer"
               title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
             >
-              <Eye className="w-4 h-4 text-white" />
-              <span>สั่งพิมพ์หรือดาวน์โหลด เอกสาร</span>
-            </button>
-
-            <button
-              onClick={handlePrintMemoPDF}
-              disabled={isGeneratingMemo}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 text-white font-semibold text-xs shadow-md transition disabled:opacity-60 cursor-pointer"
-              title="พิมพ์บันทึกข้อความรายงานการจัดการเรียนรู้ แปลงเป็นไฟล์ PDF 1 หน้ากระดาษ A4"
-            >
-              {isGeneratingMemo ? (
-                <>
-                  <Loader2 className="w-4 h-4 text-sky-300 animate-spin" />
-                  <span>กำลังสร้างบันทึกข้อความ PDF...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 text-sky-300" />
-                  <span>ดาวน์โหลด PDF เอกสารที่ 1</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={handlePrintWeeklyReportPDF}
-              disabled={isGeneratingReport}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-semibold text-xs shadow-md transition disabled:opacity-60 cursor-pointer"
-              title="พิมพ์รายงานการจัดการเรียนรู้รายสัปดาห์ แปลงเป็นไฟล์ PDF ไฟล์เดียวกัน 2 หน้ากระดาษ A4"
-            >
-              {isGeneratingReport ? (
-                <>
-                  <Loader2 className="w-4 h-4 text-emerald-200 animate-spin" />
-                  <span>กำลังสร้างรายงาน 2 หน้า PDF...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 text-emerald-200" />
-                  <span>ดาวน์โหลด PDF เอกสารที่ 2</span>
-                </>
-              )}
+              <Printer className="w-10 h-10 text-white" />
+              <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
             </button>
           </div>
         </div>
@@ -1735,7 +1699,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
-              <span>ข้อมูลรายวิชาสอนในสถานประกอบการ (ซิงค์จากตารางสอน Google Sheets: data & ตาราง Pivot 1):</span>
+              <span>ข้อมูลรายวิชาสอนในสถานประกอบการ</span>
             </span>
             <div className="flex items-center gap-2">
               <button

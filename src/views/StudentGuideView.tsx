@@ -248,10 +248,14 @@ export const StudentGuideView: React.FC<StudentGuideViewProps> = ({
 
           <button
             type="button"
-            onClick={() => onNavigate('student')}
+            onClick={() => onNavigate(currentUser?.role === 'teacher' ? 'teacher' : 'student')}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
           >
-            <span>ไปที่หน้าบันทึกงานของฉัน</span>
+            <span>
+              {currentUser?.role === 'teacher'
+                ? 'ไปที่หน้าส่วนครูนิเทศก์'
+                : 'ไปที่หน้าบันทึกงานของฉัน'}
+            </span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>

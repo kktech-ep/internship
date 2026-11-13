@@ -71,17 +71,17 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             </div>
             {/* Title & Department Subtitle */}
             <div className="flex flex-col">
-              <h1 className="text-white font-bold text-base sm:text-lg leading-tight tracking-tight">
+              <h1 className="text-white font-bold text-lg sm:text-xl leading-tight tracking-tight">
                 ระบบบันทึกข้อมูลการฝึกงาน
               </h1>
-              <p className="text-slate-300 text-xs sm:text-xs font-normal">
+              <p className="text-slate-300 text-sm font-normal">
                 สาขาไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div className="flex items-center gap-2 text-sm text-slate-300">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="hidden sm:inline">ระบบออนไลน์ • เชื่อมต่อชีต login</span>
           </div>
         </div>
@@ -96,7 +96,7 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
               เลือกบทบาทของคุณเพื่อเริ่ม<br />
               บันทึกข้อมูล
             </h2>
-            <p className="mt-3 sm:mt-4 text-xs sm:text-sm lg:text-base text-slate-300 leading-relaxed font-normal">
+            <p className="mt-3 sm:mt-4 text-sm sm:text-base lg:text-lg text-slate-300 leading-relaxed font-normal">
               ศูนย์รวมแบบฟอร์มและรายงานการฝึกงาน ใช้ได้ทั้งมือถือ<br className="hidden sm:inline" /> และคอมพิวเตอร์
             </p>
           </div>
@@ -126,11 +126,11 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
               นักศึกษา
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 font-normal mt-1.5 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-500 font-normal mt-1.5 leading-relaxed">
               ปวช. / ปวส. — กรอกข้อมูลและส่ง<br />
               รายงานประจำสัปดาห์
             </p>
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="mt-3 flex items-center gap-1.5 text-sm text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
               <span>คลิกเพื่อเข้าสู่ระบบ</span>
               <span>&rarr;</span>
             </div>
@@ -147,10 +147,10 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 group-hover:text-amber-700 transition-colors">
               ครูนิเทศ
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 font-normal mt-1.5 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-500 font-normal mt-1.5 leading-relaxed">
               บันทึกการนิเทศและดูสรุปรายงาน
             </p>
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-amber-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="mt-3 flex items-center gap-1.5 text-sm text-amber-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
               <span>คลิกเพื่อเข้าสู่ระบบ</span>
               <span>&rarr;</span>
             </div>
@@ -167,11 +167,11 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 group-hover:text-slate-800 transition-colors">
               ผู้ดูแลระบบ
             </h3>
-            <p className="text-xs sm:text-sm text-slate-500 font-normal mt-1.5 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-500 font-normal mt-1.5 leading-relaxed">
               จัดการแบบฟอร์ม ข้อมูล และแดช<br />
               บอร์ด
             </p>
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-700 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="mt-3 flex items-center gap-1.5 text-sm text-slate-700 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
               <span>คลิกเพื่อเข้าสู่ระบบ</span>
               <span>&rarr;</span>
             </div>
@@ -186,13 +186,13 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
                 <BookOpen className="w-5 h-5 text-sky-400" />
               </div>
               <div>
-                <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                <h4 className="font-bold text-base text-white flex items-center gap-2">
                   <span>คู่มือการใช้งานระบบสำหรับนักศึกษา</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-semibold border border-sky-400/30">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-semibold border border-sky-400/30">
                     ดาวน์โหลด PDF
                   </span>
                 </h4>
-                <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                <p className="text-sm text-slate-300 mt-0.5 leading-relaxed">
                   แนะนำขั้นตอนการเลือกบทบาทนักศึกษา การลงบันทึกงานประจำสัปดาห์ (ฟ.2) การแนบภาพถ่ายหน้างาน และการเช็คชั่วโมงสะสม 720 ชม.
                 </p>
               </div>
@@ -200,9 +200,9 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             <button
               type="button"
               onClick={onOpenGuide}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition cursor-pointer shrink-0"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm shadow-md transition cursor-pointer shrink-0"
             >
-              <BookOpen className="w-3.5 h-3.5 text-sky-200" />
+              <BookOpen className="w-4 h-4 text-sky-200" />
               <span>เปิดอ่านคู่มือ & ดาวน์โหลด PDF</span>
             </button>
           </div>
@@ -214,14 +214,14 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
               <FileSpreadsheet className="w-4 h-4" />
             </div>
-            <h3 className="font-bold text-base text-slate-900">
+            <h3 className="font-bold text-lg text-slate-900">
               เข้าสู่ระบบด้วย User & Pass
             </h3>
           </div>
 
           <form onSubmit={handleInlineLoginSubmit} className="space-y-4">
             {errorMsg && (
-              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-2 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span className="font-medium">{errorMsg}</span>
               </div>
@@ -229,34 +229,34 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                   User (ชื่อผู้ใช้ / รหัสนักศึกษา / อีเมล)
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
                     placeholder="เช่น 68301040105 หรือ thaksinso@kktech.ac.th"
-                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                   Pass (รหัสผ่าน)
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="password"
                     value={passInput}
                     onChange={(e) => setPassInput(e.target.value)}
                     placeholder="รหัสผ่าน เช่น 68301040105 หรือ 123456"
-                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
                     required
                   />
                 </div>
@@ -264,14 +264,14 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <div className="text-[13px] text-slate-500 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 <span>กำหนดสิทธิ์การแสดงผลตามคอลัมน์ <strong>status</strong> (นักศึกษา / ครูนิเทศ / admin)</span>
               </div>
               <button
                 type="submit"
                 disabled={isLoading || !userInput.trim() || !passInput.trim()}
-                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isLoading ? (
                   <>
@@ -291,7 +291,7 @@ export const LoginGatewayView: React.FC<LoginGatewayViewProps> = ({
       </main>
 
       {/* Simple Footer */}
-      <footer className="text-center py-4 text-xs text-slate-400">
+      <footer className="text-center py-4 text-sm text-slate-400">
         ระบบบันทึกข้อมูลการฝึกงาน • แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น
       </footer>
     </div>

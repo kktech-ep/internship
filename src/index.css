@@ -115,6 +115,11 @@
     page-break-inside: avoid !important;
   }
 
+  body:has(.workplace-report-print-root) #weekly-report-page-1,
+  body:has(.workplace-report-print-root) #weekly-report-page-2 {
+    padding: 15mm 15mm 15mm 15mm !important;
+  }
+
   body:has(.workplace-report-print-root) .workplace-page-break-after {
     break-after: page !important;
     page-break-after: always !important;

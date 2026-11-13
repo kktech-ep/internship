@@ -360,10 +360,10 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b pb-2">
-              <div className="font-bold text-sm text-slate-900">{selectedPhoto.title}</div>
+              <div className="font-bold text-base text-slate-900">{selectedPhoto.title}</div>
               <button 
                 onClick={() => setSelectedPhoto(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-sm font-bold"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-base font-bold"
               >
                 ✕
               </button>
@@ -376,7 +376,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
               />
             </div>
             {selectedPhoto.caption && (
-              <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <p className="text-sm text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                 {selectedPhoto.caption}
               </p>
             )}
@@ -388,45 +388,37 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-xs font-bold text-emerald-800">
-                Google Sheets แผ่นงาน Login (คอลัมน์ Company) ⇋ ข้อมูลเข้านิเทศ Form 3
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs text-slate-500">อ้างอิงฐานข้อมูลจริง 2569</span>
-            </div>
-            <h1 className="text-xl font-bold text-slate-900 mt-1">
-              แผนที่พิกัดสถานประกอบการ & ข้อมูลการเข้านิเทศ (Company Map & Form 3 Roster)
+            <h1 className="text-2xl font-bold text-slate-900">
+              แผนที่พิกัดสถานประกอบการ & ข้อมูลการเข้านิเทศ (Company Map & Supervision)
             </h1>
-            <p className="text-xs text-slate-600 mt-0.5">
-              เลือกสถานประกอบการเพื่อแสดงนักศึกษาที่เข้าฝึกงานในสถานที่เดียวกันทั้งหมด พร้อมตรวจสอบข้อมูลและหลักฐานการนิเทศจาก Form 3
+            <p className="text-sm text-slate-600 mt-0.5">
+              เลือกสถานประกอบการเพื่อแสดงนักศึกษาที่เข้าฝึกงานในสถานที่เดียวกันทั้งหมด พร้อมตรวจสอบข้อมูลและหลักฐานการนิเทศ
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleExportKML}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-semibold shadow-2xs transition cursor-pointer"
               title="ส่งออกพิกัดสถานประกอบการทั้งหมดเป็นไฟล์ KML / Google Earth"
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <Download className="w-4 h-4 text-slate-500" />
               <span>ส่งออกพิกัด (KML)</span>
             </button>
             <a
               href="https://maps.google.com/?q=Khon+Kaen"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-semibold shadow-2xs transition"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+              <ExternalLink className="w-4 h-4 text-slate-500" />
               <span>เปิด Google Maps</span>
             </a>
             <button
               onClick={onOpenForm1}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold shadow-sm transition cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <Plus className="w-4 h-4 text-emerald-400" />
               <span>บันทึกข้อมูลสถานประกอบการ</span>
             </button>
           </div>
@@ -436,46 +428,46 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-slate-500 font-medium">สถานประกอบการทั้งหมด (Sheet)</span>
-              <div className="text-xl font-bold text-slate-900 mt-0.5">
-                {totalCompaniesCount} <span className="text-xs font-normal text-slate-500">แห่ง</span>
+              <span className="text-[13px] text-slate-500 font-medium">สถานประกอบการทั้งหมด</span>
+              <div className="text-2xl font-bold text-slate-900 mt-0.5">
+                {totalCompaniesCount} <span className="text-sm font-normal text-slate-500">แห่ง</span>
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">อ้างอิงแผ่นงาน Login</div>
+              <div className="text-xs text-slate-500 mt-0.5"></div>
             </div>
-            <Building2 className="w-6 h-6 text-sky-600/70" />
+            <Building2 className="w-7 h-7 text-sky-600/70" />
           </div>
 
           <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200 flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-emerald-700 font-medium">ตรวจนิเทศแล้ว</span>
-              <div className="text-xl font-bold text-emerald-700 mt-0.5">
-                {supervisedCount} <span className="text-xs font-normal text-emerald-600">แห่ง ({totalCompaniesCount > 0 ? Math.round((supervisedCount / totalCompaniesCount) * 100) : 0}%)</span>
+              <span className="text-[13px] text-emerald-700 font-medium">ตรวจนิเทศแล้ว</span>
+              <div className="text-2xl font-bold text-emerald-700 mt-0.5">
+                {supervisedCount} <span className="text-sm font-normal text-emerald-600">แห่ง ({totalCompaniesCount > 0 ? Math.round((supervisedCount / totalCompaniesCount) * 100) : 0}%)</span>
               </div>
-              <div className="text-[10px] text-emerald-700 mt-0.5">มีบันทึกรายงาน & รูปภาพ</div>
+              <div className="text-xs text-emerald-700 mt-0.5">มีบันทึกรายงาน & รูปภาพ</div>
             </div>
-            <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            <CheckCircle2 className="w-7 h-7 text-emerald-600" />
           </div>
 
           <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-amber-700 font-medium">รอนิเทศงาน</span>
-              <div className="text-xl font-bold text-amber-700 mt-0.5">
-                {pendingCount} <span className="text-xs font-normal text-amber-600">แห่ง</span>
+              <span className="text-[13px] text-amber-700 font-medium">รอนิเทศงาน</span>
+              <div className="text-2xl font-bold text-amber-700 mt-0.5">
+                {pendingCount} <span className="text-sm font-normal text-amber-600">แห่ง</span>
               </div>
-              <div className="text-[10px] text-amber-700 mt-0.5">รออาจารย์นิเทศก์ลงพื้นที่</div>
+              <div className="text-xs text-amber-700 mt-0.5">รออาจารย์นิเทศก์ลงพื้นที่</div>
             </div>
-            <Clock className="w-6 h-6 text-amber-600" />
+            <Clock className="w-7 h-7 text-amber-600" />
           </div>
 
           <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200 flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-indigo-700 font-medium">นักศึกษาในสถานประกอบการ</span>
-              <div className="text-xl font-bold text-indigo-800 mt-0.5">
-                {totalStudentsInSystem} <span className="text-xs font-normal text-indigo-600">คน (ครบ 100%)</span>
+              <span className="text-[13px] text-indigo-700 font-medium">นักศึกษาในสถานประกอบการ</span>
+              <div className="text-2xl font-bold text-indigo-800 mt-0.5">
+                {totalStudentsInSystem} <span className="text-sm font-normal text-indigo-600">คน (ครบ 100%)</span>
               </div>
-              <div className="text-[10px] text-indigo-700 mt-0.5">แผนกวิชาช่างไฟฟ้ากำลัง</div>
+              <div className="text-xs text-indigo-700 mt-0.5">แผนกวิชาช่างไฟฟ้ากำลัง</div>
             </div>
-            <Users className="w-6 h-6 text-indigo-600" />
+            <Users className="w-7 h-7 text-indigo-600" />
           </div>
         </div>
 
@@ -484,15 +476,15 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
             {/* Direct Company Selection Dropdown referencing Google Sheets Company column */}
             <div className="flex-1">
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-sky-600" />
+              <label className="block text-[13px] font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-sky-600" />
                 <span>เลือกสถานประกอบการ (แสดงนักศึกษาที่ฝึกงานในที่เดียวกันทั้งหมด):</span>
               </label>
               <div className="relative">
                 <select
                   value={activeCompanyId}
                   onChange={(e) => setActiveCompanyId(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-xs font-semibold border border-sky-300 rounded-lg bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-sky-500 shadow-2xs"
+                  className="w-full pl-3 pr-8 py-2 text-sm font-semibold border border-sky-300 rounded-lg bg-white text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-sky-500 shadow-2xs"
                 >
                   {filteredCompanies.map((comp) => (
                     <option key={comp.id} value={comp.id}>
@@ -500,33 +492,33 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </div>
 
             {/* Search Input */}
             <div className="lg:w-80">
-              <label className="block text-[11px] font-medium text-slate-500 mb-1">
+              <label className="block text-[13px] font-medium text-slate-500 mb-1">
                 พิมพ์ค้นหา (ชื่อบริษัท, รหัส/ชื่อนักศึกษา):
               </label>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="ค้นหาชื่อบริษัท, รหัสหรือชื่อนักศึกษา..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
           </div>
 
           {/* Filter Pills */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60 text-sm">
             {/* Zone filters */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-slate-500 font-medium mr-1">พื้นที่:</span>
+              <span className="text-[13px] text-slate-500 font-medium mr-1">พื้นที่:</span>
               {[
                 { id: 'all', label: 'ทั้งหมด' },
                 { id: 'อ.เมือง', label: 'อ.เมืองขอนแก่น' },
@@ -538,7 +530,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                 <button
                   key={zone.id}
                   onClick={() => setSelectedZone(zone.id)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[13px] font-medium transition cursor-pointer ${
                     selectedZone === zone.id
                       ? 'bg-slate-900 text-white font-bold'
                       : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
@@ -551,7 +543,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
 
             {/* Status filters */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-500 font-medium mr-1">สถานะการนิเทศ:</span>
+              <span className="text-[13px] text-slate-500 font-medium mr-1">สถานะการนิเทศ:</span>
               {[
                 { id: 'all', label: `ทั้งหมด (${sheetCompanies.length})` },
                 { id: 'completed', label: `นิเทศแล้ว (${supervisedCount})` },
@@ -560,7 +552,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                 <button
                   key={st.id}
                   onClick={() => setSelectedStatus(st.id)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[13px] font-medium transition cursor-pointer ${
                     selectedStatus === st.id
                       ? 'bg-sky-700 text-white font-bold'
                       : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
@@ -720,12 +712,12 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
             </svg>
 
             {/* Top Left GPS indicator badge */}
-            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs text-xs">
+            <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs text-sm">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                <MapPin className="w-4 h-4 text-rose-500" />
                 <span>ขอนแก่น & ปริมณฑล</span>
               </div>
-              <div className="text-[10px] text-slate-500 font-mono">
+              <div className="text-xs text-slate-500 font-mono">
                 แสดงผล {filteredCompanies.length} แห่ง ({allSheetStudents.length} นักศึกษา)
               </div>
             </div>
@@ -756,7 +748,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
             </div>
 
             {/* Bottom Map Legend */}
-            <div className="absolute bottom-2 left-3 right-3 flex flex-wrap items-center justify-between text-[10px] text-slate-600 bg-white/90 backdrop-blur-xs px-3 py-1 rounded-md border border-slate-200">
+            <div className="absolute bottom-2 left-3 right-3 flex flex-wrap items-center justify-between text-xs text-slate-600 bg-white/90 backdrop-blur-xs px-3 py-1.5 rounded-md border border-slate-200">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span> 
@@ -777,25 +769,25 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
 
           {/* Cluster Loop Navigation Bar */}
           {activeCompany && (
-            <div className="mt-3 p-3.5 rounded-xl bg-slate-900 text-white flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="mt-3 p-3.5 rounded-xl bg-slate-900 text-white flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
                   <Route className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-bold text-white text-xs">
+                  <div className="font-bold text-white text-sm">
                     เส้นทางเดินทางไปยัง {activeCompany.name}
                   </div>
-                  <div className="text-[11px] text-slate-300">
+                  <div className="text-[13px] text-slate-300">
                     จาก วท.ขอนแก่น → {activeCompany.address} ({activeCompany.distanceKm} กม.) • มีนักศึกษา {activeCompany.studentsCount} คน
                   </div>
                 </div>
               </div>
               <button
                 onClick={() => handleOpenGoogleMaps(activeCompany)}
-                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
               >
-                <Navigation className="w-3.5 h-3.5" />
+                <Navigation className="w-4 h-4" />
                 <span>นำทาง Google Maps</span>
               </button>
             </div>
@@ -810,21 +802,21 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                       activeCompany.isSupervised 
                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
                         : 'bg-amber-100 text-amber-800 border border-amber-300'
                     }`}>
                       {activeCompany.statusText}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-medium">
+                    <span className="text-xs text-slate-500 font-medium">
                       โซน: {activeCompany.zone}
                     </span>
                   </div>
-                  <h2 className="text-base font-bold text-slate-900 leading-snug">
+                  <h2 className="text-lg font-bold text-slate-900 leading-snug">
                     {activeCompany.name}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-sm text-slate-500 mt-0.5">
                     {activeCompany.address}
                   </p>
                 </div>
@@ -839,16 +831,16 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
               </div>
 
               {/* Mentor / Contact Info */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] text-slate-400 font-medium">พี่เลี้ยงประจำสถานที่</div>
-                  <div className="font-bold text-slate-800 text-xs mt-0.5 truncate">
+                  <div className="text-xs text-slate-400 font-medium">พี่เลี้ยงประจำสถานที่</div>
+                  <div className="font-bold text-slate-800 text-sm mt-0.5 truncate">
                     {activeCompany.contactPerson}
                   </div>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-[10px] text-slate-400 font-medium">เบอร์ติดต่อสถานประกอบการ</div>
-                  <div className="font-bold text-sky-700 text-xs mt-0.5 font-mono">
+                  <div className="text-xs text-slate-400 font-medium">เบอร์ติดต่อสถานประกอบการ</div>
+                  <div className="font-bold text-sky-700 text-sm mt-0.5 font-mono">
                     {activeCompany.phone}
                   </div>
                 </div>
@@ -857,11 +849,11 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
               {/* 1. All Students interning at this same location (นักศึกษาที่ฝึกงานในที่เดียวกันทั้งหมด) */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-indigo-600" />
                     <span>นักศึกษาฝึกงานในที่เดียวกันทั้งหมด ({activeCompany.studentsCount} คน):</span>
                   </div>
-                  <span className="text-[10px] text-slate-400">อ้างอิงแผ่นงาน Login</span>
+                  <span className="text-xs text-slate-400">อ้างอิงแผ่นงาน Login</span>
                 </div>
 
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
@@ -870,21 +862,21 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                     return (
                       <div
                         key={std.id || i}
-                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-sky-300 transition flex items-center justify-between gap-3 text-xs"
+                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-sky-300 transition flex items-center justify-between gap-3 text-sm"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 font-bold flex items-center justify-center shrink-0 text-xs">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 font-bold flex items-center justify-center shrink-0 text-sm">
                             {std.initials || 'นศ'}
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 truncate">
                               {i + 1}. {std.name}
                             </div>
-                            <div className="text-[10px] text-slate-500">
+                            <div className="text-xs text-slate-500">
                               รหัส: <span className="font-mono">{std.studentCode}</span> • ห้อง: <span className="font-semibold text-slate-700">{std.room}</span> ({std.level})
                             </div>
                             {std.companyRegistration?.emergencyPhone && (
-                              <div className="text-[10px] text-slate-400 font-mono">
+                              <div className="text-xs text-slate-400 font-mono">
                                 โทร: {std.companyRegistration.emergencyPhone}
                               </div>
                             )}
@@ -893,14 +885,14 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
 
                         <div className="text-right shrink-0">
                           {stdForm3 ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                               <span>{stdForm3.score ? `${stdForm3.score} คะแนน (${stdForm3.grade})` : 'นิเทศแล้ว'}</span>
                             </span>
                           ) : (
                             <button
                               onClick={() => onOpenForm3(std.id)}
-                              className="px-2 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-[10px] border border-sky-200 transition cursor-pointer"
+                              className="px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs border border-sky-200 transition cursor-pointer"
                             >
                               บันทึกนิเทศ
                             </button>
@@ -915,35 +907,35 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
               {/* 2. Supervision Information (แสดงข้อมูลการเข้านิเทศ) */}
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <FileText className="w-4 h-4 text-emerald-600" />
                     <span>ข้อมูลการเข้านิเทศ & ประเมินสมรรถนะ</span>
                   </div>
                   {latestForm3 && (
-                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                       ตรวจนิเทศแล้ว
                     </span>
                   )}
                 </div>
 
                 {latestForm3 ? (
-                  <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs space-y-2.5">
+                  <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200 text-sm space-y-2.5">
                     {/* Header info */}
                     <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-emerald-200/60">
                       <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                        <Calendar className="w-4 h-4 text-emerald-700" />
                         <span className="font-bold text-emerald-950">
                           วันที่เข้าตรวจ: {latestForm3.visitDate}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white font-bold text-[10px]">
-                        <Award className="w-3 h-3" />
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white font-bold text-xs">
+                        <Award className="w-3.5 h-3.5" />
                         <span>คะแนน: {latestForm3.score}/20 (เกรด {latestForm3.grade})</span>
                       </div>
                     </div>
 
                     {/* Teacher & Mentor */}
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="grid grid-cols-2 gap-2 text-[13px]">
                       <div>
                         <span className="text-slate-500">อาจารย์ผู้นิเทศก์:</span>
                         <div className="font-semibold text-slate-800">{latestForm3.teacherName || 'นายทักษิณ โสภาปิยะ'}</div>
@@ -955,14 +947,14 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                     </div>
 
                     {/* Safety Assessment */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium bg-white p-2 rounded-lg border border-emerald-100">
+                    <div className="flex items-center gap-1.5 text-[13px] text-emerald-800 font-medium bg-white p-2 rounded-lg border border-emerald-100">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                       <span>มาตรฐานความปลอดภัย PPE: {latestForm3.safetyPassed ? 'ผ่านเกณฑ์ สอศ. 100%' : 'ต้องปรับปรุง'}</span>
                     </div>
 
                     {/* Teacher comments */}
                     {latestForm3.teacherComment && (
-                      <div className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-emerald-100">
+                      <div className="text-[13px] text-slate-700 bg-white p-2 rounded-lg border border-emerald-100">
                         <span className="font-semibold text-slate-800">ข้อเสนอแนะอาจารย์นิเทศก์: </span>
                         {latestForm3.teacherComment}
                       </div>
@@ -970,7 +962,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
 
                     {/* Mentor feedback */}
                     {latestForm3.mentorFeedback && (
-                      <div className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-emerald-100">
+                      <div className="text-[13px] text-slate-700 bg-white p-2 rounded-lg border border-emerald-100">
                         <span className="font-semibold text-slate-800">ความคิดเห็นพี่เลี้ยง: </span>
                         {latestForm3.mentorFeedback}
                       </div>
@@ -979,8 +971,8 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                     {/* Photos from Form 3 (3-4 รูป) */}
                     {latestForm3.photos && latestForm3.photos.length > 0 && (
                       <div className="space-y-1.5 pt-1">
-                        <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                          <Camera className="w-3.5 h-3.5 text-slate-600" />
+                        <div className="text-[13px] font-bold text-slate-800 flex items-center gap-1">
+                          <Camera className="w-4 h-4 text-slate-600" />
                           <span>รูปภาพการนิเทศงาน (คลิกเพื่อดูภาพขยาย):</span>
                         </div>
                         <div className="grid grid-cols-4 gap-1.5">
@@ -1008,10 +1000,10 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                 ) : (
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-2">
                     <Clock className="w-6 h-6 text-amber-500 mx-auto" />
-                    <div className="font-bold text-xs text-slate-800">
+                    <div className="font-bold text-sm text-slate-800">
                       ยังไม่มีบันทึกการนิเทศในสถานประกอบการนี้
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[13px] text-slate-500">
                       สามารถกดปุ่มด้านล่างเพื่อบันทึกรายงานการนิเทศงาน (Form 3) พร้อมรูปถ่าย 3-4 รูป
                     </p>
                   </div>
@@ -1021,16 +1013,16 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={() => onOpenForm3(activeCompany.students[0]?.id)}
-                    className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                    className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-4 h-4" />
                     <span>บันทึกการนิเทศ</span>
                   </button>
                   <button
                     onClick={() => handleOpenGoogleMaps(activeCompany)}
-                    className="py-2 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    className="py-2 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-1.5 transition cursor-pointer"
                   >
-                    <Navigation className="w-3.5 h-3.5 text-sky-600" />
+                    <Navigation className="w-4 h-4 text-sky-600" />
                     <span>เปิดนำทาง GPS</span>
                   </button>
                 </div>
@@ -1039,7 +1031,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
               <Building2 className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-              <div className="font-bold text-sm">กรุณาเลือกสถานประกอบการจากรายการ</div>
+              <div className="font-bold text-base">กรุณาเลือกสถานประกอบการจากรายการ</div>
             </div>
           )}
         </div>

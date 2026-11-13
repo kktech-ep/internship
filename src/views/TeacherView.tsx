@@ -57,7 +57,6 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   currentUser,
   onOpenForm3,
   onNavigateA4,
-  onOpenSheetsModal,
   onOpenLookerModal,
 }) => {
   // Course data state from Google Sheet "data" tab
@@ -313,8 +312,8 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                   />
                 ) : (
                   <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white rounded-[14px]">
-                    <span className="font-bold text-lg sm:text-xl tracking-tight">{teacherInitials}</span>
-                    <span className="text-[9px] text-sky-300 font-medium mt-0.5">ครูนิเทศก์</span>
+                    <span className="font-bold text-xl sm:text-2xl tracking-tight">{teacherInitials}</span>
+                    <span className="text-[11px] text-sky-300 font-medium mt-0.5">ครูนิเทศก์</span>
                   </div>
                 )}
               </div>
@@ -326,7 +325,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 title="คลิกเพื่ออัปโหลดหรือเปลี่ยนรูปภาพครูนิเทศก์"
                 className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center shadow-md transition transform hover:scale-110 cursor-pointer border-2 border-white"
               >
-                <Camera className="w-3 h-3" />
+                <Camera className="w-3.5 h-3.5" />
               </button>
               <input
                 ref={fileInputRef}
@@ -340,20 +339,20 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             {/* Teacher Details */}
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
                   {teacherName}
                 </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   ครูนิเทศก์ประจำวิชา & ที่ปรึกษา
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
                   {courses.length} รายวิชาเชื่อมโยง
                 </span>
               </div>
 
-              <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="text-sm text-slate-500 flex flex-wrap items-center gap-2 sm:gap-3">
                 <span className="flex items-center gap-1.5 text-slate-700 font-medium">
-                  <UserCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                  <UserCheck className="w-4 h-4 text-sky-600 shrink-0" />
                   <span>สิทธิ์: ครูนิเทศก์ผู้สอน (Teacher/Supervisor)</span>
                 </span>
                 <span className="text-slate-300 hidden sm:inline">•</span>
@@ -366,13 +365,13 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
           {/* Database Link and Action */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-            <div className="text-xs text-slate-600 space-y-0.5 hidden xl:block">
+            <div className="text-sm text-slate-600 space-y-0.5 hidden xl:block">
               <div className="flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <Database className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>ชีต: <strong className="font-mono text-emerald-700">login</strong> ({students.length}) • <strong className="font-mono text-sky-700">data</strong> ({courses.length})</span>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                <FileSpreadsheet className="w-3 h-3 text-amber-600 shrink-0" />
+              <div className="flex items-center gap-1.5 text-[13px] text-slate-500">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span>บันทึกนิเทศ: <strong className="font-mono text-amber-700">บันทึกการนิเทศ</strong></span>
               </div>
             </div>
@@ -380,21 +379,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             {/* Primary Action: บันทึกรายงานการนิเทศ */}
             <button
               onClick={() => onOpenForm3()}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md transition cursor-pointer"
               title="บันทึกรายงานการนิเทศ ค้นหานักศึกษา เลือกสถานประกอบการ และบันทึกรูป 3-4 รูป"
             >
-              <Camera className="w-3.5 h-3.5" />
+              <Camera className="w-4 h-4" />
               <span>บันทึกรายงานการนิเทศ</span>
-
-            </button>
-
-            <button
-              onClick={onOpenSheetsModal}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer"
-              title="เปิดดูชีตฐานข้อมูลกลางทั้งหมด (login, data, Form_1)"
-            >
-              <FileText className="w-3.5 h-3.5 text-emerald-600" />
-              <span>เปิดชีตฐานข้อมูล</span>
             </button>
           </div>
         </div>
@@ -405,18 +394,15 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         {/* Filter Title & Quick Toggles */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
+            <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
               <Filter className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center gap-2">
-                <span>ตัวกรองข้อมูลหลักจาก Google Sheets</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Tab: login & data
-                </span>
+              <h3 className="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                <span>ข้อมูลการนิเทศนักศึกษาฝึกงาน 2/2569</span>
               </h3>
-              <p className="text-xs text-slate-500">
-                เชื่อมโยง <strong>room</strong>, <strong>รหัสวิชา</strong>, <strong>ชื่อวิชา</strong>, และ <strong>ครูนิเทศก์/ประจำวิชา</strong>
+              <p className="text-sm text-slate-500">
+                เชื่อมโยง <strong>กลุ่มเรียน</strong>, <strong>รหัสวิชา</strong>, <strong>ชื่อวิชา</strong>, และ <strong>ครูนิเทศก์/ประจำวิชา</strong>
               </p>
             </div>
           </div>
@@ -430,13 +416,13 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                   setSelectedTeacher(matchedLoggedInTeacher);
                   setCurrentPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   selectedTeacher === matchedLoggedInTeacher
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-4 h-4" />
                 <span>เฉพาะในกลุ่มนิเทศก์ของฉัน ({myStudentsCount} คน)</span>
               </button>
             )}
@@ -445,9 +431,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer flex items-center gap-1"
+                className="px-3 py-1.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer flex items-center gap-1"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RotateCcw className="w-3.5 h-3.5" />
                 <span>ล้างตัวกรอง</span>
               </button>
             )}
@@ -455,15 +441,14 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         </div>
 
         {/* 4 Main Dropdown Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* 1. Filter: room (from login & data) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+          {/* 1. Filter: room */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5 text-sky-600" />
-                <span>1. กลุ่มเรียน (room)</span>
+                <Users className="w-4 h-4 text-sky-600" />
+                <span>1. กลุ่มเรียน</span>
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">login & data</span>
             </label>
             <select
               value={selectedRoom}
@@ -471,7 +456,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 setSelectedRoom(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
               <option value="all">ทุกกลุ่มเรียน (ทั้งหมด {students.length} คน)</option>
               {allRooms.map((room) => {
@@ -485,14 +470,13 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             </select>
           </div>
 
-          {/* 2. Filter: ครูนิเทศก์/ประจำวิชา (from data tab) */}
+          {/* 2. Filter: ครูนิเทศก์/ประจำวิชา */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+                <GraduationCap className="w-4 h-4 text-indigo-600" />
                 <span>2. ครูนิเทศก์ / ประจำวิชา</span>
               </span>
-              <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1 rounded font-mono">แผ่นงาน data</span>
             </label>
             <select
               value={selectedTeacher}
@@ -500,7 +484,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 setSelectedTeacher(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
               <option value="all">ครูนิเทศก์ทั้งหมด ({allTeachers.length} ท่าน)</option>
               {allTeachers.map((teacher) => (
@@ -511,14 +495,13 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             </select>
           </div>
 
-          {/* 3. Filter: รหัสวิชา / ชื่อวิชา (from data tab) */}
+          {/* 3. Filter: รหัสวิชา / ชื่อวิชา */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+                <BookOpen className="w-4 h-4 text-emerald-600" />
                 <span>3. รายวิชา (รหัสวิชา - ชื่อวิชา)</span>
               </span>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1 rounded font-mono">แผ่นงาน data</span>
             </label>
             <select
               value={selectedSubject}
@@ -526,7 +509,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 setSelectedSubject(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
               <option value="all">ทุกรายวิชา ({allSubjects.length} วิชา)</option>
               {allSubjects.map((sub) => (
@@ -539,12 +522,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
           {/* 4. Filter: สถานะการตรวจประเมิน */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                <CheckCircle2 className="w-4 h-4 text-teal-600" />
                 <span>4. สถานะการตรวจรายงาน</span>
               </span>
-              <span className="text-[10px] text-slate-400">ประเมินผล</span>
             </label>
             <select
               value={selectedStatus}
@@ -552,7 +534,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 setSelectedStatus(e.target.value as any);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-sm font-medium text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
             >
               <option value="all">ทั้งหมด (รอตรวจ & ตรวจแล้ว)</option>
               <option value="graded">ตรวจประเมินแล้ว</option>
@@ -572,42 +554,42 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-sky-500 focus:outline-hidden transition"
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:outline-hidden transition"
           />
         </div>
 
         {/* Filter Summary & Active Badges */}
-        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-slate-500 font-medium">ผลการกรอง:</span>
-            <span className="font-bold text-sky-800 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+            <span className="font-bold text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded-md border border-sky-200">
               พบ {filteredStudents.length} คน
             </span>
-            <span className="text-slate-400">จากทั้งหมด {students.length} คนในแผ่นงาน login</span>
+            <span className="text-slate-400">จากทั้งหมด {students.length} คนในระบบ</span>
 
             {selectedRoom !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[11px]">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[13px]">
                 กลุ่ม: <strong>{selectedRoom}</strong>
                 <button onClick={() => setSelectedRoom('all')} className="hover:text-rose-600">×</button>
               </span>
             )}
 
             {selectedTeacher !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 text-[11px] border border-indigo-200">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 text-[13px] border border-indigo-200">
                 ครู: <strong>{selectedTeacher}</strong>
                 <button onClick={() => setSelectedTeacher('all')} className="hover:text-rose-600">×</button>
               </span>
             )}
 
             {selectedSubject !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] border border-emerald-200">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[13px] border border-emerald-200">
                 วิชา: <strong>{selectedSubject}</strong>
                 <button onClick={() => setSelectedSubject('all')} className="hover:text-rose-600">×</button>
               </span>
             )}
           </div>
 
-          <div className="text-[11px] text-slate-500">
+          <div className="text-[13px] text-slate-500">
             สถานประกอบการที่เกี่ยวข้อง: <strong>{uniqueCompanies.length}</strong> แห่ง
           </div>
         </div>
@@ -618,9 +600,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         {/* Card 1: Companies */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">สถานประกอบการ</span>
+            <span className="text-sm text-slate-500 font-medium">สถานประกอบการ</span>
             <div className="text-2xl font-bold text-slate-900 mt-1">{uniqueCompanies.length}</div>
-            <div className="text-[11px] text-slate-500 mt-1">แห่งในผลการกรอง</div>
+            <div className="text-[13px] text-slate-500 mt-1">แห่งในผลการกรอง</div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
             <Building2 className="w-6 h-6" />
@@ -630,9 +612,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         {/* Card 2: Students in Care */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">นักศึกษาในผลการกรอง</span>
+            <span className="text-sm text-slate-500 font-medium">นักศึกษาในผลการกรอง</span>
             <div className="text-2xl font-bold text-slate-900 mt-1">{filteredStudents.length}</div>
-            <div className="text-[11px] text-slate-500 mt-1">จากทั้งหมด {students.length} คน</div>
+            <div className="text-[13px] text-slate-500 mt-1">จากทั้งหมด {students.length} คน</div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
             <Users className="w-6 h-6" />
@@ -642,11 +624,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         {/* Card 3: Graded / Inspected */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">ตรวจนิเทศแล้ว</span>
+            <span className="text-sm text-slate-500 font-medium">ตรวจนิเทศแล้ว</span>
             <div className="text-2xl font-bold text-emerald-600 mt-1">
-              {gradedCount} <span className="text-xs text-slate-400 font-normal">/ {filteredStudents.length} คน</span>
+              {gradedCount} <span className="text-sm text-slate-400 font-normal">/ {filteredStudents.length} คน</span>
             </div>
-            <div className="text-[11px] text-emerald-600 font-semibold mt-1">ความคืบหน้ารวม {progressPercent}%</div>
+            <div className="text-[13px] text-emerald-600 font-semibold mt-1">ความคืบหน้ารวม {progressPercent}%</div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-6 h-6" />
@@ -656,9 +638,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         {/* Card 4: Pending inspection */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">รอลงพื้นที่ตรวจ</span>
+            <span className="text-sm text-slate-500 font-medium">รอลงพื้นที่ตรวจ</span>
             <div className="text-2xl font-bold text-amber-600 mt-1">{pendingCount}</div>
-            <div className="text-[11px] text-amber-700 font-medium mt-1">รอครูนิเทศก์ประเมินผล</div>
+            <div className="text-[13px] text-amber-700 font-medium mt-1">รอครูนิเทศก์ประเมินผล</div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
             <Clock className="w-6 h-6" />
@@ -670,7 +652,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('students')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'students'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -682,14 +664,14 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
         <button
           onClick={() => setActiveTab('coursesMatrix')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'coursesMatrix'
               ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>ผังเชื่อมโยงรายวิชา & ครูนิเทศก์ประจำกลุ่ม (แผ่นงาน data - {courses.length} รายการ)</span>
+          <span>ผังเชื่อมโยงรายวิชา & ครูนิเทศก์ประจำกลุ่ม (จำนวน {courses.length} รายการ)</span>
         </button>
       </div>
 
@@ -699,21 +681,21 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-sky-600" />
-              <h3 className="font-bold text-slate-900 text-sm">
+              <h3 className="font-bold text-slate-900 text-base">
                 ตารางบันทึกการฝึกงานและข้อมูลรายวิชานิเทศก์
               </h3>
             </div>
-            <span className="text-xs text-slate-500">
+            <span className="text-sm text-slate-500">
               แสดง {filteredStudents.length > 0 ? startIndex + 1 : 0}-{Math.min(startIndex + pageSize, filteredStudents.length)} จาก {filteredStudents.length} คน
             </span>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold border-y border-slate-200">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-slate-50 text-slate-600 text-[13px] font-semibold border-y border-slate-200">
                 <tr>
                   <th className="py-3 px-4">รหัสนักศึกษา / ชื่อ-นามสกุล</th>
-                  <th className="py-3 px-4">กลุ่ม (room) & วิชาฝึกอาชีพ (data)</th>
+                  <th className="py-3 px-4">กลุ่มเรียน & วิชาฝึกอาชีพ</th>
                   <th className="py-3 px-4">สถานประกอบการ</th>
                   <th className="py-3 px-4">สถานะการตรวจ</th>
                   <th className="py-3 px-4">คะแนน</th>
@@ -745,16 +727,16 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                               <img
                                 src={std.avatarUrl}
                                 alt={std.name}
-                                className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 shadow-2xs"
+                                className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 shadow-2xs"
                               />
                             ) : (
-                              <span className="w-8 h-8 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                              <span className="w-9 h-9 rounded-full bg-slate-900 text-white font-bold text-sm flex items-center justify-center shrink-0">
                                 {std.initials}
                               </span>
                             )}
                             <div>
                               <div className="font-bold text-slate-900">{std.name}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">
+                              <div className="text-xs text-slate-400 font-mono">
                                 รหัส {std.studentCode}
                               </div>
                             </div>
@@ -764,51 +746,51 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                         {/* Room & Enrolled Courses from data tab */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200 font-mono">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 font-mono">
                               กลุ่ม {studentRoom || 'สอฟ.2/1'}
                             </span>
-                            <span className="text-[10px] text-slate-500">
+                            <span className="text-xs text-slate-500">
                               ({studentCourses.length} รายวิชา)
                             </span>
                           </div>
 
                           {matchingCourse ? (
-                            <div className="text-[11px] text-slate-700 bg-slate-50 p-1.5 rounded-lg border border-slate-200/70 max-w-xs">
-                              <div className="font-mono text-[10px] text-sky-700 font-semibold">{matchingCourse.subjectCode} {matchingCourse.subjectName}</div>
-                              <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
+                            <div className="text-[13px] text-slate-700 bg-slate-50 p-1.5 rounded-lg border border-slate-200/70 max-w-xs">
+                              <div className="font-mono text-xs text-sky-700 font-semibold">{matchingCourse.subjectCode} {matchingCourse.subjectName}</div>
+                              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
                                 <span>ครูนิเทศก์:</span>
                                 <strong className="text-emerald-700">{matchingCourse.teacherName}</strong>
                               </div>
                             </div>
                           ) : (
-                            <span className="text-[10px] text-slate-400 italic">ไม่พบข้อมูลรายวิชา</span>
+                            <span className="text-xs text-slate-400 italic">ไม่พบข้อมูลรายวิชา</span>
                           )}
 
                           {studentCourses.length > 0 && (
                             <button
                               type="button"
                               onClick={() => setExpandedStudentId(isExpanded ? null : std.id)}
-                              className="text-[10px] text-sky-600 hover:text-sky-800 font-semibold mt-1 inline-flex items-center gap-0.5 cursor-pointer"
+                              className="text-xs text-sky-600 hover:text-sky-800 font-semibold mt-1 inline-flex items-center gap-0.5 cursor-pointer"
                             >
                               <span>{isExpanded ? 'ซ่อนผังวิชา' : `ดูทั้งหมด ${studentCourses.length} รายวิชา`}</span>
-                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                             </button>
                           )}
                         </td>
 
                         <td className="py-3.5 px-4">
                           <div className="font-medium text-slate-900">{std.companyName || 'ยังไม่ระบุ'}</div>
-                          <div className="text-[10px] text-sky-700">{std.companyRegistration?.department || '-'}</div>
+                          <div className="text-xs text-sky-700">{std.companyRegistration?.department || '-'}</div>
                         </td>
 
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           {isGraded ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               ตรวจประเมินแล้ว
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                               รอครูนิเทศก์ลงคะแนน
                             </span>
@@ -818,12 +800,12 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           {isGraded ? (
                             <div>
-                              <span className="font-bold text-slate-900 text-sm">{score}</span>
-                              <span className="text-[10px] text-slate-400">/20</span>
-                              <div className="text-[10px] text-sky-700 font-semibold">{gradeLabel}</div>
+                              <span className="font-bold text-slate-900 text-base">{score}</span>
+                              <span className="text-xs text-slate-400">/20</span>
+                              <div className="text-xs text-sky-700 font-semibold">{gradeLabel}</div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 text-xs italic">- รอการประเมิน -</span>
+                            <span className="text-slate-400 text-sm italic">- รอการประเมิน -</span>
                           )}
                         </td>
 
@@ -831,17 +813,17 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => onNavigateA4(std.id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-medium transition cursor-pointer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-medium transition cursor-pointer"
                             >
-                              <Printer className="w-3 h-3 text-slate-500" />
+                              <Printer className="w-3.5 h-3.5 text-slate-500" />
                               <span>พิมพ์ A4</span>
                             </button>
                             <button
                               onClick={() => onOpenForm3(std.id)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition cursor-pointer shadow-2xs"
                               title={`บันทึกรายงานการนิเทศ & รูปถ่าย 3-4 รูป สำหรับ ${std.name}`}
                             >
-                              <Camera className="w-3 h-3" />
+                              <Camera className="w-3.5 h-3.5" />
                               <span>บันทึกการนิเทศ</span>
                             </button>
                           </div>
@@ -853,22 +835,22 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                         <tr className="bg-sky-50/40">
                           <td colSpan={6} className="px-6 py-3 border-y border-sky-100">
                             <div className="space-y-2">
-                              <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center justify-between text-sm">
                                 <span className="font-bold text-sky-950 flex items-center gap-1.5">
-                                  <BookOpen className="w-3.5 h-3.5 text-sky-700" />
+                                  <BookOpen className="w-4 h-4 text-sky-700" />
                                   <span>ผังรายวิชาฝึกอาชีพและครูนิเทศก์ประจำกลุ่ม {studentRoom} (เชื่อมข้อมูลแผ่นงาน data):</span>
                                 </span>
-                                <span className="text-[11px] text-slate-500">รวม {studentCourses.length} รายวิชา</span>
+                                <span className="text-[13px] text-slate-500">รวม {studentCourses.length} รายวิชา</span>
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                                 {studentCourses.map((c, cIdx) => (
-                                  <div key={cIdx} className="p-2.5 bg-white rounded-xl border border-sky-200/80 shadow-2xs text-xs space-y-1">
+                                  <div key={cIdx} className="p-2.5 bg-white rounded-xl border border-sky-200/80 shadow-2xs text-sm space-y-1">
                                     <div className="flex items-center justify-between">
-                                      <span className="font-mono text-[10px] text-sky-700 font-bold">{c.subjectCode}</span>
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">กลุ่ม {c.room}</span>
+                                      <span className="font-mono text-xs text-sky-700 font-bold">{c.subjectCode}</span>
+                                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">กลุ่ม {c.room}</span>
                                     </div>
-                                    <div className="font-semibold text-slate-900 text-[11px] line-clamp-1">{c.subjectName}</div>
-                                    <div className="text-[10px] text-slate-600 flex items-center gap-1 pt-1 border-t border-slate-100">
+                                    <div className="font-semibold text-slate-900 text-[13px] line-clamp-1">{c.subjectName}</div>
+                                    <div className="text-xs text-slate-600 flex items-center gap-1 pt-1 border-t border-slate-100">
                                       <span className="text-slate-400">ครูนิเทศก์:</span>
                                       <strong className="text-emerald-800">{c.teacherName}</strong>
                                     </div>
@@ -885,7 +867,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
                 {paginatedStudents.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 text-slate-400 text-xs">
+                    <td colSpan={6} className="text-center py-10 text-slate-400 text-sm">
                       ไม่พบข้อมูลนักศึกษาตามเงื่อนไขที่เลือก (กรุณาลองปรับหรือล้างตัวกรอง)
                     </td>
                   </tr>
@@ -895,7 +877,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           </div>
 
           {/* Pagination */}
-          <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
             <div>
               แสดงรายการ {filteredStudents.length > 0 ? startIndex + 1 : 0}-{Math.min(startIndex + pageSize, filteredStudents.length)} จากทั้งหมด {filteredStudents.length} คน (หน้า {currentPageSafe} จาก {totalPages})
             </div>
@@ -903,9 +885,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPageSafe <= 1}
-                className="px-2.5 py-1 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-xs disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-0.5"
+                className="px-2.5 py-1 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-0.5"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className="w-4 h-4" />
                 <span>ย้อนกลับ</span>
               </button>
 
@@ -925,7 +907,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                   <button
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                    className={`w-8 h-8 rounded-lg text-sm font-bold transition cursor-pointer flex items-center justify-center ${
                       currentPageSafe === pageNum
                         ? 'bg-slate-900 text-white'
                         : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -939,10 +921,10 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPageSafe >= totalPages}
-                className="px-2.5 py-1 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-xs disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-0.5"
+                className="px-2.5 py-1 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-0.5"
               >
                 <span>ถัดไป</span>
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -954,29 +936,19 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-600" />
-                <span>ตารางข้อมูลรายวิชาและครูนิเทศก์ประจำกลุ่ม (Google Sheet แผ่นงาน: data)</span>
+                <span>ตารางข้อมูลรายวิชาและครูนิเทศก์ประจำกลุ่ม</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-sm text-slate-500 mt-0.5">
                 ฐานข้อมูลเชื่อมโยง {courses.length} แผนการสอนและนิเทศก์ประจำภาคเรียน
               </p>
             </div>
-
-            <a
-              href={DATA_SHEET_CONFIG.spreadsheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold underline inline-flex items-center gap-1 shrink-0"
-            >
-              <span>เปิดชีต data ใน Google Sheets</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 text-slate-700 text-[11px] font-semibold border-y border-slate-200">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-slate-50 text-slate-700 text-[13px] font-semibold border-y border-slate-200">
                 <tr>
                   <th className="py-3 px-4">กลุ่มเรียน (room)</th>
                   <th className="py-3 px-4">รหัสวิชา</th>
@@ -999,7 +971,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                       }`}
                     >
                       <td className="py-3 px-4">
-                        <span className="font-mono font-bold text-sky-800 px-2 py-0.5 rounded bg-sky-100/80 border border-sky-200 text-xs">
+                        <span className="font-mono font-bold text-sky-800 px-2 py-0.5 rounded bg-sky-100/80 border border-sky-200 text-sm">
                           {course.room}
                         </span>
                       </td>
@@ -1016,7 +988,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-emerald-800">{course.teacherName}</span>
                           {isCurrentTeacherCourse && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
                               ของคุณ
                             </span>
                           )}
@@ -1035,7 +1007,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                             setSelectedSubject(course.subjectCode);
                             setActiveTab('students');
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold border border-sky-200 transition cursor-pointer"
+                          className="px-3 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-sm font-semibold border border-sky-200 transition cursor-pointer"
                         >
                           ดูกลุ่มนี้ &rarr;
                         </button>
@@ -1056,41 +1028,41 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                  <Camera className="w-3.5 h-3.5" />
+                <span className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
+                  <Camera className="w-4 h-4" />
                 </span>
-                <span className="text-[11px] font-semibold text-emerald-800">แบบฟอร์มการตรวจนิเทศก์</span>
+                <span className="text-[13px] font-semibold text-emerald-800">แบบฟอร์มการตรวจนิเทศก์</span>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+              <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                 ระบบบันทึกการนิเทศ
               </span>
             </div>
 
             <div>
-              <h3 className="text-lg font-bold text-slate-900">บันทึกรายงานการนิเทศ & ประเมินสมรรถนะ</h3>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              <h3 className="text-xl font-bold text-slate-900">บันทึกรายงานการนิเทศ & ประเมินสมรรถนะ</h3>
+              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                 ค้นหาและเลือกนักศึกษา, ระบุสถานประกอบการที่เข้ารับการนิเทศ พร้อมบันทึกภาพถ่ายการลงพื้นที่ 3-4 รูป และบันทึกข้อมูลจัดเก็บไว้ในระบบ
               </p>
             </div>
 
             {/* Checklist */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2 text-xs">
-              <div className="font-semibold text-slate-800 text-[11px] flex items-center justify-between">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2 text-sm">
+              <div className="font-semibold text-slate-800 text-[13px] flex items-center justify-between">
                 <span>ครูนิเทศก์ผู้ประเมิน: <strong>{teacherName}</strong></span>
-                <span className="text-[10px] text-emerald-700 font-mono">พร้อมบันทึกลงระบบ</span>
+                <span className="text-xs text-emerald-700 font-mono">พร้อมบันทึกลงระบบ</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 text-[13px]">
                 <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> ค้นหา/เลือกนักศึกษา (แผ่นงาน login)
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> ค้นหา/เลือกนักศึกษา (แผ่นงาน login)
                 </span>
                 <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> ระบุสถานประกอบการที่นิเทศ
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> ระบุสถานประกอบการที่นิเทศ
                 </span>
                 <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> แนบรูปการนิเทศ 3-4 รูป
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> แนบรูปการนิเทศ 3-4 รูป
                 </span>
                 <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> บันทึกเข้าชีตและ Firebase
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> บันทึกเข้าชีตและ Firebase
                 </span>
               </div>
             </div>
@@ -1098,11 +1070,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
           <button
             onClick={() => onOpenForm3()}
-            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
           >
             <Camera className="w-4 h-4" />
             <span>เปิดบันทึกรายงานการนิเทศ & แนบรูป 3-4 รูป</span>
-            <ExternalLink className="w-3.5 h-3.5 text-emerald-200" />
+            <ExternalLink className="w-4 h-4 text-emerald-200" />
           </button>
         </div>
 
@@ -1111,19 +1083,19 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center">
+                <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center">
                   4
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500">ระบบวิเคราะห์ & พิมพ์เอกสาร</span>
+                <span className="text-[13px] font-semibold text-slate-500">ระบบวิเคราะห์ & พิมพ์เอกสาร</span>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-800">
+              <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-sky-100 text-sky-800">
                 A4 Standard
               </span>
             </div>
 
             <div>
-              <h3 className="text-lg font-bold text-slate-900">พิมพ์ / สรุปรายงานประจำสัปดาห์ (A4)</h3>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              <h3 className="text-xl font-bold text-slate-900">พิมพ์ / สรุปรายงานประจำสัปดาห์ (A4)</h3>
+              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                 ดึงข้อมูลสถิติเวลาปฏิบัติงานและสมุดบันทึกรายวันของนักศึกษา พร้อมพิมพ์เอกสารรายงาน A4 ที่มีชื่อและลายมือชื่อครูนิเทศก์ ({teacherName}) อัตโนมัติ
               </p>
             </div>
@@ -1131,9 +1103,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             {/* Radial metric */}
             <div className="p-4 rounded-xl bg-sky-50/70 border border-sky-100 flex items-center justify-between">
               <div>
-                <span className="text-xs text-slate-500 block">อัตราการส่งบันทึกประจำสัปดาห์</span>
+                <span className="text-sm text-slate-500 block">อัตราการส่งบันทึกประจำสัปดาห์</span>
                 <div className="text-2xl font-bold text-slate-900 mt-0.5">{progressPercent}%</div>
-                <div className="text-[11px] text-emerald-700 font-medium">ตรวจประเมินแล้ว {gradedCount} จาก {filteredStudents.length} คน</div>
+                <div className="text-[13px] text-emerald-700 font-medium">ตรวจประเมินแล้ว {gradedCount} จาก {filteredStudents.length} คน</div>
               </div>
               {/* Ring meter */}
               <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
@@ -1151,11 +1123,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute font-bold text-xs text-sky-900 font-mono">W-12</span>
+                <span className="absolute font-bold text-sm text-sky-900 font-mono">W-12</span>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
+            <div className="flex flex-wrap gap-2 text-[13px] text-slate-600">
               <span className="px-2.5 py-1 rounded-md bg-slate-100">ฟอร์แมต A4 สอศ. มาตรฐาน</span>
               <span className="px-2.5 py-1 rounded-md bg-slate-100">อัปเดตอัตโนมัติ Real-time</span>
             </div>
@@ -1164,16 +1136,16 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => onNavigateA4()}
-              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <FileText className="w-3.5 h-3.5" />
+              <FileText className="w-4 h-4" />
               <span>พิมพ์รายงาน A4</span>
             </button>
             <button
               onClick={onOpenLookerModal}
-              className="py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+              <BarChart3 className="w-4 h-4 text-blue-600" />
               <span>Looker Studio</span>
             </button>
           </div>
