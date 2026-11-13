@@ -117,15 +117,10 @@
 
   body:has(.workplace-report-print-root) .workplace-page-break-after {
     break-after: page !important;
-    page-break-after: always !important;
+    page-break-after: avoid !important;
   }
 
   body:has(.workplace-report-print-root) .workplace-page-no-break {
-    break-after: avoid !important;
-    page-break-after: avoid !important;
-  }
-  /* บังคับหน้าสุดท้ายไม่ให้ขึ้นหน้าใหม่เด็ดขาดตามเงื่อนไข */
-  .workplace-page-no-break {
     break-after: avoid !important;
     page-break-after: avoid !important;
   }
