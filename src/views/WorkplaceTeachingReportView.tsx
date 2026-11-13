@@ -1165,7 +1165,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
             alt="ตราครุฑ" 
             className="h-auto object-contain mb-1 relative" 
-            style={{ width: '14.4mm', top: '10mm' }}
+            style={{ width: '14.4mm', top: '8mm' }}
           />
         </div>
         
