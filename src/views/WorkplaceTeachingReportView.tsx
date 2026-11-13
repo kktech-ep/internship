@@ -1133,14 +1133,14 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         width: '210mm',
         height: '296.5mm',
         margin: '0 auto',
-        padding: '10mm 18mm 12mm 18mm',
+        padding: '5mm 20mm 5mm 20mm',
         boxSizing: 'border-box',
         overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         color: '#000000'
       }}
     >
-      {/* Top row: Garuda & Title Center, Receipt Stamp Box Right */}
+     {/* Top row: Garuda & Title Center, Receipt Stamp Box Right */}
       <div className="relative mb-2">
         {/* Receipt stamp box on top right - shifted right 1cm (-10mm) */}
         <div 
@@ -1150,13 +1150,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             width: '62mm', 
             fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
             fontSize: '13pt', 
-            lineHeight: 1.3 
+            lineHeight: 1.15 
           }}
         >
           <div className="font-bold text-center">ฝ่ายวิชาการ วิทยาลัยเทคนิคขอนแก่น</div>
           <div>เลขรับภายใน...........................................</div>
-          <div>วันที่.................................................</div>
-          <div>เวลา..................................................</div>
+          <div>วันที่..........................................................</div>
+          <div>เวลา..........................................................</div>
         </div>
 
         {/* Garuda Emblem + บันทึกข้อความ (Shifted Garuda down 1cm without affecting text layout) */}
@@ -1165,7 +1165,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             src="/assets/aistudio/pic1_206a0c1e.jpg" 
             alt="ตราครุฑ" 
             className="h-auto object-contain mb-1 relative" 
-            style={{ width: '14.4mm', top: '10mm' }}
+            style={{ width: '14.4mm', top: '8mm' }}
           />
         </div>
 
@@ -1179,7 +1179,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         style={{
           fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
           fontSize: '15pt',
-          lineHeight: 1.38
+          lineHeight: 1.15
         }}
       >
         {/* Header fields */}
@@ -1194,7 +1194,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <span className="font-bold mr-2 whitespace-nowrap">ที่</span>
               <span>แผนกวิชาช่างไฟฟ้ากำลัง</span>
             </div>
-            <div className="flex items-baseline mr-10">
+            <div className="flex items-baseline mr-40">
               <span className="font-bold mr-2 whitespace-nowrap">วันที่</span>
               <span>{thaiReportDateStr}</span>
             </div>
@@ -1222,12 +1222,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         </div>
 
         {/* Paragraph 1 */}
-        <div className="mt-3 text-justify indent-[2.5cm]" style={{ lineHeight: 1.1 }}>
+        <div className="mt-3 text-justify indent-[2.5cm]" style={{ lineHeight: 1.2 }}>
           ตามที่วิทยาลัยเทคนิคขอนแก่น ได้กำหนดแนวปฏิบัติในการจัดตารางเรียน ตารางสอน ปีการศึกษา 2569 โดยรายวิชาฝึกประสบการณ์วิชาชีพ (หลักสูตร 2567) จัดให้มีครูผู้สอนรับผิดชอบรายวิชาให้ครบตามแผนการเรียนที่นำไปจัดสอนและฝึกประสบการณ์อาชีพหรือฝึกงานในสถานประกอบการหรือจัดสอนนอกสถานศึกษา ตามแนวทางของสำนักงานคณะกรรมการการอาชีวศึกษา ให้เป็นชั่วโมงสอนที่ครูผู้สอนได้ทำการสอนทั้งการจัดการเรียนการสอนในรูปแบบออนไลน์ เช่น Google Meet, Google Classroom, Zoom Meeting หรือชั่วโมงการนิเทศผ่านระบบสารสนเทศ
         </div>
 
         {/* Paragraph 2 & Assigned courses */}
-        <div className="mt-2.5 text-justify" style={{ lineHeight: 1.1 }}>
+        <div className="mt-2.5 text-justify" style={{ lineHeight: 1.2 }}>
           <div className="indent-[2.5cm]">
             ข้าพเจ้า <span className="font-bold">{reporterName}</span> ได้รับมอบหมายให้รับผิดชอบสอน
           </div>
@@ -1260,15 +1260,16 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         </div>
 
         {/* 2 Opinion Boxes (Head of Dept & Head of Curriculum) */}
-        <div className="mt-4 grid grid-cols-2 gap-3" style={{ fontSize: '14pt' }}>
+        <div className="mt-4 grid grid-cols-2 gap-3" style={{ fontSize: '15pt' }}>
           {/* Box 1 */}
           <div className="border border-black p-2 flex flex-col justify-between min-h-[30mm]">
             <div className="space-y-0.5">
-              <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้าแผนกวิชา</div>
+              <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้าแผนกวิชาไฟฟ้ากำลัง</div>
               <div className="pt-0.5">( &nbsp; ) เพื่อโปรดพิจารณา</div>
-              <div>( &nbsp; ) อื่น ๆ....................................................................</div>
+              <div>( &nbsp; ) อื่น ๆ...........................</div>
             </div>
             <div className="text-center pt-2">
+              <div>&nbsp;</div>
               <div>(นายกิตติศักดิ์ ทิพบุญชู)</div>
             </div>
           </div>
@@ -1278,25 +1279,27 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <div className="space-y-0.5">
               <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้างานพัฒนาหลักสูตรและการจัดการเรียนรู้</div>
               <div className="pt-0.5">( &nbsp; ) เพื่อโปรดพิจารณาทราบ</div>
-              <div>( &nbsp; ) อื่น ๆ....................................................................</div>
+              <div>( &nbsp; ) อื่น ๆ..........................</div>
             </div>
             <div className="text-center pt-2">
+              <div>&nbsp;</div>
               <div>(นายเอกสิทธิ์ ด้วงนิล)</div>
             </div>
           </div>
         </div>
 
         {/* Deputy Director Box */}
-        <div className="mt-2.5 space-y-0.5" style={{ fontSize: '14pt' }}>
+        <div className="mt-2.5 space-y-0.5" style={{ fontSize: '15pt' }}>
           <div className="font-bold underline">ความคิดเห็นของรองผู้อำนวยการฝ่ายวิชาการ</div>
           <div className="flex items-center gap-6 pt-0.5">
             <span>( &nbsp; ) ทราบ</span>
             <span>( &nbsp; ) ปรับปรุง/ข้อเสนอแนะ</span>
-            <span>( &nbsp; ) อื่น ๆ ........................................</span>
+            <span>( &nbsp; ) อื่น ๆ ..........................</span>
           </div>
 
           <div className="pt-2 text-center ml-auto w-[90mm] space-y-0.5">
-            <div>ว่าที่ร้อยตรี</div>
+             <div>&nbsp;</div>
+            <div>ว่าที่ร้อยตรี........................................................</div>
             <div>(ไชยา ทับวิธร)</div>
             <div>รองผู้อำนวยการฝ่ายวิชาการ ปฏิบัติหน้าที่แทน</div>
             <div>ผู้อำนวยการวิทยาลัยเทคนิคขอนแก่น</div>
@@ -1319,12 +1322,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         fontSize: '15pt',
-        lineHeight: 1.35,
+        lineHeight: 1.15,
         color: '#000000'
       }}
     >
       {/* Top Page number */}
-      <div className="text-right text-[12pt] text-slate-400 mb-1">
+      <div className="text-right text-[14pt] text-slate-400 mb-1">
         2
       </div>
 
@@ -1332,7 +1335,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       <div className="border border-black p-3 mb-4 flex items-center gap-4">
         <div className="w-[28mm] flex-shrink-0 flex items-center justify-center pr-2">
           <img 
-            src="/assets/aistudio/LogoKKTech_f25116a9.jpg" 
+            src={`${import.meta.env.BASE_URL}assets/aistudio/LogoKKTech_f25116a9.jpg`}
             alt="ตราวิทยาลัยเทคนิคขอนแก่น" 
             className="w-[24mm] h-auto object-contain"
           />
@@ -1340,16 +1343,16 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
         <div className="flex-1 text-center space-y-0.5">
           <div className="font-bold text-[18pt]">วิทยาลัยเทคนิคขอนแก่น</div>
-          <div className="font-bold text-[16pt]">รายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ</div>
-          <div className="font-bold text-[15pt]">ประจำภาคเรียนที่ 2 ปีการศึกษา 2569</div>
-          <div className="font-bold text-[14pt]">
+          <div className="font-bold text-[16pt]">รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ</div>
+          <div className="font-bold text-[16pt]">ประจำภาคเรียนที่ 2 ปีการศึกษา 2569</div>
+          <div className="font-bold text-[16pt]">
             สัปดาห์ที่ {selectedWeek} ระหว่างวันที่ {startDayFull} ถึงวันที่ {endDayFull}
           </div>
         </div>
       </div>
 
       {/* Teacher info lines */}
-      <div className="grid grid-cols-12 gap-y-2 text-[15pt] mb-4">
+      <div className="grid grid-cols-12 gap-y-2 text-[16pt] mb-4">
         <div className="col-span-6 flex items-baseline gap-3">
           <span className="w-24 shrink-0 text-black">ชื่อครูผู้สอน</span>
           <span className="text-black">{reporterName}</span>
@@ -1371,7 +1374,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
       {/* Table 1: Courses & Teaching Applications */}
       <div className="mb-4">
-        <table className="w-full border-collapse border border-black text-center text-[14pt]">
+        <table className="w-full border-collapse border border-black text-center text-[15pt]">
           <thead>
             <tr className="bg-slate-50 font-bold">
               <th className="border border-black p-1.5 w-[12mm]">ลำดับ</th>
@@ -1410,7 +1413,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
       {/* Table 2: Teaching Schedule */}
       <div className="mb-5">
-        <table className="w-full border-collapse border border-black text-center text-[14pt]">
+        <table className="w-full border-collapse border border-black text-center text-[15pt]">
           <thead>
             <tr className="bg-slate-50 font-bold">
               <th className="border border-black p-1.5 w-[28mm]">วัน/เดือน/ปี</th>
@@ -1459,7 +1462,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         overflow: 'hidden',
         fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
         fontSize: '15pt',
-        lineHeight: 1.35,
+        lineHeight: 1.15,
         color: '#000000'
       }}
     >
@@ -1469,18 +1472,32 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       </div>
 
       {/* Page Title */}
-      <div className="text-center space-y-1 mb-5">
+      <div className="text-center space-y-0.5 mb-3">
         <div className="font-bold text-[16pt]">
-          ประมวลภาพการรายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ
+          ประมวลภาพการรายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ
         </div>
-        <div className="font-bold text-[15pt]">
+        <div className="font-bold text-[16pt]">
           ประจำภาคเรียนที่ 2 ปีการศึกษา 2569
         </div>
-        <div className="font-bold text-[14pt]">
+        <div className="font-bold text-[16pt]">
           สัปดาห์ที่ {selectedWeek} ระหว่างวันที่ {startDayNum} - {endDayNum} {monthFull} พ.ศ. 2569
         </div>
-        <div className="text-[13pt] text-slate-800 pt-0.5">
-          ครูนิเทศก์: <strong>{reporterName}</strong> &bull; รายวิชาบูรณาการ: {courses.map(c => `${c.subjectCode} ${c.subjectName}`).join(' / ') || 'กิจกรรมในสถานประกอบการ 1'}
+        <div className="text-[15pt] text-slate-800 pt-0.5">
+          <div>
+            ครูนิเทศก์: <strong>{reporterName}</strong>
+          </div>
+          {courses.length > 0 ? (
+            <div>
+              {courses.map((c, idx) => (
+                <div key={c.id || idx}>
+                  {idx === 0 ? 'รายวิชาบูรณาการ : ' : ''}
+                  {c.subjectCode} {c.subjectName}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div>รายวิชาบูรณาการ: กิจกรรมในสถานประกอบการ 1</div>
+          )}
         </div>
       </div>
 
