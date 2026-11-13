@@ -1261,13 +1261,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         </div>
 
         {/* 2 Opinion Boxes (Head of Dept & Head of Curriculum) */}
-        <div className="mt-4 grid grid-cols-2 gap-3" style={{ fontSize: '14pt' }}>
+        <div className="mt-4 grid grid-cols-2 gap-3" style={{ fontSize: '15pt' }}>
           {/* Box 1 */}
           <div className="border border-black p-2 flex flex-col justify-between min-h-[30mm]">
             <div className="space-y-0.5">
               <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้าแผนกวิชา</div>
               <div className="pt-0.5">( &nbsp; ) เพื่อโปรดพิจารณา</div>
-              <div>( &nbsp; ) อื่น ๆ....................................................................</div>
+              <div>( &nbsp; ) อื่น ๆ...................</div>
             </div>
             <div className="text-center pt-2">
               <div>(นายกิตติศักดิ์ ทิพบุญชู)</div>
@@ -1279,7 +1279,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <div className="space-y-0.5">
               <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้างานพัฒนาหลักสูตรและการจัดการเรียนรู้</div>
               <div className="pt-0.5">( &nbsp; ) เพื่อโปรดพิจารณาทราบ</div>
-              <div>( &nbsp; ) อื่น ๆ....................................................................</div>
+              <div>( &nbsp; ) อื่น ๆ....................</div>
             </div>
             <div className="text-center pt-2">
               <div>(นายเอกสิทธิ์ ด้วงนิล)</div>
@@ -1293,7 +1293,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div className="flex items-center gap-6 pt-0.5">
             <span>( &nbsp; ) ทราบ</span>
             <span>( &nbsp; ) ปรับปรุง/ข้อเสนอแนะ</span>
-            <span>( &nbsp; ) อื่น ๆ ............................</span>
+            <span>( &nbsp; ) อื่น ๆ ....................</span>
           </div>
 
           <div className="pt-2 text-center ml-auto w-[90mm] space-y-0.5">
