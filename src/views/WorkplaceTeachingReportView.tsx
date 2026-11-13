@@ -1144,13 +1144,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       <div className="relative mb-2">
         {/* Receipt stamp box on top right - shifted right 1cm (-10mm) */}
         <div 
-          className="absolute top-0 border border-black p-2 text-left"
+          className="absolute top-5 border border-black p-2 text-left"
           style={{ 
             right: '-10mm',
             width: '62mm', 
             fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
             fontSize: '13pt', 
-            lineHeight: 1.15 
+            lineHeight: 1.2 
           }}
         >
           <div className="font-bold text-center">ฝ่ายวิชาการ วิทยาลัยเทคนิคขอนแก่น</div>
