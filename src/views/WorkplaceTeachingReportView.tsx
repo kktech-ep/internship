@@ -1264,7 +1264,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           {/* Box 1 */}
           <div className="border border-black p-2 flex flex-col justify-between min-h-[30mm]">
             <div className="space-y-0.5">
-              <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้าแผนกวิชา</div>
+              <div className="font-bold text-center border-b border-black pb-0.5">ความเห็นของหัวหน้าแผนกวิชาไฟฟ้ากำลัง</div>
               <div className="pt-0.5">( &nbsp; ) เพื่อโปรดพิจารณา</div>
               <div>( &nbsp; ) อื่น ๆ...................</div>
             </div>
