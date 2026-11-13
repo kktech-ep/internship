@@ -45,6 +45,7 @@ import { getLocalForm3Rows } from '../services/googleSheetsService';
 import { subscribeForm3Supervisions, subscribeSubmissions } from '../services/firestoreService';
 import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
 import { WorkplaceTeachingReportView } from './WorkplaceTeachingReportView';
+import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
 
 interface A4ReportViewProps {
   students: Student[];
@@ -105,6 +106,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
 }) => {
   // Main view tab: 'table' (All Companies Form_3 Summary), 'a4' (Official Weekly A4 Document), or 'teaching' (Workplace Integrated Learning Report)
   const [activeTab, setActiveTab] = useState<'table' | 'a4' | 'teaching'>('table');
+  const [a4SubView, setA4SubView] = useState<'individual' | 'group-summary'>('individual');
   const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId || propStudents[0]?.id || 'std-68301040105');
   const [selectedWeek, setSelectedWeek] = useState('8');
   
@@ -821,13 +823,74 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       const html2canvas = html2canvasModule.default;
       const { jsPDF } = await import('jspdf');
 
+      const colorCanvas = document.createElement('canvas');
+      colorCanvas.width = 1;
+      colorCanvas.height = 1;
+      const colorCtx = colorCanvas.getContext('2d');
+
+      const normalizeColorExpr = (cssText: string): string => {
+        if (!colorCtx || (!cssText.includes('oklch') && !cssText.includes('oklab') && !cssText.includes('color-mix'))) {
+          return cssText;
+        }
+        let result = cssText;
+        for (let pass = 0; pass < 3; pass++) {
+          const prev = result;
+          result = result.replace(/(?:oklch|oklab|color-mix)\([^()]*(?:\([^()]*\)[^()]*)*\)/g, (match) => {
+            try {
+              colorCtx.fillStyle = 'rgba(0, 0, 0, 0)';
+              colorCtx.fillStyle = match;
+              return colorCtx.fillStyle || '#1e293b';
+            } catch {
+              return '#1e293b';
+            }
+          });
+          if (result === prev) break;
+        }
+        return result;
+      };
+
       // High-resolution rendering (2.2x scale for sharp 300 DPI text and graphics)
       const canvas = await html2canvas(element, {
         scale: 2.2,
         useCORS: true,
         allowTaint: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
+          styleTags.forEach((tag) => {
+            if (tag.textContent) tag.textContent = normalizeColorExpr(tag.textContent);
+          });
+          const linkTags = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
+          if (linkTags.length > 0) {
+            try {
+              const combinedRules: string[] = [];
+              Array.from(document.styleSheets).forEach((sheet) => {
+                try {
+                  if (sheet.href && sheet.cssRules) {
+                    const text = Array.from(sheet.cssRules).map((r) => r.cssText).join('\n');
+                    combinedRules.push(normalizeColorExpr(text));
+                  }
+                } catch {
+                  // skip cross-origin
+                }
+              });
+              if (combinedRules.length > 0) {
+                const injected = clonedDoc.createElement('style');
+                injected.textContent = combinedRules.join('\n');
+                clonedDoc.head.appendChild(injected);
+                linkTags.forEach((lnk) => {
+                  const href = lnk.getAttribute('href') || '';
+                  if (!href.startsWith('http') || href.startsWith(window.location.origin)) {
+                    lnk.remove();
+                  }
+                });
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
@@ -846,18 +909,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       const safeWeek = selectedWeek.padStart(2, '0');
       const fileName = `แบบบันทึกและประเมินผลการฝึกงาน_${safeCode}_สัปดาห์ที่${safeWeek}.pdf`;
 
-      // 1. Download PDF file directly to device
       pdf.save(fileName);
-
-      // 2. Open PDF in a new window/tab for native print dialog & PDF viewing
-      const blob = pdf.output('blob');
-      const blobUrl = URL.createObjectURL(blob);
-      const printTab = window.open(blobUrl, '_blank');
-
-      // If popup was blocked by browser in iframe environment, fallback to direct print
-      if (!printTab || printTab.closed || typeof printTab.closed === 'undefined') {
-        window.print();
-      }
     } catch (err) {
       console.warn('PDF export notice, triggering browser print dialog:', err);
       window.print();
@@ -1787,20 +1839,69 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           ========================================================================= */}
       {activeTab === 'a4' && (
         <div className="space-y-6">
-          {/* Top Controller Bar for A4 */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4 print:hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          {/* Top Sub-View Switcher Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">
                   แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา (A4 Formatter)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  สัดส่วนมาตรฐานกระดาษราชการ A4 (210mm x 297mm) พร้อมลงนามกำกับ 3 ฝ่าย
+                  เลือกดูใบแบบบันทึกรายบุคคล (ทว.04) หรือสรุปการส่งงาน & คะแนนประเมินตามกลุ่มเรียน ขนาดกระดาษ A4
                 </p>
               </div>
-              <div className="flex items-center gap-2">
 
-                {currentUser?.role === 'admin' && currentSub && onDeleteSubmission && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setA4SubView('individual')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                      a4SubView === 'individual'
+                        ? 'bg-white text-slate-900 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className={`w-3.5 h-3.5 ${a4SubView === 'individual' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <span>ใบรายบุคคล (ทว.04)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setA4SubView('group-summary')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                      a4SubView === 'group-summary'
+                        ? 'bg-white text-slate-900 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className={`w-3.5 h-3.5 ${a4SubView === 'group-summary' ? 'text-sky-600' : 'text-slate-400'}`} />
+                    <span>สรุปส่งงาน & คะแนนตามกลุ่มเรียน</span>
+                  </button>
+                </div>
+
+                {a4SubView === 'individual' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-2xs transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-sky-400" />
+                      <span>สั่งพิมพ์ A4</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrint}
+                      disabled={isPrinting}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer disabled:opacity-60"
+                    >
+                      {isPrinting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      <span>{isPrinting ? 'กำลังสร้าง PDF...' : 'ดาวน์โหลด PDF'}</span>
+                    </button>
+                  </>
+                )}
+
+                {a4SubView === 'individual' && currentUser?.role === 'admin' && currentSub && onDeleteSubmission && (
                   <button
                     onClick={async () => {
                       if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกสัปดาห์ที่ ${selectedWeek} ของ ${currentStudent.name} (${currentStudent.studentCode})? การกระทำนี้ไม่สามารถย้อนกลับได้`)) {
@@ -1814,9 +1915,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     <span>ลบบันทึกสัปดาห์นี้ (Admin)</span>
                   </button>
                 )}
+
                 <button
                   onClick={() => setActiveTab('table')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
                 >
                   <ArrowRight className="w-3.5 h-3.5 rotate-180" />
                   <span>กลับสู่ตารางสรุปสถานประกอบการ</span>
@@ -1824,6 +1926,8 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               </div>
             </div>
 
+            {a4SubView === 'individual' && (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end text-xs">
               <div className="md:col-span-5">
                 <label className="block text-[11px] font-semibold text-slate-700 mb-1">
@@ -1892,7 +1996,26 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                 รหัส: {currentStudent.studentCode} • สัปดาห์ที่ {selectedWeek} • รูปถ่ายหน้างาน {currentSub.photos.length} รูป • บันทึกงาน {currentSub.dailyLogs.length} วัน
               </span>
             </div>
+            </>
+            )}
           </div>
+
+          {a4SubView === 'group-summary' ? (
+            <GroupWeeklySummaryA4
+              students={allSheetStudents}
+              roomList={roomList}
+              mergedSubmissions={mergedSubmissions}
+              form3List={form3List}
+              currentUser={currentUser}
+              onSelectStudentForA4={(sid, weekNum) => {
+                setSelectedStudentId(sid);
+                if (onSelectStudent) onSelectStudent(sid);
+                if (weekNum) setSelectedWeek(weekNum.toString());
+                setA4SubView('individual');
+              }}
+            />
+          ) : (
+            <>
 
           {/* A4 Printable Sheet Container */}
           <div className="flex justify-center">
@@ -2117,6 +2240,8 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               </div>
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
 

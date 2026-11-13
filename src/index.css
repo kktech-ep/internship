@@ -173,4 +173,62 @@
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  /* Group Weekly Summary & Evaluation A4 Report (Multi-page A4 Portrait) */
+  @page group-summary-page {
+    size: A4 portrait;
+    margin: 10mm 8mm;
+  }
+
+  body:has(#group-summary-a4-printable),
+  html:has(#group-summary-a4-printable) {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body:has(#group-summary-a4-printable) #root,
+  body:has(#group-summary-a4-printable) #root > div,
+  body:has(#group-summary-a4-printable) main {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable,
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable * {
+    visibility: visible !important;
+  }
+
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable {
+    page: group-summary-page;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable thead {
+    display: table-header-group !important;
+  }
+
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 }
