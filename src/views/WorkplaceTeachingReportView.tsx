@@ -1875,7 +1875,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             !showDoc1InPrint
               ? 'print:hidden'
               : (showDoc2_1InPrint || showDoc2_2InPrint)
-               // ? 'workplace-page-break-after'
+                ? 'workplace-page-break-after'
                 : 'workplace-page-no-break'
           }`}
         >
@@ -1905,7 +1905,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             !showDoc2_1InPrint
               ? 'print:hidden'
               : showDoc2_2InPrint
-              //  ? 'workplace-page-break-after'
+                ? 'workplace-page-break-after'
                 : 'workplace-page-no-break'
           }`}
         >
