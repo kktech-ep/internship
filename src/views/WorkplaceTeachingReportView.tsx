@@ -1144,7 +1144,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       <div className="relative mb-2">
         {/* Receipt stamp box on top right - shifted right 1cm (-10mm) */}
         <div 
-          className="absolute top-5 border border-black p-2 text-left"
+          className="absolute top-2 border border-black p-2 text-left"
           style={{ 
             right: '-10mm',
             width: '62mm', 
@@ -1162,9 +1162,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         {/* Garuda Emblem + บันทึกข้อความ */}
         <div className="flex flex-col items-start pt-0">
           <img 
+            className="absolute top-5"
             src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
             alt="ตราครุฑ" 
-            className="h-auto object-contain mb-1" 
+            className="h-auto object-contain mb-0.1" 
             style={{ width: '14.4mm' }}
           />
         </div>
