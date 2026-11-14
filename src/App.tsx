@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
 import { Footer } from './components/Footer';
 import { HubView } from './views/HubView';
 import { StudentView } from './views/StudentView';
@@ -548,24 +547,8 @@ export default function App() {
             />
           </main>
         ) : (
-          /* SCREENSHOTS 2, 3, 4, 7: Sidebar + Content Layout */
-          <div className="flex flex-1 w-full max-w-[1440px] mx-auto print:block print:max-w-none">
-            {/* Left Sidebar */}
-            <Sidebar
-              currentView={currentView}
-              onNavigate={(view) => setCurrentView(view)}
-              onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-              onOpenLookerModal={() => setIsLookerModalOpen(true)}
-              onOpenForm3={() => {
-                setTargetStudentForForm3(undefined);
-                setIsForm3Open(true);
-              }}
-              currentRole={currentUser?.role || currentRole}
-              currentUser={currentUser}
-            />
-
-            {/* Right Main Body Content */}
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 print:p-0">
+          /* Top-bar only full-width content layout */
+          <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 print:max-w-none print:p-0">
               {currentView === 'student' && (
                 <StudentView
                   student={currentStudent}
@@ -676,7 +659,6 @@ export default function App() {
                 />
               )}
             </main>
-          </div>
         )}
       </div>
 

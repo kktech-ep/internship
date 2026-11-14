@@ -2007,10 +2007,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             <>
 
           {/* A4 Printable Sheet Container */}
-          <div className="flex justify-center">
+          <div className="w-full overflow-x-auto pb-2 flex sm:justify-center print:overflow-visible print:block">
             <div
               id="a4-printable-document"
-              className="bg-white w-full max-w-[210mm] min-h-[297mm] p-8 sm:p-12 shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[13px] leading-relaxed relative flex flex-col justify-between"
+              className="bg-white min-w-[680px] sm:min-w-0 w-full max-w-[210mm] min-h-[297mm] p-6 sm:p-12 shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[13px] leading-relaxed relative flex flex-col justify-between shrink-0"
               style={{ boxSizing: 'border-box' }}
             >
               <div className="space-y-4">

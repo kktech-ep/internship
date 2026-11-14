@@ -597,10 +597,10 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       </div>
 
       {/* Printable A4 Sheet */}
-      <div className="flex justify-center">
+      <div className="w-full overflow-x-auto pb-2 flex lg:justify-center print:overflow-visible print:block">
         <div
           id="group-summary-a4-printable"
-          className="bg-white w-full max-w-[210mm] min-h-[297mm] p-[10mm] shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[11px] leading-snug"
+          className="bg-white min-w-[740px] w-full max-w-[210mm] min-h-[297mm] p-[10mm] shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[11px] leading-snug shrink-0"
           style={{ boxSizing: 'border-box' }}
         >
           {/* Official Header */}

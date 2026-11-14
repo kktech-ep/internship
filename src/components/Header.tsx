@@ -46,39 +46,40 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs print:hidden">
       {/* Top micro bar */}
-      <div className="bg-[#0f172a] text-slate-200 text-[15px] px-4 py-2 flex flex-wrap items-center justify-between border-b border-slate-800 gap-2">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="bg-[#0f172a] text-slate-200 text-[13px] sm:text-[15px] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between border-b border-slate-800 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <span className="text-slate-300 hidden sm:inline">
             รอบการประเมิน 2/2569 | ศูนย์ประสานงานช่างไฟฟ้ากำลัง
           </span>
           <span className="text-slate-500 hidden sm:inline">|</span>
           <button
             onClick={() => onNavigate('guide')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded text-[15px] font-semibold transition cursor-pointer whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded text-[13px] sm:text-[15px] font-semibold transition cursor-pointer whitespace-nowrap ${
               currentView === 'guide'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/40 hover:bg-indigo-500/30 hover:text-white'
             }`}
             title="ดูคู่มือการใช้งานระบบสำหรับนักศึกษา พร้อมดาวน์โหลด PDF"
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-4 h-4 shrink-0" />
             <span>คู่มือใช้งาน (PDF)</span>
           </button>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Mobile view toggle */}
           <button
             onClick={onToggleMobileMode}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[15px] transition cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] sm:text-[15px] transition cursor-pointer ${
               isMobileMode
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700'
             }`}
             title="จำลองมุมมองแอปมือถือ"
           >
-            {isMobileMode ? <Smartphone className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
-            <span>{isMobileMode ? 'โหมดมือถือ' : 'สลับดูโหมดมือถือ'}</span>
+            {isMobileMode ? <Smartphone className="w-4 h-4 shrink-0" /> : <Monitor className="w-4 h-4 shrink-0" />}
+            <span className="hidden sm:inline">{isMobileMode ? 'โหมดมือถือ' : 'สลับดูโหมดมือถือ'}</span>
+            <span className="sm:hidden">{isMobileMode ? 'มือถือ' : 'โหมดมือถือ'}</span>
           </button>
 
           {/* User Account / Role Switcher Menu */}
@@ -86,26 +87,26 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative">
               <button
                 onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                className="flex items-center gap-2 text-slate-200 hover:text-white transition py-1 px-2.5 rounded-lg hover:bg-slate-800 border border-slate-700/60 cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 text-slate-200 hover:text-white transition py-1 px-2 sm:px-2.5 rounded-lg hover:bg-slate-800 border border-slate-700/60 cursor-pointer"
                 title="คลิกเพื่อสลับบทบาทหรือจัดการบัญชี"
               >
-                <span className={`w-6 h-6 rounded-full text-[12.5px] font-bold flex items-center justify-center text-white ${
+                <span className={`w-6 h-6 rounded-full text-[12px] sm:text-[12.5px] font-bold flex items-center justify-center text-white shrink-0 ${
                   currentRole === 'teacher' ? 'bg-indigo-600' : currentRole === 'admin' ? 'bg-amber-600' : 'bg-sky-600'
                 }`}>
                   {currentUser.initials}
                 </span>
-                <span className="text-[15px] font-medium max-w-[230px] truncate">
+                <span className="text-[13px] sm:text-[15px] font-medium max-w-[115px] sm:max-w-[230px] truncate">
                   {currentUser.email}
                 </span>
                 <span className="px-2 py-0.5 rounded text-[11.5px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hidden md:inline">
                   {currentRole === 'student' ? 'นักศึกษา' : currentRole === 'teacher' ? 'ครูนิเทศก์' : 'Admin'}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               </button>
 
               {roleMenuOpen && (
                 <div 
-                  className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 text-slate-800 text-[15px] z-50 animate-in fade-in"
+                  className="absolute right-0 mt-1.5 w-[calc(100vw-1.5rem)] sm:w-80 max-w-80 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 text-slate-800 text-[14px] sm:text-[15px] z-50 animate-in fade-in"
                   onMouseLeave={() => setRoleMenuOpen(false)}
                 >
                   {/* Account Header */}
@@ -219,13 +220,13 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Main navigation row */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-2 py-2.5 min-h-14">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-2 py-2 sm:py-2.5 min-h-14">
           {/* Navigation Links */}
-          <nav className="flex flex-wrap items-center gap-1.5">
+          <nav className="flex flex-wrap items-center gap-1 sm:gap-1.5">
             <button
               onClick={() => onNavigate('hub')}
-              className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+              className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                 currentView === 'hub'
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -239,7 +240,7 @@ export const Header: React.FC<HeaderProps> = ({
               <>
                 <button
                   onClick={() => onNavigate('student')}
-                  className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                     currentView === 'student'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -249,7 +250,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
                 <button
                   onClick={() => onNavigate('weekly-log')}
-                  className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                     currentView === 'weekly-log'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -265,7 +266,7 @@ export const Header: React.FC<HeaderProps> = ({
               <>
                 <button
                   onClick={() => onNavigate('teacher')}
-                  className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                     currentView === 'teacher'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -275,7 +276,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
                 <button
                   onClick={() => onNavigate('map')}
-                  className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                     currentView === 'map'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -285,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
                 <button
                   onClick={() => onNavigate('a4')}
-                  className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                     currentView === 'a4'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -300,7 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
             {userRole === 'admin' && (
               <button
                 onClick={() => onNavigate('admin')}
-                className={`px-3.5 py-2 text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
                   currentView === 'admin'
                     ? 'bg-slate-800 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -313,26 +314,26 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Quick External Integration Links */}
           {(userRole === 'admin' || userRole === 'teacher') && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {userRole === 'admin' && (
                 <button
                   type="button"
                   onClick={() => downloadAllWebZip()}
-                  className="hidden sm:inline-flex items-center gap-1.5 text-[15px] px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition cursor-pointer font-bold shadow-2xs"
+                  className="inline-flex items-center gap-1.5 text-[13px] sm:text-[15px] px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition cursor-pointer font-bold shadow-2xs"
                   title="ดาวน์โหลดไฟล์เว็บทั้งหมดเป็น ZIP เพื่อนำไปติดตั้งบน AppServ หรือ Web Server จริง"
                 >
-                  <Download className="w-4 h-4 text-emerald-600" />
+                  <Download className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>โหลดเว็บลง Server</span>
                 </button>
               )}
 
               <button
                 onClick={onOpenLookerModal}
-                className="hidden lg:inline-flex items-center gap-1.5 text-[15px] px-3 py-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer font-medium"
+                className="inline-flex items-center gap-1.5 text-[13px] sm:text-[15px] px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer font-medium"
                 title="เปิด Looker Studio Dashboard"
               >
                 <span>Looker Analytics</span>
-                <ExternalLink className="w-3.5 h-3.5 text-sky-600" />
+                <ExternalLink className="w-3.5 h-3.5 text-sky-600 shrink-0" />
               </button>
             </div>
           )}

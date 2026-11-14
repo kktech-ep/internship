@@ -872,12 +872,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [isGeneratingMemo, setIsGeneratingMemo] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const getFitPreviewZoom = () => {
+    if (typeof window === 'undefined') return 0.85;
+    if (window.innerWidth < 640) return Math.max(0.36, Number(((window.innerWidth - 32) / 794).toFixed(2)));
+    if (window.innerWidth < 1024) return 0.68;
+    return 0.85;
+  };
+
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState<'all' | 'doc1' | 'doc2_1' | 'doc2_2'>('all');
-  const [previewZoom, setPreviewZoom] = useState<number>(0.85);
+  const [previewZoom, setPreviewZoom] = useState<number>(() => getFitPreviewZoom());
 
   const handleOpenPrintPreview = (tab: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') => {
     setPreviewTab(tab);
+    setPreviewZoom(getFitPreviewZoom());
     setIsPrintPreviewOpen(true);
   };
 
@@ -1162,7 +1170,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         {/* Garuda Emblem + บันทึกข้อความ (Shifted Garuda down 1cm without affecting text layout) */}
         <div className="flex flex-col items-start pt-0">
           <img 
-            src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`}
+            src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
             alt="ตราครุฑ" 
             className="h-auto object-contain mb-1 relative" 
             style={{ width: '14.4mm', top: '8mm' }}
@@ -1600,7 +1608,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => handleOpenPrintPreview('all')}
-              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-text-base shadow-md hover:shadow-lg transition cursor-pointer"
+              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg transition cursor-pointer"
               title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
             >
               <Printer className="w-10 h-10 text-white" />
@@ -1860,9 +1868,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 : 'workplace-page-no-break'
           }`}
         >
-          <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between print:hidden">
+          <div className="bg-slate-100 px-3 sm:px-4 py-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 print:hidden">
             <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
               <span>เอกสารที่ 1: บันทึกข้อความรายงานการจัดการเรียนรู้ (1 หน้ากระดาษ A4)</span>
             </span>
             <button
@@ -1874,7 +1882,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </button>
           </div>
 
-          {renderMemoContent(false)}
+          <div className="w-full overflow-x-auto print:overflow-visible">
+            {renderMemoContent(false)}
+          </div>
         </div>
 
 
@@ -1890,9 +1900,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 : 'workplace-page-no-break'
           }`}
         >
-          <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between print:hidden">
+          <div className="bg-slate-100 px-3 sm:px-4 py-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 print:hidden">
             <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+              <BookOpen className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>เอกสารที่ 2 (หน้าที่ 1/2): รายงานการจัดการเรียนการสอนบูรณาการในสถานประกอบการ</span>
             </span>
             <div className="flex items-center gap-3">
@@ -1907,7 +1917,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </div>
           </div>
 
-          {renderReportPage1Content(false)}
+          <div className="w-full overflow-x-auto print:overflow-visible">
+            {renderReportPage1Content(false)}
+          </div>
         </div>
 
 
@@ -2024,7 +2036,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           />
 
           {/* A4 Printable Gallery Page */}
-          {renderReportPage2Content(false)}
+          <div className="w-full overflow-x-auto print:overflow-visible">
+            {renderReportPage2Content(false)}
+          </div>
         </div>
 
         {/* ------------------------------------------------------------- */}
@@ -2482,11 +2496,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               </div>
 
               {/* View Tabs */}
-              <div className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-xs font-medium">
+              <div className="flex flex-wrap items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700 text-xs font-medium max-w-full">
                 <button
                   type="button"
                   onClick={() => setPreviewTab('all')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition cursor-pointer ${
                     previewTab === 'all'
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -2497,7 +2511,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <button
                   type="button"
                   onClick={() => setPreviewTab('doc1')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition cursor-pointer ${
                     previewTab === 'doc1'
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -2508,7 +2522,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <button
                   type="button"
                   onClick={() => setPreviewTab('doc2_1')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition cursor-pointer ${
                     previewTab === 'doc2_1'
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -2519,7 +2533,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <button
                   type="button"
                   onClick={() => setPreviewTab('doc2_2')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition cursor-pointer ${
                     previewTab === 'doc2_2'
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -2535,7 +2549,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 text-xs">
                   <button
                     type="button"
-                    onClick={() => setPreviewZoom(prev => Math.max(0.5, Number((prev - 0.1).toFixed(2))))}
+                    onClick={() => setPreviewZoom(prev => Math.max(0.35, Number((prev - 0.1).toFixed(2))))}
                     className="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white cursor-pointer"
                     title="ย่อขนาด"
                   >
@@ -2554,7 +2568,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPreviewZoom(0.85)}
+                    onClick={() => setPreviewZoom(getFitPreviewZoom())}
                     className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 rounded text-slate-300 cursor-pointer"
                     title="รีเซ็ตขนาดพอดี"
                   >
@@ -2634,7 +2648,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </div>
 
             {/* Preview Body with Scaled Document Pages */}
-            <div className="flex-1 overflow-y-auto bg-slate-950 p-6 flex flex-col items-center gap-8">
+            <div className="flex-1 overflow-auto bg-slate-950 p-3 sm:p-6 flex flex-col items-center gap-6 sm:gap-8">
               {/* Page 1 (Memo) */}
               {(previewTab === 'all' || previewTab === 'doc1') && (
                 <div className="flex flex-col items-center">

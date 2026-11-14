@@ -571,7 +571,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
         {/* Left: Map Container (7 cols) */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 p-3 shadow-sm relative overflow-hidden flex flex-col">
           {/* Map canvas wrapper */}
-          <div className="relative w-full h-[540px] bg-[#dbeafe] rounded-xl overflow-hidden border border-slate-200 shadow-inner select-none">
+          <div className="relative w-full h-[380px] sm:h-[460px] lg:h-[540px] bg-[#dbeafe] rounded-xl overflow-hidden border border-slate-200 shadow-inner select-none">
             {/* SVG Interactive Map of Khon Kaen */}
             <svg
               viewBox="0 0 800 650"
@@ -975,7 +975,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                           <Camera className="w-4 h-4 text-slate-600" />
                           <span>รูปภาพการนิเทศงาน (คลิกเพื่อดูภาพขยาย):</span>
                         </div>
-                        <div className="grid grid-cols-4 gap-1.5">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                           {latestForm3.photos.map((photo, pIdx) => (
                             <div
                               key={photo.id || pIdx}
