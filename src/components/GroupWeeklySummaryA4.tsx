@@ -68,6 +68,9 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
     [selectedWeekNum]
   );
 
+  const isTechElecGroup = selectedRoom !== 'all' && selectedRoom.includes('ทลฟ');
+  const departmentLabel = isTechElecGroup ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
+
   // Index all submissions by student id / code for fast O(1) lookup
   const submissionsByStudentKey = useMemo(() => {
     const idx = new Map<string, WeeklySubmission[]>();
@@ -292,8 +295,8 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
     if (set.size === 0 && currentUser?.name && currentUser.role !== 'student') {
       set.add(currentUser.name);
     }
-    return Array.from(set).join(', ') || 'ครูนิเทศก์แผนกวิชาช่างไฟฟ้ากำลัง';
-  }, [filteredSummaries, currentUser]);
+    return Array.from(set).join(', ') || `ครูนิเทศก์${departmentLabel}`;
+  }, [filteredSummaries, currentUser, departmentLabel]);
 
   const handleBrowserPrint = () => {
     window.print();
@@ -476,14 +479,14 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
   return (
     <div className="space-y-5 print:space-y-0">
       {/* Control Panel (hidden when printing) */}
-      <div className="bg-slate-50/90 rounded-2xl border border-slate-200 p-4 space-y-3.5 print:hidden">
+      <div className="bg-slate-50/90 rounded-2xl border border-slate-200 p-4 space-y-3.5 print:hidden text-[13px]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <Users className="w-4 h-4 text-sky-600" />
               <span>สรุปการส่งบันทึกปฏิบัติงานประจำสัปดาห์ & คะแนนประเมินตามกลุ่มเรียน</span>
             </h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <p className="text-[13px] text-slate-500 mt-0.5">
               เรียกดูสถานะการส่งงานครบ 18 สัปดาห์ (720 ชม.) และผลคะแนนประเมินของนักศึกษาทุกคนในกลุ่มเรียน พร้อมสั่งพิมพ์ A4
             </p>
           </div>
@@ -492,25 +495,25 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
             <button
               type="button"
               onClick={handleBrowserPrint}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold shadow-xs transition cursor-pointer"
             >
-              <Printer className="w-3.5 h-3.5 text-sky-400" />
+              <Printer className="w-4 h-4 text-sky-400" />
               <span>สั่งพิมพ์รายงาน (A4)</span>
             </button>
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isExportingPdf}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-bold shadow-xs transition cursor-pointer disabled:opacity-60"
             >
               {isExportingPdf ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>กำลังสร้าง PDF...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4" />
                   <span>ดาวน์โหลด PDF</span>
                 </>
               )}
@@ -519,16 +522,16 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
         </div>
 
         {/* Filters Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 text-xs items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 text-[13px] items-end">
           {/* Room / Group Selector */}
           <div className="lg:col-span-3">
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1">
               กลุ่มเรียน (ห้องเรียน)
             </label>
             <select
               value={selectedRoom}
               onChange={(e) => setSelectedRoom(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-900 focus:ring-2 focus:ring-sky-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-900 text-[13px] focus:ring-2 focus:ring-sky-500"
             >
               {roomList.map((r) => {
                 const count = students.filter((s) => (s.room || '').trim() === r).length;
@@ -544,14 +547,14 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
 
           {/* Summary Mode Toggle */}
           <div className="lg:col-span-4">
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1">
               รูปแบบตารางสรุป
             </label>
             <div className="inline-flex w-full p-1 bg-slate-200/80 rounded-lg">
               <button
                 type="button"
                 onClick={() => setSummaryMode('matrix')}
-                className={`flex-1 py-1.5 px-2.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                className={`flex-1 py-1.5 px-2.5 rounded-md text-[13px] font-semibold transition cursor-pointer ${
                   summaryMode === 'matrix'
                     ? 'bg-white text-slate-900 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -562,7 +565,7 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
               <button
                 type="button"
                 onClick={() => setSummaryMode('weekly')}
-                className={`flex-1 py-1.5 px-2.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                className={`flex-1 py-1.5 px-2.5 rounded-md text-[13px] font-semibold transition cursor-pointer ${
                   summaryMode === 'weekly'
                     ? 'bg-white text-slate-900 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -576,14 +579,14 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
           {/* Week Picker (for weekly mode) OR Search */}
           {summaryMode === 'weekly' && (
             <div className="lg:col-span-2">
-              <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-sky-600" />
+              <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-sky-600" />
                 <span>เลือกสัปดาห์</span>
               </label>
               <select
                 value={selectedWeekNum}
                 onChange={(e) => setSelectedWeekNum(parseInt(e.target.value, 10))}
-                className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-900 focus:ring-2 focus:ring-sky-500"
+                className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white font-semibold text-slate-900 text-[13px] focus:ring-2 focus:ring-sky-500"
               >
                 {WEEKS_1_TO_18.map((w) => (
                   <option key={w.weekNumber} value={w.weekNumber}>
@@ -596,14 +599,14 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
 
           {/* Status Filter */}
           <div className={summaryMode === 'weekly' ? 'lg:col-span-3' : 'lg:col-span-2'}>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
-              <Filter className="w-3 h-3 text-slate-500" />
+            <label className="block text-[13px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5 text-slate-500" />
               <span>สถานะ</span>
             </label>
             <select
               value={evalFilter}
               onChange={(e) => setEvalFilter(e.target.value as any)}
-              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800 focus:ring-2 focus:ring-sky-500"
+              className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-800 text-[13px] focus:ring-2 focus:ring-sky-500"
             >
               <option value="all">ทั้งหมด</option>
               <option value="submitted">ส่งบันทึกแล้ว</option>
@@ -615,17 +618,17 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
           {/* Search box (only when matrix mode has 3 cols left, or full width below) */}
           {summaryMode === 'matrix' && (
             <div className="lg:col-span-3">
-              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+              <label className="block text-[13px] font-semibold text-slate-700 mb-1">
                 ค้นหานักศึกษา / สถานประกอบการ
               </label>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="รหัส หรือ ชื่อนักศึกษา..."
-                  className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-800 focus:ring-2 focus:ring-sky-500"
+                  className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-800 text-[13px] focus:ring-2 focus:ring-sky-500"
                 />
               </div>
             </div>
@@ -652,7 +655,7 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
               </div>
               <div>
                 <h2 className="text-base font-bold text-slate-950 leading-tight">
-                  วิทยาลัยเทคนิคขอนแก่น • แผนกวิชาช่างไฟฟ้ากำลัง
+                  วิทยาลัยเทคนิคขอนแก่น • {departmentLabel}
                 </h2>
                 <p className="text-[12px] font-bold text-slate-800 mt-0.5">
                   แบบสรุปการส่งบันทึกการปฏิบัติงานประจำสัปดาห์ และผลการประเมินการฝึกงานของนักศึกษา
@@ -964,9 +967,18 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
                 <div className="text-[10px] text-slate-600">ครูผู้รับผิดชอบกลุ่มเรียน {selectedRoom === 'all' ? 'ทั้งหมด' : selectedRoom}</div>
               </div>
               <div className="space-y-1">
-                <div>ลงชื่อ.......................................................................หัวหน้าแผนกวิชา</div>
-                <div className="font-bold">(นายกิตติศักดิ์ ทิพบุญชู)</div>
-                <div className="text-[10px] text-slate-600">หัวหน้าแผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น</div>
+                <div>
+                  ลงชื่อ.......................................................................
+                  {isTechElecGroup ? 'หัวหน้าภาควิชา' : 'หัวหน้าแผนกวิชา'}
+                </div>
+                <div className="font-bold">
+                  {isTechElecGroup ? '(นายพุฒิพงศ์ ไชยราช)' : '(นายกิตติศักดิ์ ทิพบุญชู)'}
+                </div>
+                <div className="text-[10px] text-slate-600">
+                  {isTechElecGroup
+                    ? 'หัวหน้าภาควิชาเทคโนโลยีไฟฟ้า วิทยาลัยเทคนิคขอนแก่น'
+                    : 'หัวหน้าแผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น'}
+                </div>
               </div>
             </div>
           </div>
