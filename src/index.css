@@ -63,7 +63,8 @@
   body:has(#group-summary-a4-printable) #root > div,
   body:has(#group-summary-a4-printable) #root > div > div,
   body:has(#group-summary-a4-printable) main,
-  body:has(#group-summary-a4-printable) .a4-report-root {
+  body:has(#group-summary-a4-printable) .a4-report-root,
+  body:has(#group-summary-a4-printable) .group-summary-scroll-wrap {
     display: block !important;
     width: 100% !important;
     max-width: none !important;
@@ -192,25 +193,26 @@
   }
 
   /* Student Guide Manual (Multi-page A4 flow) */
-  @page guide-page {
-    size: A4 portrait;
-    margin: 12mm;
-  }
-
   body:has(#student-guide-pdf-content) #student-guide-pdf-content,
   body:has(#student-guide-pdf-content) #student-guide-pdf-content * {
     visibility: visible !important;
   }
 
+  body:has(#student-guide-pdf-content) #student-guide-pdf-content .print\:hidden,
+  body:has(#student-guide-pdf-content) #student-guide-pdf-content .print\:hidden * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
   body:has(#student-guide-pdf-content) #student-guide-pdf-content {
-    page: guide-page;
     position: static !important;
-    width: 100% !important;
-    max-width: none !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
     min-height: 0 !important;
     height: auto !important;
-    margin: 0 !important;
-    padding: 2mm 4mm !important;
+    margin: 0 auto !important;
+    padding: 10mm 12mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
@@ -220,26 +222,27 @@
   }
 
   /* Group Weekly Summary & Evaluation A4 Report (Multi-page A4 Portrait) */
-  @page group-summary-page {
-    size: A4 portrait;
-    margin: 10mm 8mm;
-  }
-
   body:has(#group-summary-a4-printable) #group-summary-a4-printable,
   body:has(#group-summary-a4-printable) #group-summary-a4-printable * {
     visibility: visible !important;
   }
 
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable .print\:hidden,
+  body:has(#group-summary-a4-printable) #group-summary-a4-printable .print\:hidden * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
   body:has(#group-summary-a4-printable) #group-summary-a4-printable {
-    page: group-summary-page;
     position: static !important;
-    width: 100% !important;
-    max-width: none !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
     min-width: 0 !important;
     min-height: 0 !important;
     height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0 auto !important;
+    padding: 8mm 8mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;

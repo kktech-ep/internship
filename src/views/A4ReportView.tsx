@@ -901,6 +901,18 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               // ignore
             }
           }
+
+          const clonedDocEl = clonedDoc.getElementById('a4-printable-document');
+          if (clonedDocEl) {
+            clonedDocEl.style.width = '210mm';
+            clonedDocEl.style.maxWidth = '210mm';
+            clonedDocEl.style.minWidth = '0px';
+            clonedDocEl.style.minHeight = '0px';
+            clonedDocEl.style.height = 'auto';
+            clonedDocEl.style.backgroundColor = '#ffffff';
+            clonedDocEl.style.boxShadow = 'none';
+            clonedDocEl.style.border = 'none';
+          }
         }
       });
 

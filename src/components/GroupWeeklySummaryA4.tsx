@@ -308,6 +308,17 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
 
     setIsExportingPdf(true);
     try {
+      const imgs = Array.from(element.querySelectorAll('img'));
+      await Promise.all(
+        imgs.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            img.addEventListener('load', () => resolve(), { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          });
+        })
+      );
+
       const html2canvasModule = await import('html2canvas');
       const html2canvas = html2canvasModule.default;
       const { jsPDF } = await import('jspdf');
@@ -384,6 +395,11 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
           if (clonedRoot) {
             clonedRoot.style.width = '210mm';
             clonedRoot.style.maxWidth = '210mm';
+            clonedRoot.style.minWidth = '0px';
+            clonedRoot.style.minHeight = '0px';
+            clonedRoot.style.height = 'auto';
+            clonedRoot.style.padding = '8mm';
+            clonedRoot.style.margin = '0px';
             clonedRoot.style.backgroundColor = '#ffffff';
             clonedRoot.style.boxShadow = 'none';
             clonedRoot.style.border = 'none';
@@ -404,19 +420,40 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       const pageHeight = 297;
       const imgWidth = pageWidth;
       const imgHeight = (canvas.height * pageWidth) / canvas.width;
+      const pageHeightPx = (pageHeight * canvas.width) / pageWidth;
+
+      // Helper: verify slice contains drawn content so trailing white margin never adds a blank page
+      const sliceHasInk = (startYPx: number, endYPx: number): boolean => {
+        const y0 = Math.max(0, Math.floor(startYPx));
+        const y1 = Math.min(canvas.height, Math.ceil(endYPx));
+        if (y1 - y0 < 8) return false;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return true;
+        const data = ctx.getImageData(0, y0, canvas.width, y1 - y0).data;
+        // Sample pixels for speed while detecting any non-white content
+        for (let i = 0; i < data.length; i += 16) {
+          if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) {
+            return true;
+          }
+        }
+        return false;
+      };
+
       const imgData = canvas.toDataURL('image/jpeg', 0.96);
 
-      let heightLeft = imgHeight;
-      let position = 0;
+      // Always render Page 1
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
 
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      // Add subsequent pages only when remaining band actually contains visible content
+      let pageIndex = 1;
+      while (pageIndex * pageHeight < imgHeight - 4) {
+        const startYPx = pageIndex * pageHeightPx;
+        const endYPx = (pageIndex + 1) * pageHeightPx;
+        if (!sliceHasInk(startYPx, endYPx)) break;
 
-      while (heightLeft > 2) {
-        position -= pageHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        pdf.addImage(imgData, 'JPEG', 0, -(pageIndex * pageHeight), imgWidth, imgHeight);
+        pageIndex++;
       }
 
       const safeRoom = (selectedRoom === 'all' ? 'ทุกกลุ่ม' : selectedRoom).replace(/[/\\:*?"<>|]/g, '-');
@@ -597,7 +634,7 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       </div>
 
       {/* Printable A4 Sheet */}
-      <div className="w-full overflow-x-auto pb-2 flex lg:justify-center print:overflow-visible print:block print:pb-0">
+      <div className="w-full overflow-x-auto pb-2 flex lg:justify-center print:overflow-visible print:block print:pb-0 group-summary-scroll-wrap">
         <div
           id="group-summary-a4-printable"
           className="bg-white min-w-[740px] print:min-w-0 w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0 p-[10mm] print:p-0 shadow-2xl print:shadow-none rounded-sm border print:border-none border-slate-300 text-slate-900 font-sarabun text-[11px] leading-snug shrink-0"
@@ -899,37 +936,38 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
             </table>
           )}
 
-          {/* Legend */}
-          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[9.5px] text-slate-600 border-b border-slate-300 pb-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="font-bold text-slate-800">คำอธิบายสัญลักษณ์:</span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.2 bg-emerald-50 border border-emerald-300 text-emerald-700 font-bold rounded-xs">✓</span>
-                <span>ส่งบันทึก & ตรวจประเมินแล้ว</span>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.2 bg-amber-50 border border-amber-300 text-amber-700 font-bold rounded-xs">ร</span>
-                <span>ส่งบันทึกแล้ว (รอครูนิเทศก์ตรวจ)</span>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="px-1.5 py-0.2 bg-white border border-slate-300 text-slate-400 font-bold rounded-xs">-</span>
-                <span>ยังไม่ส่งบันทึก</span>
-              </span>
+          {/* Legend & Official Signature Block */}
+          <div className="break-inside-avoid">
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[9.5px] text-slate-600 border-b border-slate-300 pb-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-bold text-slate-800">คำอธิบายสัญลักษณ์:</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="px-1.5 py-0.2 bg-emerald-50 border border-emerald-300 text-emerald-700 font-bold rounded-xs">✓</span>
+                  <span>ส่งบันทึก & ตรวจประเมินแล้ว</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="px-1.5 py-0.2 bg-amber-50 border border-amber-300 text-amber-700 font-bold rounded-xs">ร</span>
+                  <span>ส่งบันทึกแล้ว (รอครูนิเทศก์ตรวจ)</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="px-1.5 py-0.2 bg-white border border-slate-300 text-slate-400 font-bold rounded-xs">-</span>
+                  <span>ยังไม่ส่งบันทึก</span>
+                </span>
+              </div>
+              <div>พิมพ์เมื่อวันที่ {todayThai}</div>
             </div>
-            <div>พิมพ์เมื่อวันที่ {todayThai}</div>
-          </div>
 
-          {/* Official Signature Block */}
-          <div className="mt-4 grid grid-cols-2 gap-8 text-center text-[11px] break-inside-avoid">
-            <div className="space-y-1">
-              <div>ลงชื่อ.......................................................................ครูนิเทศก์</div>
-              <div className="font-bold">({groupSupervisors})</div>
-              <div className="text-[10px] text-slate-600">ครูผู้รับผิดชอบกลุ่มเรียน {selectedRoom === 'all' ? 'ทั้งหมด' : selectedRoom}</div>
-            </div>
-            <div className="space-y-1">
-              <div>ลงชื่อ.......................................................................หัวหน้าแผนกวิชา</div>
-              <div className="font-bold">(นายกิตติศักดิ์ ทิพบุญชู)</div>
-              <div className="text-[10px] text-slate-600">หัวหน้าแผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น</div>
+            <div className="mt-4 grid grid-cols-2 gap-8 text-center text-[11px] break-inside-avoid">
+              <div className="space-y-1">
+                <div>ลงชื่อ.......................................................................ครูนิเทศก์</div>
+                <div className="font-bold">({groupSupervisors})</div>
+                <div className="text-[10px] text-slate-600">ครูผู้รับผิดชอบกลุ่มเรียน {selectedRoom === 'all' ? 'ทั้งหมด' : selectedRoom}</div>
+              </div>
+              <div className="space-y-1">
+                <div>ลงชื่อ.......................................................................หัวหน้าแผนกวิชา</div>
+                <div className="font-bold">(นายกิตติศักดิ์ ทิพบุญชู)</div>
+                <div className="text-[10px] text-slate-600">หัวหน้าแผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น</div>
+              </div>
             </div>
           </div>
         </div>
