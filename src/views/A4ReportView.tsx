@@ -1185,11 +1185,11 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           </div>
 
           {/* Main Table: All Companies with Form_3 Supervision Information */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/50">
-              <div className="space-y-1">
+          <div className="w-full max-w-full bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+            <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/50">
+              <div className="space-y-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Building className="w-4 h-4 text-sky-600" />
+                  <Building className="w-4 h-4 text-sky-600 shrink-0" />
                   <h2 className="text-base font-bold text-slate-900">
                     ตารางรายชื่อสถานประกอบการทั้งหมด & บันทึกการนิเทศ
                   </h2>
@@ -1206,7 +1206,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               </div>
 
               {/* Sub-view Switcher: By Company vs All Records across all teachers */}
-              <div className="inline-flex p-1 bg-slate-200/70 rounded-xl text-[13px] font-semibold shrink-0 self-start lg:self-auto">
+              <div className="flex flex-wrap sm:inline-flex p-1 bg-slate-200/70 rounded-xl text-[13px] font-semibold shrink-0 self-start lg:self-auto max-w-full gap-1 sm:gap-0">
                 <button
                   type="button"
                   onClick={() => setTableSubView('companies')}
@@ -1216,7 +1216,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Building2 className="w-4 h-4 text-sky-600" />
+                  <Building2 className="w-4 h-4 text-sky-600 shrink-0" />
                   <span>แยกตามสถานประกอบการ ({filteredCompanies.length})</span>
                 </button>
                 <button
@@ -1228,25 +1228,25 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <List className="w-4 h-4 text-emerald-600" />
+                  <List className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>รายการบันทึกการนิเทศทั้งหมด ({filteredAllForm3Records.length})</span>
                 </button>
               </div>
             </div>
 
             {tableSubView === 'companies' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-100 text-slate-800 font-bold text-[13px] uppercase tracking-wider border-b border-slate-200">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full lg:table-fixed text-left text-sm text-slate-700 border-collapse">
+                <thead className="bg-slate-100 text-slate-800 font-bold text-[12.5px] uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-3 text-center w-12">ลำดับ</th>
-                    <th className="py-3 px-4 min-w-[220px]">สถานประกอบการ</th>
-                    <th className="py-3 px-4 min-w-[240px]">นักศึกษาฝึกงานในที่เดียวกัน</th>
-                    <th className="py-3 px-3 text-center min-w-[130px]">สถานะการนิเทศ</th>
-                    <th className="py-3 px-3 min-w-[150px]">ครูนิเทศก์ & วันที่บันทึก</th>
-                    <th className="py-3 px-3 min-w-[130px]">ผลประเมิน & PPE</th>
-                    <th className="py-3 px-3 min-w-[130px]">หลักฐานรูปถ่ายการนิเทศ</th>
-                    <th className="py-3 px-3 text-center min-w-[120px]">การจัดการ</th>
+                    <th className="py-3 px-2 text-center w-10">ลำดับ</th>
+                    <th className="py-3 px-2.5 w-[20%] min-w-[160px]">สถานประกอบการ</th>
+                    <th className="py-3 px-2.5 w-[24%] min-w-[180px]">นักศึกษาฝึกงานในที่เดียวกัน</th>
+                    <th className="py-3 px-2 text-center w-[11%] min-w-[96px]">สถานะการนิเทศ</th>
+                    <th className="py-3 px-2.5 w-[15%] min-w-[125px]">ครูนิเทศก์ & วันที่บันทึก</th>
+                    <th className="py-3 px-2 w-[11%] min-w-[96px]">ผลประเมิน & PPE</th>
+                    <th className="py-3 px-2 w-[10%] min-w-[96px]">หลักฐานรูปถ่าย</th>
+                    <th className="py-3 px-2 text-center w-[9%] min-w-[88px]">การจัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -1266,49 +1266,49 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
 
                       return (
                         <React.Fragment key={company.id}>
-                          <tr className={`hover:bg-slate-50/80 transition-colors ${company.isSupervised ? 'bg-white' : 'bg-amber-50/20'}`}>
+                          <tr className={`hover:bg-slate-50/80 transition-colors align-top ${company.isSupervised ? 'bg-white' : 'bg-amber-50/20'}`}>
                             {/* 1. Index */}
-                            <td className="py-3.5 px-3 text-center font-mono text-slate-400 text-[13px]">
+                            <td className="py-3 px-2 text-center font-mono text-slate-400 text-[13px]">
                               {index + 1}
                             </td>
 
                             {/* 2. Company Info */}
-                            <td className="py-3.5 px-4">
-                              <div className="font-bold text-slate-900 text-sm leading-tight flex items-start gap-1.5">
+                            <td className="py-3 px-2.5 break-words">
+                              <div className="font-bold text-slate-900 text-sm leading-snug flex items-start gap-1.5">
                                 <Building2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                                <span>{company.name}</span>
+                                <span className="min-w-0 break-words">{company.name}</span>
                               </div>
-                              <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-1.5">
+                              <div className="text-[12.5px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                                 <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <span>{company.zone}</span>
                                 <span className="text-slate-300">•</span>
                                 <span className="text-slate-600 font-mono text-xs">{company.department}</span>
                               </div>
                               {company.mentorName && company.mentorName !== '-' && (
-                                <div className="text-xs text-slate-500 mt-0.5">
+                                <div className="text-xs text-slate-500 mt-0.5 break-words">
                                   พี่เลี้ยง: <span className="text-slate-700 font-medium">{company.mentorName}</span>
                                 </div>
                               )}
                             </td>
 
                             {/* 3. Students Assigned (Co-interns) */}
-                            <td className="py-3.5 px-4">
-                              <div className="space-y-1.5">
-                                <div className="flex items-center gap-1 text-[13px] text-slate-500 font-semibold">
-                                  <Users className="w-4 h-4 text-sky-600" />
+                            <td className="py-3 px-2.5">
+                              <div className="space-y-1.5 min-w-0">
+                                <div className="flex items-center gap-1 text-[12.5px] text-slate-500 font-semibold">
+                                  <Users className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                                   <span>ฝึกร่วมกัน {company.studentsCount} คน</span>
                                 </div>
-                                <div className="flex flex-wrap gap-1.5">
+                                <div className="flex flex-wrap gap-1">
                                   {company.students.map((std) => (
                                     <button
                                       key={std.id}
                                       onClick={() => handleViewStudentA4(std.id)}
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 hover:bg-sky-100 text-slate-800 hover:text-sky-900 border border-slate-200 text-xs transition text-left group"
+                                      className="inline-flex flex-wrap items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-sky-100 text-slate-800 hover:text-sky-900 border border-slate-200 text-xs transition text-left group max-w-full cursor-pointer"
                                       title={`คลิกเพื่อดูรายงาน A4 ของ ${std.name}`}
                                     >
                                       <span className="font-mono text-slate-500 group-hover:text-sky-700">{std.studentCode.slice(-4)}</span>
-                                      <span className="font-medium">{std.name}</span>
-                                      <span className="text-[11px] px-1 rounded bg-white text-slate-600 border border-slate-200">
+                                      <span className="font-medium break-words">{std.name}</span>
+                                      <span className="text-[10.5px] px-1 rounded bg-white text-slate-600 border border-slate-200">
                                         {std.room}
                                       </span>
                                     </button>
@@ -1318,76 +1318,76 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                             </td>
 
                             {/* 4. Supervision Status */}
-                            <td className="py-3.5 px-3 text-center">
+                            <td className="py-3 px-2 text-center">
                               {company.isSupervised ? (
                                 <div className="inline-flex flex-col items-center">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                     <span>นิเทศแล้ว</span>
                                   </span>
                                   <span className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                                    {company.form3Records.length} บันทึกการนิเทศ
+                                    {company.form3Records.length} บันทึก
                                   </span>
                                 </div>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                                  <Clock className="w-4 h-4 text-amber-600" />
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap">
+                                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                                   <span>รอนิเทศ</span>
                                 </span>
                               )}
                             </td>
 
                             {/* 5. Teachers & Visit Date */}
-                            <td className="py-3.5 px-3">
+                            <td className="py-3 px-2.5 break-words">
                               <div className="space-y-1">
                                 {company.supervisingTeachersList.map((tName, tIdx) => (
-                                  <div key={tIdx} className="font-semibold text-slate-900 text-[13px] flex items-center gap-1">
-                                    <UserCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                                    <span>{tName}</span>
+                                  <div key={tIdx} className="font-semibold text-slate-900 text-[12.5px] flex items-start gap-1">
+                                    <UserCheck className="w-3.5 h-3.5 text-sky-600 shrink-0 mt-0.5" />
+                                    <span className="min-w-0 break-words">{tName}</span>
                                   </div>
                                 ))}
                               </div>
                               {f3 ? (
-                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                  <span className="font-mono">ล่าสุด: {f3.visitDate || f3.timestamp}</span>
+                                <div className="text-[11.5px] text-slate-500 mt-1 flex items-start gap-1">
+                                  <Calendar className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                                  <span className="font-mono break-words">{f3.visitDate || f3.timestamp}</span>
                                 </div>
                               ) : (
-                                <div className="text-xs text-slate-400 mt-1">
+                                <div className="text-[11.5px] text-slate-400 mt-1">
                                   ตามตารางนิเทศ 2/2569
                                 </div>
                               )}
                             </td>
 
                             {/* 6. Score & PPE Evaluation */}
-                            <td className="py-3.5 px-3">
+                            <td className="py-3 px-2">
                               {f3 ? (
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1">
-                                    <span className="font-bold text-slate-900 text-sm font-mono">{f3.score.toFixed(1)}/20</span>
-                                    <span className="text-xs px-1.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span className="font-bold text-slate-900 text-[13px] font-mono">{f3.score.toFixed(1)}/20</span>
+                                    <span className="text-[11px] px-1 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
                                       {f3.grade}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
-                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>PPE ผ่าน 100%</span>
+                                  <div className="flex items-center gap-1 text-[11.5px] text-emerald-700 font-medium">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>PPE ผ่าน</span>
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-[13px] text-slate-400 italic">- รอนิเทศก์ -</span>
+                                <span className="text-xs text-slate-400 italic">- รอนิเทศก์ -</span>
                               )}
                             </td>
 
                             {/* 7. Form_3 Photos Thumbnails */}
-                            <td className="py-3.5 px-3">
+                            <td className="py-3 px-2">
                               {photos.length > 0 ? (
-                                <div className="flex items-center gap-1.5">
-                                  {photos.slice(0, 3).map((p, pIdx) => (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {photos.slice(0, 2).map((p, pIdx) => (
                                     <button
                                       key={p.id || pIdx}
                                       onClick={() => setPreviewPhoto(p)}
-                                      className="relative w-10 h-10 rounded-lg overflow-hidden border border-slate-300 hover:ring-2 hover:ring-sky-500 transition group shadow-2xs cursor-pointer"
+                                      className="relative w-9 h-9 rounded-lg overflow-hidden border border-slate-300 hover:ring-2 hover:ring-sky-500 transition group shadow-2xs cursor-pointer shrink-0"
                                       title={p.title || `รูปหลักฐานนิเทศ ${pIdx + 1}`}
                                     >
                                       <img
@@ -1398,23 +1398,23 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                       <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent"></div>
                                     </button>
                                   ))}
-                                  {photos.length > 3 && (
-                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                      +{photos.length - 3}
+                                  {photos.length > 2 && (
+                                    <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                      +{photos.length - 2}
                                     </span>
                                   )}
                                 </div>
                               ) : (
                                 <span className="text-xs text-slate-400 flex items-center gap-1">
-                                  <Camera className="w-3.5 h-3.5 text-slate-300" />
-                                  <span>ไม่มีรูปภาพ</span>
+                                  <Camera className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                                  <span>ไม่มีรูป</span>
                                 </span>
                               )}
                             </td>
 
                             {/* 8. Action Buttons */}
-                            <td className="py-3.5 px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
+                            <td className="py-3 px-2 text-center">
+                              <div className="flex flex-wrap items-center justify-center gap-1">
                                 {onOpenForm3 && (
                                   <button
                                     onClick={() => onOpenForm3(company.students[0]?.id)}
@@ -1514,7 +1514,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                   {/* All Form 3 Supervision Records from ALL teachers */}
                                   {company.form3Records.length > 0 ? (
                                     <div className="space-y-3 pt-2">
-                                      <div className="flex items-center justify-between">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                                           <FileCheck className="w-4 h-4 text-emerald-600" />
                                           <span>บันทึกการนิเทศทั้งหมดของสถานประกอบการนี้ ({company.form3Records.length} รายการ • ครูนิเทศก์ {company.supervisingTeachersList.length} ท่าน)</span>
@@ -1545,7 +1545,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                                 </span>
                                               </div>
 
-                                              <div className="flex items-center gap-2">
+                                              <div className="flex flex-wrap items-center gap-2">
                                                 <span className="text-xs font-mono text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
                                                   📅 {rec.visitDate || rec.timestamp}
                                                 </span>
@@ -1632,7 +1632,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 flex items-center justify-between">
+                                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 flex flex-wrap items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         <Clock className="w-4 h-4 text-amber-600" />
                                         <span>สถานประกอบการแห่งนี้ยังไม่ได้รับการบันทึกข้อมูลเข้านิเทศ</span>
@@ -1660,19 +1660,19 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             </div>
             ) : (
             /* FLAT VIEW: ALL SUPERVISION RECORDS BY ALL TEACHERS */
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-100 text-slate-800 font-bold text-[13px] uppercase tracking-wider border-b border-slate-200">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full lg:table-fixed text-left text-sm text-slate-700 border-collapse">
+                <thead className="bg-slate-100 text-slate-800 font-bold text-[12.5px] uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-3 text-center w-12">ลำดับ</th>
-                    <th className="py-3 px-3 min-w-[130px]">วันที่ / เวลาที่นิเทศ</th>
-                    <th className="py-3 px-3 min-w-[160px]">ครูนิเทศก์ผู้บันทึก</th>
-                    <th className="py-3 px-4 min-w-[200px]">สถานประกอบการ</th>
-                    <th className="py-3 px-3 min-w-[170px]">นักศึกษาที่รับการนิเทศ</th>
-                    <th className="py-3 px-3 min-w-[120px]">ผลคะแนน & PPE</th>
-                    <th className="py-3 px-3 min-w-[210px]">ความเห็นครูนิเทศก์ / พี่เลี้ยง</th>
-                    <th className="py-3 px-3 min-w-[130px]">ภาพถ่ายการนิเทศ</th>
-                    <th className="py-3 px-3 text-center min-w-[100px]">การจัดการ</th>
+                    <th className="py-3 px-2 text-center w-9">ลำดับ</th>
+                    <th className="py-3 px-2 w-[11%] min-w-[95px]">วันที่นิเทศ</th>
+                    <th className="py-3 px-2 w-[12%] min-w-[110px]">ครูนิเทศก์</th>
+                    <th className="py-3 px-2.5 w-[16%] min-w-[135px]">สถานประกอบการ</th>
+                    <th className="py-3 px-2 w-[13%] min-w-[115px]">นักศึกษา</th>
+                    <th className="py-3 px-2 w-[10%] min-w-[90px]">คะแนน & PPE</th>
+                    <th className="py-3 px-2 w-[18%] min-w-[140px]">ความเห็น</th>
+                    <th className="py-3 px-2 w-[11%] min-w-[96px]">ภาพถ่าย</th>
+                    <th className="py-3 px-2 text-center w-[9%] min-w-[80px]">จัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -1688,89 +1688,89 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     filteredAllForm3Records.map((rec, idx) => {
                       const recPhotos = rec.photos || [];
                       return (
-                        <tr key={rec.id || idx} className="hover:bg-slate-50/80 transition-colors bg-white">
-                          <td className="py-3.5 px-3 text-center font-mono text-slate-400 text-[13px]">
+                        <tr key={rec.id || idx} className="hover:bg-slate-50/80 transition-colors bg-white align-top">
+                          <td className="py-3 px-2 text-center font-mono text-slate-400 text-[13px]">
                             {idx + 1}
                           </td>
-                          <td className="py-3.5 px-3">
-                            <div className="font-mono font-semibold text-slate-800 text-[13px]">
+                          <td className="py-3 px-2 break-words">
+                            <div className="font-mono font-semibold text-slate-800 text-[12.5px]">
                               {rec.visitDate || rec.timestamp}
                             </div>
-                            <div className="text-xs text-slate-400 mt-0.5 font-mono">
+                            <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
                               {rec.timestamp}
                             </div>
                           </td>
-                          <td className="py-3.5 px-3">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-900 border border-sky-200 font-bold text-[13px]">
-                              <UserCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                              <span>{rec.teacherName || 'ครูนิเทศก์'}</span>
+                          <td className="py-3 px-2 break-words">
+                            <span className="inline-flex items-start gap-1 px-2 py-0.5 rounded-lg bg-sky-50 text-sky-900 border border-sky-200 font-bold text-xs max-w-full">
+                              <UserCheck className="w-3.5 h-3.5 text-sky-600 shrink-0 mt-0.5" />
+                              <span className="min-w-0 break-words">{rec.teacherName || 'ครูนิเทศก์'}</span>
                             </span>
                           </td>
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-900 text-sm">{rec.companyName}</div>
+                          <td className="py-3 px-2.5 break-words">
+                            <div className="font-bold text-slate-900 text-[13px] leading-snug">{rec.companyName}</div>
                             <div className="text-xs text-slate-500 mt-0.5">{rec.companyDepartment}</div>
                             {rec.mentorName && (
                               <div className="text-xs text-slate-500">พี่เลี้ยง: {rec.mentorName}</div>
                             )}
                           </td>
-                          <td className="py-3.5 px-3">
-                            <div className="font-semibold text-slate-900 text-sm">{rec.studentName}</div>
-                            <div className="text-xs text-slate-500 font-mono">
+                          <td className="py-3 px-2 break-words">
+                            <div className="font-semibold text-slate-900 text-[13px] leading-snug">{rec.studentName}</div>
+                            <div className="text-[11.5px] text-slate-500 font-mono mt-0.5">
                               {rec.studentCode} • {rec.studentRoom || '-'}
                             </div>
                           </td>
-                          <td className="py-3.5 px-3">
-                            <div className="flex items-center gap-1">
-                              <span className="font-bold text-slate-900 font-mono">{rec.score?.toFixed(1) || '19.5'}/20</span>
-                              <span className="text-xs px-1.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                          <td className="py-3 px-2">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className="font-bold text-slate-900 font-mono text-[13px]">{rec.score?.toFixed(1) || '19.5'}/20</span>
+                              <span className="text-[11px] px-1 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
                                 {rec.grade || 'A'}
                               </span>
                             </div>
-                            <div className="text-xs text-emerald-700 font-medium mt-0.5 flex items-center gap-1">
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>{rec.safetyPassed ? 'PPE ผ่าน 100%' : 'ปรับปรุง PPE'}</span>
+                            <div className="text-[11.5px] text-emerald-700 font-medium mt-0.5 flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>{rec.safetyPassed ? 'PPE ผ่าน' : 'ปรับปรุง'}</span>
                             </div>
                           </td>
-                          <td className="py-3.5 px-3 max-w-[240px]">
-                            <p className="text-[13px] text-slate-700 line-clamp-2">{rec.teacherComment || '-'}</p>
+                          <td className="py-3 px-2 break-words">
+                            <p className="text-[12.5px] text-slate-700 line-clamp-2">{rec.teacherComment || '-'}</p>
                             {rec.mentorFeedback && (
-                              <p className="text-xs text-emerald-700 mt-0.5 line-clamp-1">
+                              <p className="text-[11.5px] text-emerald-700 mt-0.5 line-clamp-1">
                                 พี่เลี้ยง: {rec.mentorFeedback}
                               </p>
                             )}
                           </td>
-                          <td className="py-3.5 px-3">
+                          <td className="py-3 px-2">
                             {recPhotos.length > 0 ? (
-                              <div className="flex items-center gap-1.5">
-                                {recPhotos.slice(0, 3).map((p, pIdx) => (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {recPhotos.slice(0, 2).map((p, pIdx) => (
                                   <button
                                     key={p.id || pIdx}
                                     onClick={() => setPreviewPhoto(p)}
-                                    className="relative w-10 h-10 rounded-lg overflow-hidden border border-slate-300 hover:ring-2 hover:ring-sky-500 transition cursor-pointer"
+                                    className="relative w-9 h-9 rounded-lg overflow-hidden border border-slate-300 hover:ring-2 hover:ring-sky-500 transition cursor-pointer shrink-0"
                                     title={p.title || `รูปหลักฐาน ${pIdx + 1}`}
                                   >
                                     <img src={p.url} alt={p.title} className="w-full h-full object-cover" />
                                   </button>
                                 ))}
-                                {recPhotos.length > 3 && (
-                                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                    +{recPhotos.length - 3}
+                                {recPhotos.length > 2 && (
+                                  <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                    +{recPhotos.length - 2}
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-xs text-slate-400">ไม่มีรูปภาพ</span>
+                              <span className="text-xs text-slate-400">ไม่มีรูป</span>
                             )}
                           </td>
-                          <td className="py-3.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
+                          <td className="py-3 px-2 text-center">
+                            <div className="flex flex-wrap items-center justify-center gap-1">
                               {onOpenForm3 && rec.studentId && (
                                 <button
                                   onClick={() => onOpenForm3(rec.studentId)}
                                   className="p-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition cursor-pointer"
                                   title="บันทึกนิเทศเพิ่มสำหรับนักศึกษาคนนี้"
                                 >
-                                  <Camera className="w-4 h-4" />
+                                  <Camera className="w-3.5 h-3.5" />
                                 </button>
                               )}
                               {rec.studentId && (
@@ -1779,7 +1779,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                   className="p-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer"
                                   title="ดูรายงาน A4 นักศึกษา"
                                 >
-                                  <FileText className="w-4 h-4" />
+                                  <FileText className="w-3.5 h-3.5" />
                                 </button>
                               )}
                               {currentUser?.role === 'admin' && onDeleteSupervision && (
@@ -1792,7 +1792,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                   className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
                                   title="ลบบันทึกการนิเทศ (Admin)"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
@@ -1807,12 +1807,12 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             )}
 
             {/* Table Footer with Summary Status */}
-            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-slate-500">
-              <div className="flex items-center gap-2">
+            <div className="px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-slate-500">
+              <div className="flex flex-wrap items-center gap-2">
                 <span>แสดง {filteredCompanies.length} แห่ง จากทั้งหมด {companySummaries.length} แห่ง</span>
-                <span className="text-slate-300">|</span>
+                <span className="text-slate-300 hidden sm:inline">|</span>
                 <span className="text-emerald-700 font-semibold">นิเทศสำเร็จ: {stats.supervisedCompanies} แห่ง</span>
-                <span className="text-slate-300">|</span>
+                <span className="text-slate-300 hidden sm:inline">|</span>
                 <span className="text-amber-700 font-semibold">รอนิเทศ: {stats.pendingCompanies} แห่ง</span>
               </div>
               <div className="text-[13px] text-slate-400">
