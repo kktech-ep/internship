@@ -27,7 +27,7 @@ import {
   ChevronUp,
   FileSpreadsheet
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow, Form3SupervisionRecord } from '../types';
 import { LOGIN_SHEET_CONFIG } from '../services/sheetAuthService';
 import { 
   DATA_SHEET_CONFIG,
@@ -38,6 +38,8 @@ import {
   getAllRoomsFromData,
   getCoursesByRoom
 } from '../services/courseDataService';
+import { subscribeForm3Supervisions, subscribeCourses } from '../services/firestoreService';
+import { getLocalForm3Rows } from '../services/googleSheetsService';
 
 interface TeacherViewProps {
   students: Student[];
@@ -52,15 +54,17 @@ interface TeacherViewProps {
 
 export const TeacherView: React.FC<TeacherViewProps> = ({
   students,
-  companies,
+  companies: _companies,
   submissions,
   currentUser,
   onOpenForm3,
   onNavigateA4,
   onOpenLookerModal,
 }) => {
-  // Course data state from Google Sheet "data" tab
+  // Course data state from Google Sheet "data" tab & Firestore /courses
   const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
+  const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
+  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'students' | 'coursesMatrix'>('students');
 
   // Filters connected to BOTH login sheet and data sheet
@@ -88,11 +92,54 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
     return null;
   });
 
-  // Fetch courses from Google Sheets data tab on mount
+  // Fetch courses & subscribe to live Firestore Form 3 and courses collections
   useEffect(() => {
     fetchDataSheetCourses().then(res => {
       if (res && res.length > 0) setCourses(res);
     });
+
+    const unsubCourses = subscribeCourses(
+      (remoteCourses) => {
+        if (remoteCourses && remoteCourses.length > 0) {
+          setCourses(remoteCourses);
+        }
+      },
+      () => {}
+    );
+
+    const mergeAndSetForm3 = (remoteList?: Form3SupervisionRecord[]) => {
+      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
+      const local = getLocalForm3Rows();
+      const map = new Map<string, Form3SupervisionRecord>();
+      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      const merged = Array.from(map.values()).sort((a, b) => {
+        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
+        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
+        return timeB - timeA;
+      });
+      setForm3List(merged);
+    };
+
+    const unsubForm3 = subscribeForm3Supervisions(
+      (remoteRecords) => {
+        const recs = remoteRecords || [];
+        remoteForm3Ref.current = recs;
+        mergeAndSetForm3(recs);
+      },
+      (err) => console.warn('TeacherView Form3 stream notice:', err)
+    );
+
+    const handleForm3LocalSync = () => mergeAndSetForm3();
+    window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
+    window.addEventListener('storage', handleForm3LocalSync);
+
+    return () => {
+      unsubCourses();
+      unsubForm3();
+      window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
+      window.removeEventListener('storage', handleForm3LocalSync);
+    };
   }, []);
 
   useEffect(() => {
@@ -173,9 +220,73 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
     }) || null;
   }, [currentUserName, allTeachers]);
 
+  // Pre-compute real evaluation & submission status per student from Firestore
+  const evalByStudentId = useMemo(() => {
+    const map = new Map<string, {
+      isGraded: boolean;
+      scoreText: string;
+      gradeLabel: string;
+      submissionsCount: number;
+    }>();
+
+    // Group Form 3 supervision records by studentCode / studentId
+    const form3ByKey = new Map<string, Form3SupervisionRecord>();
+    form3List.forEach(r => {
+      if (r.studentId && !form3ByKey.has(r.studentId)) form3ByKey.set(r.studentId, r);
+      if (r.studentCode && !form3ByKey.has(r.studentCode)) form3ByKey.set(r.studentCode, r);
+    });
+
+    // Flatten submissions by candidate key
+    const subsByKey = new Map<string, WeeklySubmission[]>();
+    Object.entries(submissions).forEach(([k, arr]) => {
+      if (!Array.isArray(arr)) return;
+      const list = subsByKey.get(k) || [];
+      arr.forEach(s => {
+        list.push(s);
+        if (s.studentId) {
+          const prevList = subsByKey.get(s.studentId) || [];
+          if (!prevList.some(x => x.id === s.id)) {
+            subsByKey.set(s.studentId, [...prevList, s]);
+          }
+        }
+      });
+      subsByKey.set(k, list);
+    });
+
+    students.forEach(std => {
+      const stdSubs =
+        subsByKey.get(std.id) ||
+        subsByKey.get(std.studentCode) ||
+        subsByKey.get(`std-${std.studentCode}`) ||
+        [];
+      const f3 = form3ByKey.get(std.id) || form3ByKey.get(std.studentCode);
+      const gradedSub = stdSubs.find(s => s.status === 'graded');
+
+      if (f3 || gradedSub) {
+        const rawScore = typeof f3?.score === 'number' ? f3.score : (gradedSub?.teacherScore ?? 19.0);
+        const rawGrade = f3?.grade || gradedSub?.teacherGrade || 'ดีเยี่ยม (A)';
+        map.set(std.id, {
+          isGraded: true,
+          scoreText: rawScore.toFixed(1),
+          gradeLabel: rawGrade,
+          submissionsCount: stdSubs.length,
+        });
+      } else {
+        map.set(std.id, {
+          isGraded: false,
+          scoreText: '-',
+          gradeLabel: stdSubs.length > 0 ? `ส่งแล้ว ${stdSubs.length} สัปดาห์` : 'รอประเมิน',
+          submissionsCount: stdSubs.length,
+        });
+      }
+    });
+
+    return map;
+  }, [students, submissions, form3List]);
+
   // Master Filter Logic linking BOTH login sheet & data sheet
   const filteredStudents = useMemo(() => {
-    return students.filter((std, idx) => {
+    return students.filter((std) => {
       const studentRoom = (std.room || '').trim();
 
       // 1. Filter by room (แผ่นงาน login & data)
@@ -211,8 +322,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         }
       }
 
-      // 4. Filter by status
-      const isGraded = idx % 3 !== 1;
+      // 4. Filter by real database evaluation status
+      const evalInfo = evalByStudentId.get(std.id);
+      const isGraded = Boolean(evalInfo?.isGraded);
       if (selectedStatus === 'graded' && !isGraded) return false;
       if (selectedStatus === 'pending' && isGraded) return false;
 
@@ -239,7 +351,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
       return true;
     });
-  }, [students, courses, selectedRoom, selectedTeacher, selectedSubject, selectedStatus, searchTerm]);
+  }, [students, courses, selectedRoom, selectedTeacher, selectedSubject, selectedStatus, searchTerm, evalByStudentId]);
 
   // Count students under logged in teacher
   const myStudentsCount = useMemo(() => {
@@ -282,8 +394,8 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   }, [filteredStudents]);
 
   const gradedCount = useMemo(() => {
-    return filteredStudents.filter((s, idx) => idx % 3 !== 1).length;
-  }, [filteredStudents]);
+    return filteredStudents.filter((s) => Boolean(evalByStudentId.get(s.id)?.isGraded)).length;
+  }, [filteredStudents, evalByStudentId]);
 
   const pendingCount = Math.max(0, filteredStudents.length - gradedCount);
   const progressPercent = filteredStudents.length > 0 ? Math.round((gradedCount / filteredStudents.length) * 100) : 0;
@@ -703,15 +815,15 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {paginatedStudents.map((std, idx) => {
+                {paginatedStudents.map((std) => {
                   const studentRoom = std.room || '';
                   const studentCourses = std.courses || getCoursesByRoom(studentRoom, courses);
                   const isExpanded = expandedStudentId === std.id;
                   
-                  const realIdx = startIndex + idx;
-                  const isGraded = realIdx % 3 !== 1;
-                  const score = realIdx % 4 === 0 ? '19.5' : realIdx % 4 === 1 ? '18.0' : realIdx % 4 === 2 ? '17.5' : '16.5';
-                  const gradeLabel = realIdx % 4 === 0 ? 'ระดับดีเยี่ยม (A)' : realIdx % 4 === 1 ? 'ระดับดีมาก (B+)' : 'ระดับดีมาก (B)';
+                  const evalInfo = evalByStudentId.get(std.id);
+                  const isGraded = Boolean(evalInfo?.isGraded);
+                  const score = evalInfo?.scoreText || '-';
+                  const gradeLabel = evalInfo?.gradeLabel || 'รอประเมิน';
 
                   // Highlight matching course for filter
                   const matchingCourse = selectedSubject !== 'all' 

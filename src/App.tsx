@@ -18,16 +18,14 @@ import { AuthModal } from './components/Modals/AuthModal';
 import { LoginGatewayView } from './views/LoginGatewayView';
 import { StudentGuideView } from './views/StudentGuideView';
 import { mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements } from './data/mockData';
-import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord } from './types';
+import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Announcement } from './types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
 import { getStoredAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
-import { appendForm1ToGoogleSheet } from './services/googleSheetsService';
+import { appendForm1ToGoogleSheet, deleteLocalForm3Row, getLocalForm3Rows } from './services/googleSheetsService';
 import { 
-  saveCompanyDataToLoginSheet,
   getAllLoginSheetStudents,
   findStudentInLoginSheet,
   convertLoginRowToStudent,
-  fetchFullLoginSheetRows
 } from './services/sheetAuthService';
 import {
   syncAllLoginSheetRowsToFirebase,
@@ -38,12 +36,13 @@ import {
   subscribeStudents,
   subscribeCompanies,
   subscribeSubmissions,
+  subscribeAnnouncements,
+  subscribeForm3Supervisions,
   saveStudentToFirestore,
   saveSubmissionToFirestore,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore
 } from './services/firestoreService';
-import { deleteLocalForm3Row } from './services/googleSheetsService';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
@@ -60,7 +59,10 @@ export default function App() {
     return sheetStudents.length > 0 ? sheetStudents : mockStudents;
   });
   const [companies, setCompanies] = useState<Company[]>(mockCompanies);
-  const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>(mockWeeklySubmissions);
+  const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>({});
+  const [announcements, setAnnouncements] = useState<Announcement[]>(mockAnnouncements);
+  const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
+  const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
 
   // Initial active student id based on logged in user or first student from login sheet
   const [activeStudentId, setActiveStudentId] = useState<string>(() => {
@@ -107,8 +109,16 @@ export default function App() {
           setStudents((prev) => {
             const idx = prev.findIndex(s => s.studentCode === code || s.id === studentId || s.name === row.name);
             if (idx >= 0) {
+              const existing = prev[idx] as Student & { lastSyncSource?: string };
+              const keepExistingForm1 = existing.lastSyncSource === 'web_portal_form1';
               const updated = [...prev];
-              updated[idx] = { ...prev[idx], ...freshStudent };
+              updated[idx] = {
+                ...freshStudent,
+                ...existing,
+                companyName: keepExistingForm1 ? existing.companyName : (freshStudent.companyName || existing.companyName),
+                companyRegistration: keepExistingForm1 ? existing.companyRegistration : (freshStudent.companyRegistration || existing.companyRegistration),
+                avatarUrl: existing.avatarUrl || freshStudent.avatarUrl,
+              };
               return updated;
             } else {
               return [freshStudent, ...prev];
@@ -129,17 +139,33 @@ export default function App() {
       console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
     });
 
-    // 3. Real-time subscription to Students collection
+    // 3. Real-time subscription to Students collection merged over full Google Sheet baseline
     const unsubStudents = subscribeStudents(
       (remoteStudents) => {
         if (remoteStudents && remoteStudents.length > 0) {
-          setStudents(remoteStudents);
+          const sheetBase = getAllLoginSheetStudents();
+          const mergedMap = new Map<string, Student>();
+          sheetBase.forEach(s => mergedMap.set(s.id, s));
+          remoteStudents.forEach(rs => {
+            const localCachedAvatar =
+              (typeof localStorage !== 'undefined' &&
+                (localStorage.getItem(`kktech_avatar_${rs.id}`) ||
+                  localStorage.getItem(`kktech_avatar_std-${rs.studentCode}`))) ||
+              undefined;
+            const prev = mergedMap.get(rs.id);
+            mergedMap.set(rs.id, {
+              ...prev,
+              ...rs,
+              avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
+            });
+          });
+          setStudents(Array.from(mergedMap.values()));
         }
       },
       (err) => console.warn('Students firestore stream note:', err)
     );
 
-    // 3. Real-time subscription to Companies collection
+    // 4. Real-time subscription to Companies collection
     const unsubCompanies = subscribeCompanies(
       (remoteCompanies) => {
         if (remoteCompanies && remoteCompanies.length > 0) {
@@ -149,43 +175,81 @@ export default function App() {
       (err) => console.warn('Companies firestore stream note:', err)
     );
 
-    // 4. Real-time subscription to Weekly Submissions collection
+    // 5. Real-time subscription to Weekly Submissions collection (replace directly so deletions sync cleanly)
     const unsubSubmissions = subscribeSubmissions(
       (remoteSubs) => {
-        if (remoteSubs && remoteSubs.length > 0) {
-          const grouped: Record<string, WeeklySubmission[]> = {};
-          remoteSubs.forEach((sub) => {
-            if (!grouped[sub.studentId]) {
-              grouped[sub.studentId] = [];
-            }
-            grouped[sub.studentId].push(sub);
-          });
-          setSubmissions(prev => ({
-            ...prev,
-            ...grouped
-          }));
-        }
+        const grouped: Record<string, WeeklySubmission[]> = {};
+        remoteSubs.forEach((sub) => {
+          if (!grouped[sub.studentId]) {
+            grouped[sub.studentId] = [];
+          }
+          grouped[sub.studentId].push(sub);
+        });
+        setSubmissions(grouped);
       },
       (err) => console.warn('Submissions firestore stream note:', err)
     );
+
+    // 6. Real-time subscription to Announcements collection
+    const unsubAnnouncements = subscribeAnnouncements(
+      (remoteAnnouncements) => {
+        if (remoteAnnouncements && remoteAnnouncements.length > 0) {
+          setAnnouncements(remoteAnnouncements);
+        }
+      },
+      (err) => console.warn('Announcements firestore stream note:', err)
+    );
+
+    // 7. Real-time subscription to Form 3 Supervisions + local cache events
+    const mergeAndSetForm3 = (remoteList?: Form3SupervisionRecord[]) => {
+      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
+      const local = getLocalForm3Rows();
+      const map = new Map<string, Form3SupervisionRecord>();
+      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      const merged = Array.from(map.values()).sort((a, b) => {
+        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
+        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
+        return timeB - timeA;
+      });
+      setForm3List(merged);
+    };
+
+    const unsubForm3 = subscribeForm3Supervisions(
+      (remoteRecords) => {
+        const recs = remoteRecords || [];
+        remoteForm3Ref.current = recs;
+        mergeAndSetForm3(recs);
+      },
+      (err) => console.warn('Form 3 supervision stream note:', err)
+    );
+
+    const handleForm3LocalSync = () => mergeAndSetForm3();
+    window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
+    window.addEventListener('storage', handleForm3LocalSync);
 
     return () => {
       unsubStudents();
       unsubCompanies();
       unsubSubmissions();
+      unsubAnnouncements();
+      unsubForm3();
+      window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
+      window.removeEventListener('storage', handleForm3LocalSync);
     };
   }, []);
 
   // Callback to update student company registration from Form #1
   const handleSaveCompanyInfo = async (updatedInfo: Partial<Student['companyRegistration']> & { companyName?: string }) => {
-    const updatedStudent: Student = {
+    const updatedStudent = {
       ...currentStudent,
       companyName: updatedInfo.companyName || currentStudent.companyName,
+      lastSyncSource: 'web_portal_form1',
       companyRegistration: {
         ...currentStudent.companyRegistration,
         ...updatedInfo
       }
-    };
+    } as Student;
 
     setStudents(prev => prev.map(s => s.id === currentStudent.id ? updatedStudent : s));
     
@@ -235,12 +299,12 @@ export default function App() {
     }
   };
 
-  // Callback to submit Form #2 weekly report
+  // Callback to submit Form #2 weekly report (unified deterministic doc ID matching WeeklyLogReportView)
   const handleSubmitWeeklyReport = async (submissionData: Partial<WeeklySubmission>) => {
     const weekNum = submissionData.weekNumber || 8;
     const weekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum);
     const newSub: WeeklySubmission = {
-      id: `sub-w${weekNum}-${Date.now()}`,
+      id: `sub-${currentStudent.id}-w${weekNum}`,
       studentId: currentStudent.id,
       weekNumber: weekNum,
       dateRange: submissionData.dateRange || weekMeta?.dateRange || '10 มิ.ย. 2569 - 14 มิ.ย. 2569',
@@ -342,6 +406,12 @@ export default function App() {
   const handleDeleteSubmission = async (submissionId: string, studentId: string): Promise<boolean> => {
     try {
       await deleteSubmissionFromFirestore(submissionId);
+      const targetSub = (submissions[studentId] || []).find(s => s.id === submissionId);
+      if (targetSub && typeof localStorage !== 'undefined') {
+        const cleanCode = studentId.replace(/^std-/, '');
+        localStorage.removeItem(`kktech_submission_${studentId}_w${targetSub.weekNumber}`);
+        localStorage.removeItem(`kktech_submission_${cleanCode}_w${targetSub.weekNumber}`);
+      }
       setSubmissions(prev => {
         const studentSubs = prev[studentId] || [];
         return {
@@ -361,6 +431,7 @@ export default function App() {
     try {
       await deleteForm3SupervisionFromFirestore(recordId);
       deleteLocalForm3Row(recordId);
+      setForm3List(prev => prev.filter(r => r.id !== recordId));
       return true;
     } catch (err) {
       console.error('Error deleting supervision from Firestore:', err);
@@ -381,7 +452,7 @@ export default function App() {
       const newStudentId = `std-${code}`;
       setActiveStudentId(newStudentId);
 
-      // Fetch row directly from Google Sheet login tab (1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28)
+      // Fetch row directly from Google Sheet login tab without clobbering existing Firestore Form 1 edits or avatars
       try {
         const row = await findStudentInLoginSheet(code, effectiveUser.name);
         if (row) {
@@ -389,8 +460,16 @@ export default function App() {
           setStudents(prev => {
             const idx = prev.findIndex(s => s.studentCode === code || s.id === newStudentId || s.name === effectiveUser.name);
             if (idx >= 0) {
+              const existing = prev[idx] as Student & { lastSyncSource?: string };
+              const keepExistingForm1 = existing.lastSyncSource === 'web_portal_form1';
               const updated = [...prev];
-              updated[idx] = { ...prev[idx], ...studentFromSheet };
+              updated[idx] = {
+                ...studentFromSheet,
+                ...existing,
+                companyName: keepExistingForm1 ? existing.companyName : (studentFromSheet.companyName || existing.companyName),
+                companyRegistration: keepExistingForm1 ? existing.companyRegistration : (studentFromSheet.companyRegistration || existing.companyRegistration),
+                avatarUrl: existing.avatarUrl || studentFromSheet.avatarUrl,
+              };
               return updated;
             }
             return [studentFromSheet, ...prev];
@@ -539,8 +618,12 @@ export default function App() {
               }}
               onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
               onOpenLookerModal={() => setIsLookerModalOpen(true)}
-              announcements={mockAnnouncements}
+              announcements={announcements}
               student={currentStudent}
+              students={students}
+              companies={companies}
+              submissions={submissions}
+              form3List={form3List}
               currentUser={currentUser}
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onUpdateAvatar={handleUpdateStudentAvatar}
@@ -696,12 +779,18 @@ export default function App() {
       <LookerStudioModal
         isOpen={isLookerModalOpen}
         onClose={() => setIsLookerModalOpen(false)}
+        students={students}
+        companies={companies}
+        submissions={submissions}
+        form3List={form3List}
       />
 
       <GoogleSheetModal
         isOpen={isSheetsModalOpen}
         onClose={() => setIsSheetsModalOpen(false)}
         students={students}
+        submissions={submissions}
+        form3List={form3List}
       />
 
       <AuthModal

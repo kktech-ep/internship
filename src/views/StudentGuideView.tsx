@@ -164,8 +164,8 @@ export const StudentGuideView: React.FC<StudentGuideViewProps> = ({
       pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
-      // Add remaining pages
-      while (heightLeft > 0) {
+      // Add remaining pages only if remaining content exceeds 4mm rounding tolerance
+      while (heightLeft > 4) {
         position -= pageHeight;
         pdf.addPage();
         pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);

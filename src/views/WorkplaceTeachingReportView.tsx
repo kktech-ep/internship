@@ -1000,109 +1000,38 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     });
   };
 
-  // BUTTON 1: "พิมพ์บันทึกข้อความรายงานการจัดการเรียนรู้" (1-Page A4 PDF)
-  const handlePrintMemoPDF = async () => {
-    const el = document.getElementById('memo-printable-page');
-    if (!el) {
-      window.print();
-      return;
-    }
-
-    setIsGeneratingMemo(true);
-    try {
-      const { jsPDF } = await import('jspdf');
-      const canvas = await capturePageToCanvas(el);
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const maxPdfHeight = pdf.internal.pageSize.getHeight();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, maxPdfHeight));
-
-      const fileName = `บันทึกข้อความ_รายงานการสอนบูรณาการ_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
-      pdf.save(fileName);
-    } catch (err) {
-      console.warn('PDF memo print notice:', err);
-      window.print();
-    } finally {
-      setIsGeneratingMemo(false);
-    }
-  };
-
-  // BUTTON 2: "พิมพ์รายงานการจัดการเรียนรู้รายสัปดาห์" (2-Page A4 PDF in a single file)
-  const handlePrintWeeklyReportPDF = async () => {
-    const page1El = document.getElementById('weekly-report-page-1');
-    const page2El = document.getElementById('weekly-report-page-2');
-
-    if (!page1El || !page2El) {
-      window.print();
-      return;
-    }
-
-    setIsGeneratingReport(true);
-    try {
-      const { jsPDF } = await import('jspdf');
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const maxPdfHeight = pdf.internal.pageSize.getHeight();
-
-      // Render Page 1
-      const canvas1 = await capturePageToCanvas(page1El);
-      const imgData1 = canvas1.toDataURL('image/jpeg', 0.98);
-      const height1 = (canvas1.height * pdfWidth) / canvas1.width;
-      pdf.addImage(imgData1, 'JPEG', 0, 0, pdfWidth, Math.min(height1, maxPdfHeight));
-
-      // Add Page 2
-      pdf.addPage();
-
-      // Render Page 2
-      const canvas2 = await capturePageToCanvas(page2El);
-      const imgData2 = canvas2.toDataURL('image/jpeg', 0.98);
-      const height2 = (canvas2.height * pdfWidth) / canvas2.width;
-      pdf.addImage(imgData2, 'JPEG', 0, 0, pdfWidth, Math.min(height2, maxPdfHeight));
-
-      const fileName = `รายงานการจัดการเรียนรู้รายสัปดาห์_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
-      pdf.save(fileName);
-    } catch (err) {
-      console.warn('PDF weekly report print notice:', err);
-      window.print();
-    } finally {
-      setIsGeneratingReport(false);
-    }
-  };
-
-  // BUTTON 3: "พิมพ์เอกสารทั้งหมด (ครบ 3 หน้า)" or currently previewed tab PDF
-  const handlePrintAllDocsPDF = async (targetScope: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') => {
+  // Unified PDF exporter (eliminates duplicate loops & prevents blank pages)
+  const exportDocsToPdf = async (
+    targetScope: 'all' | 'doc1' | 'doc2' | 'doc2_1' | 'doc2_2',
+    setLoading: (loading: boolean) => void
+  ) => {
     const memoEl = document.getElementById('memo-printable-page');
     const page1El = document.getElementById('weekly-report-page-1');
     const page2El = document.getElementById('weekly-report-page-2');
 
-    const targets: { el: HTMLElement | null; label: string }[] = [];
-    if (targetScope === 'all' || targetScope === 'doc1') targets.push({ el: memoEl, label: 'หน้า1_บันทึกข้อความ' });
-    if (targetScope === 'all' || targetScope === 'doc2_1') targets.push({ el: page1El, label: 'หน้า2_ตารางสอน' });
-    if (targetScope === 'all' || targetScope === 'doc2_2') targets.push({ el: page2El, label: 'หน้า3_ประมวลภาพ' });
+    const candidates: { el: HTMLElement | null; label: string }[] = [];
+    if (targetScope === 'all' || targetScope === 'doc1') {
+      candidates.push({ el: memoEl, label: 'หน้า1_บันทึกข้อความ' });
+    }
+    if (targetScope === 'all' || targetScope === 'doc2' || targetScope === 'doc2_1') {
+      candidates.push({ el: page1El, label: 'หน้า2_ตารางสอน' });
+    }
+    if (targetScope === 'all' || targetScope === 'doc2' || targetScope === 'doc2_2') {
+      candidates.push({ el: page2El, label: 'หน้า3_ประมวลภาพ' });
+    }
 
-    if (targets.some(t => !t.el)) {
+    const targets = candidates.filter(
+      (t): t is { el: HTMLElement; label: string } => Boolean(t.el && t.el.offsetHeight > 0)
+    );
+
+    if (targets.length === 0) {
       window.print();
       return;
     }
 
-    setIsGeneratingAll(true);
+    setLoading(true);
     try {
       const { jsPDF } = await import('jspdf');
-
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -1111,26 +1040,53 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const maxPdfHeight = pdf.internal.pageSize.getHeight();
 
-      for (let i = 0; i < targets.length; i++) {
-        const el = targets[i].el!;
-        if (i > 0) pdf.addPage();
-        const canvas = await capturePageToCanvas(el);
+      let addedPages = 0;
+      for (const target of targets) {
+        const canvas = await capturePageToCanvas(target.el);
+        if (!canvas || canvas.width === 0 || canvas.height === 0) continue;
+
+        if (addedPages > 0) {
+          pdf.addPage();
+        }
         const imgData = canvas.toDataURL('image/jpeg', 0.98);
         const height = (canvas.height * pdfWidth) / canvas.width;
         pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(height, maxPdfHeight));
+        addedPages++;
       }
 
-      const fileName = targetScope === 'all'
-        ? `เอกสารรายงานการสอนบูรณาการ_ครบชุด3หน้า_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`
-        : `เอกสารรายงานการสอนบูรณาการ_${targets[0].label}_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      if (addedPages === 0) {
+        window.print();
+        return;
+      }
+
+      let fileName = '';
+      if (targetScope === 'doc1') {
+        fileName = `บันทึกข้อความ_รายงานการสอนบูรณาการ_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      } else if (targetScope === 'doc2') {
+        fileName = `รายงานการจัดการเรียนรู้รายสัปดาห์_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      } else if (targetScope === 'all') {
+        fileName = `เอกสารรายงานการสอนบูรณาการ_ครบชุด3หน้า_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      } else {
+        fileName = `เอกสารรายงานการสอนบูรณาการ_${targets[0].label}_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+      }
       pdf.save(fileName);
     } catch (err) {
-      console.warn('PDF combined print notice:', err);
+      console.warn('PDF print notice:', err);
       window.print();
     } finally {
-      setIsGeneratingAll(false);
+      setLoading(false);
     }
   };
+
+  // BUTTON 1: เอกสารที่ 1 (1-Page A4 PDF)
+  const handlePrintMemoPDF = () => exportDocsToPdf('doc1', setIsGeneratingMemo);
+
+  // BUTTON 2: เอกสารที่ 2 (2-Page A4 PDF)
+  const handlePrintWeeklyReportPDF = () => exportDocsToPdf('doc2', setIsGeneratingReport);
+
+  // BUTTON 3: พิมพ์เอกสารตามขอบเขตที่เลือกใน Print Preview ('all' | 'doc1' | 'doc2_1' | 'doc2_2')
+  const handlePrintAllDocsPDF = (targetScope: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') =>
+    exportDocsToPdf(targetScope, setIsGeneratingAll);
 
   // Helper renderer: Document 1 Memo Page
   const renderMemoContent = (isModal: boolean = false) => (
@@ -1588,7 +1544,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   return (
     <div className="space-y-6 print:space-y-0 workplace-report-print-root">
       {/* Control Configuration Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-5 print:hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-5 text-[13px] print:hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -1599,7 +1555,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ
               </h2>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-[13px] text-slate-500">
           
             </p>
           </div>
@@ -1618,7 +1574,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         </div>
 
         {/* Inputs Form Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-1 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-1 text-[13px]">
           {/* 1. ชื่อผู้รายงาน */}
           <div className="space-y-1">
             <label className="font-semibold text-slate-700 flex items-center gap-1.5">
@@ -1628,7 +1584,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <select
               value={reporterName}
               onChange={(e) => setReporterName(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {allTeachers.map(t => (
                 <option key={t} value={t}>{t}</option>
@@ -1645,7 +1601,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <select
               value={position}
               onChange={(e) => setPosition(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {POSITION_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
@@ -1664,7 +1620,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               value={specialDuty}
               onChange={(e) => setSpecialDuty(e.target.value)}
               placeholder="เช่น - หรือ หัวหน้างาน..."
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -1678,7 +1634,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               type="date"
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -1691,7 +1647,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <select
               value={selectedWeek}
               onChange={(e) => setSelectedWeek(parseInt(e.target.value))}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {weeksList.map(w => (
                 <option key={w.weekNumber} value={w.weekNumber}>
@@ -1705,25 +1661,25 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         {/* Course dynamic table */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
               <span>ข้อมูลรายวิชาสอนในสถานประกอบการ</span>
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSyncCoursesFromSheets}
                 disabled={isSyncingCourses}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-semibold transition disabled:opacity-60 cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[13px] font-semibold transition disabled:opacity-60 cursor-pointer"
                 title="ซิงค์และอัปเดตรายวิชาจาก Google Sheets (data และ ตาราง Pivot 1) ให้เป็นปัจจุบัน"
               >
-                <RefreshCw className={`w-3 h-3 text-emerald-700 ${isSyncingCourses ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${isSyncingCourses ? 'animate-spin' : ''}`} />
                 <span>{isSyncingCourses ? 'กำลังซิงค์ชีต...' : 'ซิงค์ชีตตารางสอน'}</span>
               </button>
               <button
                 onClick={handleAddCourse}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-semibold transition cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[13px] font-semibold transition cursor-pointer"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>เพิ่มรายวิชา</span>
               </button>
             </div>
@@ -1731,15 +1687,15 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
           {/* Sync notification */}
           {courseSyncMsg && (
-            <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2 shadow-2xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-[13px] flex items-center gap-2 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{courseSyncMsg}</span>
             </div>
           )}
 
           <div className="space-y-2.5 overflow-x-auto">
             {/* Desktop column headers (Strictly aligned with input columns) */}
-            <div className="hidden md:grid md:grid-cols-[28px_110px_minmax(160px,1fr)_260px_135px_126px_32px] gap-2.5 px-3 py-1 text-[11px] font-bold text-slate-500 items-center md:min-w-[880px]">
+            <div className="hidden md:grid md:grid-cols-[32px_115px_minmax(160px,1fr)_250px_145px_136px_32px] gap-2.5 px-3 py-1 text-[13px] font-bold text-slate-600 items-center md:min-w-[910px]">
               <span className="text-center">#</span>
               <span>รหัสวิชา</span>
               <span>ชื่อรายวิชา</span>
@@ -1752,71 +1708,71 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             {courses.map((course, idx) => (
               <div 
                 key={course.id} 
-                className="flex flex-col md:grid md:grid-cols-[28px_110px_minmax(160px,1fr)_260px_135px_126px_32px] gap-2.5 p-3 bg-slate-50/90 rounded-xl border border-slate-200 text-xs shadow-2xs items-center md:min-w-[880px]"
+                className="flex flex-col md:grid md:grid-cols-[32px_115px_minmax(160px,1fr)_250px_145px_136px_32px] gap-2.5 p-3 bg-slate-50/90 rounded-xl border border-slate-200 text-[13px] shadow-2xs items-center md:min-w-[910px]"
               >
                 {/* 1. # */}
-                <div className="flex items-center justify-between md:justify-center">
-                  <span className="md:hidden text-[10px] font-semibold text-slate-500">ลำดับ</span>
+                <div className="flex items-center justify-between md:justify-center w-full md:w-auto">
+                  <span className="md:hidden text-[13px] font-semibold text-slate-500">ลำดับ</span>
                   <span className="font-bold text-slate-600 text-center">#{idx + 1}</span>
                 </div>
 
                 {/* 2. รหัสวิชา */}
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-0.5 md:hidden">รหัสวิชา</label>
+                <div className="w-full md:w-auto">
+                  <label className="block text-[13px] font-semibold text-slate-500 mb-0.5 md:hidden">รหัสวิชา</label>
                   <input
                     type="text"
                     value={course.subjectCode}
                     onChange={(e) => handleUpdateCourse(course.id, 'subjectCode', e.target.value)}
                     placeholder="รหัสวิชา"
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-mono text-[13px] focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 {/* 3. ชื่อรายวิชา */}
-                <div className="min-w-0">
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-0.5 md:hidden">ชื่อรายวิชา</label>
+                <div className="min-w-0 w-full md:w-auto">
+                  <label className="block text-[13px] font-semibold text-slate-500 mb-0.5 md:hidden">ชื่อรายวิชา</label>
                   <input
                     type="text"
                     value={course.subjectName}
                     onChange={(e) => handleUpdateCourse(course.id, 'subjectName', e.target.value)}
                     placeholder="ชื่อรายวิชา"
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 truncate"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-[13px] focus:ring-2 focus:ring-indigo-500 truncate"
                   />
                 </div>
 
                 {/* 4. กลุ่มเรียน */}
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-0.5 md:hidden">กลุ่มเรียน</label>
+                <div className="w-full md:w-auto">
+                  <label className="block text-[13px] font-semibold text-slate-500 mb-0.5 md:hidden">กลุ่มเรียน</label>
                   <input
                     type="text"
                     value={course.room}
                     onChange={(e) => handleUpdateCourse(course.id, 'room', e.target.value)}
                     placeholder="กลุ่มเรียน เช่น สอฟ.2/5"
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-[13px] focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
                 {/* 5. วันที่สอน */}
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-0.5 md:hidden">วันที่สอน</label>
+                <div className="w-full md:w-auto">
+                  <label className="block text-[13px] font-semibold text-slate-500 mb-0.5 md:hidden">วันที่สอน</label>
                   <input
                     type="date"
                     value={course.teachDate}
                     onChange={(e) => handleUpdateCourse(course.id, 'teachDate', e.target.value)}
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-[13px] focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
 
-                {/* 6. ช่วงเวลาสอน: ปรับเป็น 3/4 จาก 168px เหลือ 126px */}
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 mb-0.5 md:hidden">ช่วงเวลาสอน</label>
+                {/* 6. ช่วงเวลาสอน */}
+                <div className="w-full md:w-auto">
+                  <label className="block text-[13px] font-semibold text-slate-500 mb-0.5 md:hidden">ช่วงเวลาสอน</label>
                   <input
                     type="text"
                     value={course.teachTime}
                     onChange={(e) => handleUpdateCourse(course.id, 'teachTime', e.target.value)}
                     placeholder="เช่น 15.00-17.00 น."
                     title="ช่วงเวลาสอน (เช่น 15.00-17.00 น.)"
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-2 focus:ring-indigo-500 font-medium"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-[13px] focus:ring-2 focus:ring-indigo-500 font-medium"
                   />
                 </div>
 
@@ -1841,14 +1797,14 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
         {/* Learning outcomes text editor */}
         <div className="pt-2 border-t border-slate-100">
-          <label className="font-semibold text-slate-700 text-xs block mb-1">
+          <label className="font-semibold text-slate-700 text-[13px] block mb-1">
             ผลที่เกิดจากการจัดการเรียนรู้:
           </label>
           <textarea
             rows={2}
             value={learningOutcome}
             onChange={(e) => setLearningOutcome(e.target.value)}
-            className="w-full p-2 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 text-[13px] rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
       </div>
@@ -1874,8 +1830,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <span>เอกสารที่ 1: บันทึกข้อความรายงานการจัดการเรียนรู้ (1 หน้ากระดาษ A4)</span>
             </span>
             <button
-              onClick={() => handleOpenPrintPreview('all')}
+              onClick={() => handleOpenPrintPreview('doc1')}
               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
+              title="สั่งพิมพ์หรือดาวน์โหลด เฉพาะเอกสารที่ 1 (บันทึกข้อความ)"
             >
               <Eye className="w-3.5 h-3.5" />
               <span>สั่งพิมพ์หรือดาวน์โหลด เอกสาร</span>
@@ -1908,8 +1865,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500 font-mono">หน้า 1/2</span>
               <button
-                onClick={() => handleOpenPrintPreview('all')}
+                onClick={() => handleOpenPrintPreview('doc2_1')}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
+                title="สั่งพิมพ์หรือดาวน์โหลด เฉพาะเอกสารที่ 2 (หน้าที่ 1/2)"
               >
                 <Eye className="w-3.5 h-3.5" />
                 <span>สั่งพิมพ์หรือดาวน์โหลด เอกสาร</span>
@@ -1959,8 +1917,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
               <button
                 type="button"
-                onClick={() => handleOpenPrintPreview('all')}
+                onClick={() => handleOpenPrintPreview('doc2_2')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer"
+                title="สั่งพิมพ์หรือดาวน์โหลด เฉพาะเอกสารที่ 2 (หน้าที่ 2/2)"
               >
                 <Eye className="w-3.5 h-3.5" />
                 <span>สั่งพิมพ์หรือดาวน์โหลด เอกสาร</span>
@@ -2040,6 +1999,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             {renderReportPage2Content(false)}
           </div>
         </div>
+      </div>
 
         {/* ------------------------------------------------------------- */}
         {/* PHOTO EDIT & DATABASE SUPERVISION LIBRARY MODAL               */}
@@ -2738,8 +2698,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </div>
           </div>
         )}
-
-      </div>
     </div>
   );
 };

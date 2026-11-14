@@ -22,10 +22,11 @@ import {
   Download,
   BookOpen
 } from 'lucide-react';
-import { Announcement, Student, AuthUser } from '../types';
+import { Announcement, Student, AuthUser, Company, WeeklySubmission, Form3SupervisionRecord } from '../types';
 import { getCurrentWeekInfo } from '../data/weeksData';
 import { StudentAvatar } from '../components/StudentAvatar';
 import { downloadAllWebZip } from '../services/webZipService';
+import { getCachedCourses } from '../services/courseDataService';
 
 interface HubViewProps {
   onNavigate: (view: string) => void;
@@ -36,6 +37,10 @@ interface HubViewProps {
   onOpenLookerModal: () => void;
   announcements: Announcement[];
   student: Student;
+  students?: Student[];
+  companies?: Company[];
+  submissions?: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
   currentUser?: AuthUser | null;
   onOpenAuthModal?: () => void;
   onUpdateAvatar?: (dataUrl: string) => void;
@@ -50,11 +55,29 @@ export const HubView: React.FC<HubViewProps> = ({
   onOpenLookerModal,
   announcements,
   student,
+  students = [],
+  submissions = {},
+  form3List = [],
   currentUser,
   onOpenAuthModal,
   onUpdateAvatar,
 }) => {
   const currentWeekInfo = getCurrentWeekInfo();
+  const totalStudentsCount = students.length > 0 ? students.length : 1;
+  const allSubsCount = Object.values(submissions).flat().length;
+  const supervisedStudentKeys = new Set<string>();
+  form3List.forEach(r => {
+    if (r.studentId) supervisedStudentKeys.add(r.studentId);
+    if (r.studentCode) supervisedStudentKeys.add(r.studentCode);
+  });
+  Object.values(submissions).flat().forEach(s => {
+    if (s.studentId) supervisedStudentKeys.add(s.studentId);
+  });
+  const activeOrSubmittedStudentsCount = students.filter(
+    s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode)
+  ).length;
+  const remainingStudentsCount = Math.max(0, totalStudentsCount - activeOrSubmittedStudentsCount);
+  const totalLinkedRows = students.length + allSubsCount + form3List.length + getCachedCourses().length;
 
   return (
     <div className="space-y-6 pb-12">
@@ -346,16 +369,16 @@ export const HubView: React.FC<HubViewProps> = ({
                     {/* Stats 3 columns */}
                     <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
                       <div>
-                        <div className="text-lg font-bold text-slate-900">42</div>
+                        <div className="text-lg font-bold text-slate-900">{totalStudentsCount}</div>
                         <div className="text-xs text-slate-500">ในความดูแล</div>
                       </div>
                       <div>
-                        <div className="text-lg font-bold text-emerald-600">38</div>
-                        <div className="text-xs text-slate-500">ส่งแล้ว</div>
+                        <div className="text-lg font-bold text-emerald-600">{activeOrSubmittedStudentsCount}</div>
+                        <div className="text-xs text-slate-500">ส่ง/นิเทศแล้ว</div>
                       </div>
                       <div>
-                        <div className="text-lg font-bold text-amber-600">4</div>
-                        <div className="text-xs text-slate-500">รอตรวจ</div>
+                        <div className="text-lg font-bold text-amber-600">{remainingStudentsCount}</div>
+                        <div className="text-xs text-slate-500">รอติดตาม</div>
                       </div>
                     </div>
                   </div>
@@ -413,9 +436,9 @@ export const HubView: React.FC<HubViewProps> = ({
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2 text-slate-600">
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>แถวข้อมูลทั้งหมด:</span>
+                        <span>แถวข้อมูลเชื่อมโยงทั้งหมด:</span>
                       </div>
-                      <span className="font-bold text-slate-900">2,450 รายการ</span>
+                      <span className="font-bold text-slate-900">{totalLinkedRows.toLocaleString()} รายการ</span>
                     </div>
                   </div>
 
@@ -518,7 +541,7 @@ export const HubView: React.FC<HubViewProps> = ({
               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">
                 Synced
               </span>
-              <div className="text-xs text-slate-400 mt-1">2,450 rows</div>
+              <div className="text-xs text-slate-400 mt-1">{totalLinkedRows.toLocaleString()} rows</div>
             </div>
           </div>
 

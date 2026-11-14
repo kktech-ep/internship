@@ -160,15 +160,13 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
 
     const unsubSubs = subscribeSubmissions(
       (items) => {
-        if (items && items.length > 0) {
-          const map: Record<string, WeeklySubmission[]> = {};
-          for (const item of items) {
-            const sid = item.studentId;
-            if (!map[sid]) map[sid] = [];
-            map[sid].push(item);
-          }
-          setRemoteSubmissions(map);
+        const map: Record<string, WeeklySubmission[]> = {};
+        for (const item of items || []) {
+          const sid = item.studentId;
+          if (!map[sid]) map[sid] = [];
+          map[sid].push(item);
         }
+        setRemoteSubmissions(map);
       },
       (err) => console.warn('Submissions stream notice:', err)
     );
@@ -580,15 +578,28 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       .reduce((acc, c) => acc + c.studentsCount, 0);
     const progressPercent = totalCompanies > 0 ? Math.round((supervisedCompanies / totalCompanies) * 100) : 0;
 
+    const scoredRecords = form3List.filter(r => typeof r.score === 'number' && r.score > 0);
+    const avgScore = scoredRecords.length > 0
+      ? Number((scoredRecords.reduce((acc, r) => acc + r.score, 0) / scoredRecords.length).toFixed(1))
+      : 0;
+    const avgGrade = avgScore === 0 ? '-' : avgScore >= 16 ? 'A' : avgScore >= 14 ? 'B+' : avgScore >= 12 ? 'B' : 'C';
+    const avgScoreText = avgScore > 0
+      ? `ผลประเมินสมรรถนะเฉลี่ย ${avgScore} / 20 (${avgGrade})`
+      : 'ยังไม่มีผลประเมินสมรรถนะ (รอการนิเทศ)';
+    const ppePassedCount = form3List.filter(r => r.safetyPassed !== false).length;
+    const ppePercent = form3List.length > 0 ? Math.round((ppePassedCount / form3List.length) * 100) : 100;
+
     return {
       totalCompanies,
       supervisedCompanies,
       pendingCompanies,
       totalStudents,
       supervisedStudents,
-      progressPercent
+      progressPercent,
+      avgScoreText,
+      ppePercent
     };
-  }, [companySummaries, allSheetStudents]);
+  }, [companySummaries, allSheetStudents, form3List]);
 
   // Export to CSV function
   const handleExportCSV = () => {
@@ -919,7 +930,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-16 print:space-y-0 print:pb-0 a4-report-root">
       {/* Top Main Navigation Tabs & Action Bar */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -1083,12 +1094,12 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             <ShieldCheck className="w-4 h-4 text-sky-600" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-sky-600">100%</span>
+            <span className="text-2xl font-bold text-sky-600">{stats.ppePercent}%</span>
             <span className="text-sm text-slate-500 font-normal">ผ่านเกณฑ์ สอศ.</span>
           </div>
           <div className="text-[13px] text-emerald-700 font-medium flex items-center gap-1">
             <Award className="w-4 h-4 text-amber-500" />
-            <span>ผลประเมินสมรรถนะเฉลี่ย 19.4 / 20 (A)</span>
+            <span>{stats.avgScoreText}</span>
           </div>
         </div>
       </div>
@@ -1827,7 +1838,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           TAB 2: Official A4 Printable Weekly Report (ทว.04 Formatter)
           ========================================================================= */}
       {activeTab === 'a4' && (
-        <div className="space-y-6">
+        <div className="space-y-6 print:space-y-0">
           {/* Top Sub-View Switcher Bar */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -2007,10 +2018,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             <>
 
           {/* A4 Printable Sheet Container */}
-          <div className="w-full overflow-x-auto pb-2 flex sm:justify-center print:overflow-visible print:block">
+          <div className="w-full overflow-x-auto pb-2 flex sm:justify-center print:overflow-visible print:block print:pb-0 a4-sheet-scroll-wrap">
             <div
               id="a4-printable-document"
-              className="bg-white min-w-[680px] sm:min-w-0 w-full max-w-[210mm] min-h-[297mm] p-6 sm:p-12 shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[13px] leading-relaxed relative flex flex-col justify-between shrink-0"
+              className="bg-white min-w-[680px] sm:min-w-0 w-full max-w-[210mm] min-h-[297mm] print:min-h-0 p-6 sm:p-12 print:p-0 shadow-2xl print:shadow-none rounded-sm border print:border-none border-slate-300 text-slate-900 font-sarabun text-[13px] leading-relaxed relative flex flex-col justify-between shrink-0"
               style={{ boxSizing: 'border-box' }}
             >
               <div className="space-y-4">

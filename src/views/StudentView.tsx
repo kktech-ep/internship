@@ -217,9 +217,17 @@ export const StudentView: React.FC<StudentViewProps> = ({
               <span className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide">
                 ขั้นตอนที่ 1 • แบบฟอร์มแรกเข้า
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                บันทึกแล้ว
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
+                student.companyName && student.companyName !== 'ยังไม่ระบุสถานประกอบการ'
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  : 'bg-amber-100 text-amber-800 border-amber-200'
+              }`}>
+                <CheckCircle2 className={`w-3.5 h-3.5 ${
+                  student.companyName && student.companyName !== 'ยังไม่ระบุสถานประกอบการ'
+                    ? 'text-emerald-600'
+                    : 'text-amber-600'
+                }`} />
+                {student.companyName && student.companyName !== 'ยังไม่ระบุสถานประกอบการ' ? 'บันทึกแล้ว' : 'รอระบุสถานประกอบการ'}
               </span>
             </div>
 
@@ -307,8 +315,19 @@ export const StudentView: React.FC<StudentViewProps> = ({
                 <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
                 กำหนดส่งภายในวันอาทิตย์นี้
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                สัปดาห์ที่ {student.currentWeek} รอดำเนินการ
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                currentSubmission?.status === 'graded'
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  : currentSubmission
+                  ? 'bg-sky-100 text-sky-800 border-sky-200'
+                  : 'bg-amber-100 text-amber-800 border-amber-200'
+              }`}>
+                สัปดาห์ที่ {student.currentWeek}{' '}
+                {currentSubmission
+                  ? currentSubmission.status === 'graded'
+                    ? 'ตรวจผ่านแล้ว'
+                    : 'ส่งแล้ว รอตรวจ'
+                  : 'รอดำเนินการ'}
               </span>
             </div>
 
@@ -383,7 +402,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
             <h3 className="font-bold text-slate-900 text-base">ประวัติการส่งรายงานและผลการตรวจนิเทศก์</h3>
           </div>
           <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            สถานะ: ตรวจผ่าน 7 รายการ
+            สถานะ: ตรวจผ่าน {submissions.filter(s => s.status === 'graded').length} / {submissions.length} รายการ
           </span>
         </div>
 
@@ -401,11 +420,18 @@ export const StudentView: React.FC<StudentViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {submissions.map((sub) => (
-                <tr key={sub.id} className="hover:bg-slate-50/80 transition">
-                  <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
-                    สัปดาห์ที่ {sub.weekNumber}
+              {submissions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    ยังไม่มีรายการส่งรายงานประจำสัปดาห์ในระบบ (คลิก "เปิดหน้าบันทึกการปฏิบัติงาน" เพื่อส่งสัปดาห์ที่ {student.currentWeek})
                   </td>
+                </tr>
+              ) : (
+                submissions.map((sub) => (
+                  <tr key={sub.id} className="hover:bg-slate-50/80 transition">
+                    <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                      สัปดาห์ที่ {sub.weekNumber}
+                    </td>
                   <td className="py-3 px-4">
                     <div className="font-medium text-slate-900">{sub.taskTitle}</div>
                     <div className="text-xs text-slate-400 mt-0.5">ส่งเมื่อ {sub.submittedAt}</div>
@@ -446,7 +472,8 @@ export const StudentView: React.FC<StudentViewProps> = ({
                     </button>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>

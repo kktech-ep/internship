@@ -15,38 +15,40 @@ import {
   BookOpen,
   Camera
 } from 'lucide-react';
-import { Student, CourseDataRow, Form3SupervisionRecord } from '../../types';
+import { Student, CourseDataRow, Form3SupervisionRecord, WeeklySubmission } from '../../types';
 import { 
   getLocalForm1Rows, 
   fetchGoogleSheetForm1Rows, 
   getLocalForm3Rows,
-  fetchGoogleSheetForm3Rows,
   GOOGLE_SHEET_CONFIG, 
   Form1RowData 
 } from '../../services/googleSheetsService';
 import { 
   fetchSheetLoginAccounts, 
   SheetLoginAccount,
-  LOGIN_SHEET_CONFIG 
 } from '../../services/sheetAuthService';
 import { 
   fetchDataSheetCourses, 
   getCachedCourses,
-  DATA_SHEET_CONFIG 
 } from '../../services/courseDataService';
 import { syncAllLoginSheetRowsToFirebase } from '../../services/sheetFirebaseSyncService';
+import { subscribeForm3Supervisions } from '../../services/firestoreService';
 import { getCachedAccessToken, requestGoogleSheetsAccessToken } from '../../services/authService';
 
 interface GoogleSheetModalProps {
   isOpen: boolean;
   onClose: () => void;
   students: Student[];
+  submissions?: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
 }
 
 export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   isOpen,
   onClose,
   students,
+  submissions = {},
+  form3List: propForm3List,
 }) => {
   const [activeTab, setActiveTab] = useState<'form1' | 'form2' | 'login' | 'data' | 'form3'>('login');
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,7 +56,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   const [form1Rows, setForm1Rows] = useState<Form1RowData[]>([]);
   const [loginAccounts, setLoginAccounts] = useState<SheetLoginAccount[]>([]);
   const [dataCourses, setDataCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
-  const [form3Rows, setForm3Rows] = useState<Form3SupervisionRecord[]>([]);
+  const [form3Rows, setForm3Rows] = useState<Form3SupervisionRecord[]>(() => propForm3List || getLocalForm3Rows());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
@@ -76,104 +78,71 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen) {
-      setForm1Rows(getLocalForm1Rows());
+    if (!isOpen) return;
+    setForm1Rows(getLocalForm1Rows());
+    if (propForm3List && propForm3List.length > 0) {
+      setForm3Rows(propForm3List);
+    } else {
       setForm3Rows(getLocalForm3Rows());
-      fetchSheetLoginAccounts().then(accs => setLoginAccounts(accs));
-      fetchDataSheetCourses().then(c => setDataCourses(c));
     }
-  }, [isOpen]);
+    fetchSheetLoginAccounts().then(accs => setLoginAccounts(accs));
+    fetchDataSheetCourses().then(c => setDataCourses(c));
+
+    const unsubForm3 = subscribeForm3Supervisions(
+      (remoteRecords) => {
+        const local = getLocalForm3Rows();
+        const map = new Map<string, Form3SupervisionRecord>();
+        local.forEach(r => { if (r && r.id) map.set(r.id, r); });
+        (remoteRecords || []).forEach(r => { if (r && r.id) map.set(r.id, r); });
+        setForm3Rows(Array.from(map.values()));
+      },
+      () => {}
+    );
+    return () => unsubForm3();
+  }, [isOpen, propForm3List]);
 
   if (!isOpen) return null;
 
-  // Generate simulated sheet rows for Form #2 (Weekly Reports)
-  const mockForm2Rows = [
-    {
-      timestamp: '14/06/2024 17:30:15',
-      studentCode: '65301040018',
-      studentName: 'นายธนากร สุริยะแสง',
-      company: 'การไฟฟ้าส่วนภูมิภาค สาขาขอนแก่น (PEA)',
-      week: 'สัปดาห์ที่ 8',
-      hours: '40',
-      task: 'ติดตั้งตู้ MDB & Wiring Control',
-      tools: 'ประแจปอนด์, เครื่องเป่าลม, Megger Test',
-      groundResistance: '3.84 Ω',
-      ppeStatus: 'ผ่าน 100%',
-      mentorScore: '5.0',
-      teacherScore: '19.5',
-      grade: 'A',
-      inspector: 'นายทักษิณ โสภาปิยะ',
-      status: 'อนุมัติแล้ว'
-    },
-    {
-      timestamp: '14/06/2024 16:45:20',
-      studentCode: '66301040012',
-      studentName: 'นายกิตติศักดิ์ เจริญศรี',
-      company: 'การไฟฟ้าส่วนภูมิภาค สาขาขอนแก่น (PEA)',
-      week: 'สัปดาห์ที่ 8',
-      hours: '40',
-      task: 'บำรุงรักษาสถานีไฟฟ้า 115 kV',
-      tools: 'Earth Tester, Clamp Meter',
-      groundResistance: '3.10 Ω',
-      ppeStatus: 'ผ่าน 100%',
-      mentorScore: '5.0',
-      teacherScore: '19.5',
-      grade: 'A',
-      inspector: 'นายทักษิณ โสภาปิยะ',
-      status: 'อนุมัติแล้ว'
-    },
-    {
-      timestamp: '14/06/2024 18:10:02',
-      studentCode: '66301040018',
-      studentName: 'นายชนาภัทร สมบูรณ์ผล',
-      company: 'บจก. ไทยเพาเวอร์ คอนโทรล ขอนแก่น',
-      week: 'สัปดาห์ที่ 8',
-      hours: '40',
-      task: 'งานประกอบตู้ควบคุม MDB & PLC',
-      tools: 'คีมย้ำหางปลา, โน้ตบุ๊กทดสอบ PLC',
-      groundResistance: '4.20 Ω',
-      ppeStatus: 'ผ่าน 100%',
-      mentorScore: '4.8',
-      teacherScore: '18.0',
-      grade: 'B+',
-      inspector: 'นายทักษิณ โสภาปิยะ',
-      status: 'รอประเมิน'
-    },
-    {
-      timestamp: '13/06/2024 15:20:44',
-      studentCode: '66301040024',
-      studentName: 'นางสาวสุจิตรา วรรณดี',
-      company: 'บจก. สยามคูโบต้า คอร์ปอเรชั่น',
-      week: 'สัปดาห์ที่ 8',
-      hours: '40',
-      task: 'ฝ่ายระบบไฟฟ้ายานยนต์และมอเตอร์ขับเคลื่อน',
-      tools: 'Multimeter, Battery Tester',
-      groundResistance: '2.95 Ω',
-      ppeStatus: 'ผ่าน 100%',
-      mentorScore: '4.9',
-      teacherScore: '18.0',
-      grade: 'B+',
-      inspector: 'นายทักษิณ โสภาปิยะ',
-      status: 'อนุมัติแล้ว'
-    },
-    {
-      timestamp: '13/06/2024 14:15:10',
-      studentCode: '66301040033',
-      studentName: 'นายอนุรักษ์ โพธิ์แก้ว',
-      company: 'บจก. อีสานโซลาร์เอนเนอร์ยี ขอนแก่น',
-      week: 'สัปดาห์ที่ 8',
-      hours: '40',
-      task: 'ติดตั้งระบบ Solar Rooftop & อินเวอร์เตอร์ 3 เฟส',
-      tools: 'PV Clamp, Torque Wrench, MC4 Crimper',
-      groundResistance: '3.60 Ω',
-      ppeStatus: 'ผ่าน 100%',
-      mentorScore: '4.7',
-      teacherScore: '17.5',
-      grade: 'B',
-      inspector: 'นายทักษิณ โสภาปิยะ',
-      status: 'อนุมัติแล้ว'
-    }
-  ];
+  // Build live Form #2 rows directly from Firestore/App submissions joined with student roster
+  const studentByKey = new Map<string, Student>();
+  students.forEach(s => {
+    if (s.id) studentByKey.set(s.id, s);
+    if (s.studentCode) studentByKey.set(s.studentCode, s);
+  });
+
+  const liveForm2Rows = Object.entries(submissions)
+    .flatMap(([studentKey, subs]) =>
+      (subs || []).map(sub => {
+        const std =
+          studentByKey.get(sub.studentId) ||
+          studentByKey.get(studentKey) ||
+          studentByKey.get(sub.studentId.replace(/^std-/, ''));
+        return {
+          timestamp: sub.submittedAt || '-',
+          studentCode: std?.studentCode || sub.studentId.replace(/^std-/, ''),
+          studentName: std?.name || sub.studentSignature || sub.studentId,
+          company: std?.companyName || '-',
+          weekNumber: sub.weekNumber,
+          week: `สัปดาห์ที่ ${sub.weekNumber}`,
+          hours: String(sub.totalHours ?? 40),
+          task: sub.taskTitle || '-',
+          groundResistance: 'ผ่านมาตรฐาน',
+          ppeStatus:
+            sub.safetyChecklist &&
+            sub.safetyChecklist.hardHat &&
+            sub.safetyChecklist.highVoltageGloves &&
+            sub.safetyChecklist.safetyShoes
+              ? 'ผ่าน 100%'
+              : 'ตรวจตามเกณฑ์',
+          mentorScore: String(sub.mentorRating ?? 5.0),
+          teacherScore: String(sub.teacherScore ?? '-'),
+          grade: sub.teacherGrade || '-',
+          inspector: sub.teacherName || std?.supervisorTeacher || '-',
+          status: sub.status === 'graded' ? 'ประเมินแล้ว' : 'รอตรวจประเมิน'
+        };
+      })
+    )
+    .sort((a, b) => b.weekNumber - a.weekNumber);
 
   // Refresh live rows from Google Sheets API
   const handleRefreshLive = async () => {
@@ -237,13 +206,14 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
     );
   });
 
-  const filteredForm2Rows = mockForm2Rows.filter((r) => {
-    const matchesSearch = 
-      r.studentName.includes(searchTerm) ||
-      r.studentCode.includes(searchTerm) ||
-      r.company.includes(searchTerm) ||
-      r.task.includes(searchTerm);
-    const matchesWeek = filterWeek === 'all' || r.week.includes(filterWeek);
+  const filteredForm2Rows = liveForm2Rows.filter((r) => {
+    const q = searchTerm.toLowerCase();
+    const matchesSearch = !q ||
+      r.studentName.toLowerCase().includes(q) ||
+      r.studentCode.toLowerCase().includes(q) ||
+      r.company.toLowerCase().includes(q) ||
+      r.task.toLowerCase().includes(q);
+    const matchesWeek = filterWeek === 'all' || String(r.weekNumber) === filterWeek;
     return matchesSearch && matchesWeek;
   });
 
@@ -298,6 +268,20 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `GoogleSheets_${GOOGLE_SHEET_CONFIG.form1SheetName}_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (activeTab === 'form3') {
+      const headers = 'Timestamp,VisitDate,StudentCode,StudentName,Room,Company,Teacher,Mentor,PPE,Score,Grade,Status\n';
+      const csvContent = filteredForm3Rows.map(r =>
+        `"${r.timestamp}","${r.visitDate}","${r.studentCode}","${r.studentName}","${r.studentRoom}","${r.companyName}","${r.teacherName}","${r.mentorName}","${r.safetyPassed ? 'ผ่าน PPE' : 'ปรับปรุง'}","${r.score}","${r.grade}","${r.status}"`
+      ).join('\n');
+
+      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `KKTECH_Internship_Form3_Supervision_${Date.now()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -449,7 +433,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
               <Calendar className="w-3.5 h-3.5 text-sky-600" />
               <span>แผ่นงาน: Form_2 (รายงานประจำสัปดาห์)</span>
               <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 text-sky-800">
-                {mockForm2Rows.length} รายการ
+                {liveForm2Rows.length} รายการ
               </span>
             </button>
 
@@ -507,8 +491,9 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                 className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
               >
                 <option value="all">ทุกสัปดาห์</option>
-                <option value="8">สัปดาห์ที่ 8</option>
-                <option value="7">สัปดาห์ที่ 7</option>
+                {Array.from({ length: 18 }, (_, i) => i + 1).map(w => (
+                  <option key={w} value={String(w)}>สัปดาห์ที่ {w}</option>
+                ))}
               </select>
             )}
           </div>
@@ -661,7 +646,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                 ))}
               </tbody>
             </table>
-          ) : (
+          ) : activeTab === 'form2' ? (
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-100 text-slate-700 text-[11px] font-semibold sticky top-0 border-b border-slate-200 z-10">
                 <tr>
@@ -672,35 +657,43 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
                   <th className="p-2.5">งวด/สัปดาห์</th>
                   <th className="p-2.5">ชม.</th>
                   <th className="p-2.5">หัวข้องาน</th>
-                  <th className="p-2.5">ค่ากราวด์</th>
+                  <th className="p-2.5">มาตรฐาน</th>
                   <th className="p-2.5">PPE</th>
                   <th className="p-2.5">คะแนน/20</th>
                   <th className="p-2.5 pr-4">สถานะ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredForm2Rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                    <td className="p-2.5 pl-4 text-slate-500 whitespace-nowrap font-mono">{row.timestamp}</td>
-                    <td className="p-2.5 font-bold text-slate-900 font-mono">{row.studentCode}</td>
-                    <td className="p-2.5 font-medium whitespace-nowrap">{row.studentName}</td>
-                    <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.company}</td>
-                    <td className="p-2.5 whitespace-nowrap">{row.week}</td>
-                    <td className="p-2.5">{row.hours}</td>
-                    <td className="p-2.5 text-slate-700 max-w-xs truncate">{row.task}</td>
-                    <td className="p-2.5 text-sky-700 font-mono">{row.groundResistance}</td>
-                    <td className="p-2.5 text-emerald-700">{row.ppeStatus}</td>
-                    <td className="p-2.5 font-bold text-sky-700">{row.teacherScore} ({row.grade})</td>
-                    <td className="p-2.5 pr-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                        {row.status}
-                      </span>
+                {filteredForm2Rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="p-8 text-center text-slate-400">
+                      ยังไม่มีบันทึกส่งงานประจำสัปดาห์ในระบบ Firestore (เมื่อนักศึกษาส่งฟอร์ม #2 จะแสดงผลแบบเรียลไทม์ทันที)
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredForm2Rows.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
+                      <td className="p-2.5 pl-4 text-slate-500 whitespace-nowrap font-mono">{row.timestamp}</td>
+                      <td className="p-2.5 font-bold text-slate-900 font-mono">{row.studentCode}</td>
+                      <td className="p-2.5 font-medium whitespace-nowrap">{row.studentName}</td>
+                      <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.company}</td>
+                      <td className="p-2.5 whitespace-nowrap">{row.week}</td>
+                      <td className="p-2.5">{row.hours}</td>
+                      <td className="p-2.5 text-slate-700 max-w-xs truncate">{row.task}</td>
+                      <td className="p-2.5 text-sky-700 font-mono">{row.groundResistance}</td>
+                      <td className="p-2.5 text-emerald-700">{row.ppeStatus}</td>
+                      <td className="p-2.5 font-bold text-sky-700">{row.teacherScore} ({row.grade})</td>
+                      <td className="p-2.5 pr-4 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
-          )}
+          ) : null}
 
           {/* Tab 5: รายงานการนิเทศ & รูปถ่าย 3-4 รูป */}
           {activeTab === 'form3' && (

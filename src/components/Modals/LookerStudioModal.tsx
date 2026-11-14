@@ -1,12 +1,137 @@
-import React from 'react';
-import { X, ExternalLink, BarChart3, TrendingUp, Users, CheckCircle, PieChart, ShieldAlert } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { X, ExternalLink, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
+import { Student, Company, WeeklySubmission, Form3SupervisionRecord } from '../../types';
+import { getCurrentWeekInfo } from '../../data/weeksData';
 
 interface LookerStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
+  students?: Student[];
+  companies?: Company[];
+  submissions?: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
 }
 
-export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({ isOpen, onClose }) => {
+export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({
+  isOpen,
+  onClose,
+  students = [],
+  companies = [],
+  submissions = {},
+  form3List = [],
+}) => {
+  const analytics = useMemo(() => {
+    const totalStudents = students.length;
+    const allSubs = Object.values(submissions).flat();
+
+    // Level breakdown
+    const pvs2Count = students.filter(s => (s.level || '').includes('ปวส.2') || (s.room || '').includes('2/')).length;
+    const pvs1Count = students.filter(s => (s.level || '').includes('ปวส.1') || (s.room || '').includes('1/')).length;
+    const otherLevelCount = Math.max(0, totalStudents - pvs2Count - pvs1Count);
+
+    // Distinct active companies from students (fallback to companies collection)
+    const companyGroups = new Map<string, { studentsCount: number; sectorKey: 'pea' | 'factory' | 'solar' | 'building' }>();
+    students.forEach((s) => {
+      const cName = (s.companyName || '').trim();
+      if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') return;
+      if (!companyGroups.has(cName)) {
+        let sectorKey: 'pea' | 'factory' | 'solar' | 'building' = 'building';
+        if (cName.includes('การไฟฟ้า') || cName.includes('กฟภ') || cName.includes('กฟผ') || cName.includes('PEA') || cName.includes('EGAT')) {
+          sectorKey = 'pea';
+        } else if (cName.includes('โซล่าร์') || cName.includes('Solar') || cName.includes('พลังงาน')) {
+          sectorKey = 'solar';
+        } else if (cName.includes('อุตสาหกรรม') || cName.includes('ผลิต') || cName.includes('มิตซูบิชิ') || cName.includes('คูโบต้า') || cName.includes('น้ำตาล') || cName.includes('โรงงาน')) {
+          sectorKey = 'factory';
+        }
+        companyGroups.set(cName, { studentsCount: 0, sectorKey });
+      }
+      companyGroups.get(cName)!.studentsCount++;
+    });
+
+    const totalCompanies = companyGroups.size > 0 ? companyGroups.size : companies.length;
+
+    // Sector aggregation
+    const sectors = {
+      pea: { label: 'สถานีไฟฟ้าแรงสูง / PEA / EGAT', companies: 0, students: 0, color: 'bg-sky-600' },
+      factory: { label: 'โรงงานอุตสาหกรรม / ตู้ MDB / PLC', companies: 0, students: 0, color: 'bg-indigo-600' },
+      solar: { label: 'Solar Cell & พลังงานแสงอาทิตย์', companies: 0, students: 0, color: 'bg-amber-500' },
+      building: { label: 'งานติดตั้งระบบไฟฟ้าอาคาร & บริการ', companies: 0, students: 0, color: 'bg-emerald-600' },
+    };
+    companyGroups.forEach((info) => {
+      sectors[info.sectorKey].companies += 1;
+      sectors[info.sectorKey].students += info.studentsCount;
+    });
+
+    const sectorRows = Object.values(sectors).map((sec) => ({
+      ...sec,
+      percent: totalCompanies > 0 ? Math.round((sec.companies / totalCompanies) * 100) : 0,
+    }));
+
+    // Supervised students & average competency score
+    const supervisedStudentKeys = new Set<string>();
+    form3List.forEach(r => {
+      if (r.studentId) supervisedStudentKeys.add(r.studentId);
+      if (r.studentCode) supervisedStudentKeys.add(r.studentCode);
+    });
+    const submittedStudentIds = new Set<string>();
+    allSubs.forEach(sub => {
+      if (sub.studentId) submittedStudentIds.add(sub.studentId);
+    });
+
+    const engagedStudentsCount = students.filter(
+      s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode) || submittedStudentIds.has(s.id)
+    ).length;
+
+    const activityRate = totalStudents > 0
+      ? Math.round((engagedStudentsCount / totalStudents) * 1000) / 10
+      : 0;
+
+    // Average score from Form 3 records + graded submissions
+    const allScores: number[] = [];
+    form3List.forEach(r => { if (typeof r.score === 'number' && r.score > 0) allScores.push(r.score); });
+    allSubs.forEach(sub => { if (sub.status === 'graded' && typeof sub.teacherScore === 'number' && sub.teacherScore > 0) allScores.push(sub.teacherScore); });
+    const avgScore = allScores.length > 0
+      ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
+      : 0;
+    const avgGrade = avgScore >= 18 ? 'ดีเยี่ยม (A)' : avgScore >= 16 ? 'ดีมาก (B+)' : avgScore >= 14 ? 'ดี (B)' : avgScore > 0 ? 'ผ่านเกณฑ์' : 'รอข้อมูลประเมิน';
+
+    // Weekly activity bars (W1 - W8 or up to current week)
+    const currentWeekNum = Math.max(8, getCurrentWeekInfo().weekNumber || 8);
+    const startWeek = Math.max(1, currentWeekNum - 7);
+    const weeklyBars = Array.from({ length: 8 }, (_, idx) => {
+      const w = startWeek + idx;
+      const count = allSubs.filter(s => s.weekNumber === w).length;
+      const pct = totalStudents > 0 ? Math.min(100, Math.round((count / totalStudents) * 100)) : 0;
+      return {
+        w: `W${w}`,
+        count,
+        val: Math.max(8, pct),
+        label: count > 0 ? `${count} รายการ` : '0',
+        active: w === currentWeekNum
+      };
+    });
+
+    const ppePassedCount = form3List.filter(r => r.safetyPassed).length;
+    const ppePercent = form3List.length > 0 ? Math.round((ppePassedCount / form3List.length) * 100) : 100;
+
+    return {
+      totalStudents,
+      pvs2Count,
+      pvs1Count,
+      otherLevelCount,
+      totalCompanies,
+      activityRate,
+      engagedStudentsCount,
+      allSubsCount: allSubs.length,
+      avgScore,
+      avgGrade,
+      sectorRows,
+      weeklyBars,
+      ppePercent,
+      form3Count: form3List.length,
+    };
+  }, [students, companies, submissions, form3List]);
+
   if (!isOpen) return null;
 
   return (
@@ -22,7 +147,7 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({ isOpen, on
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm text-white">Looker Studio Enterprise Dashboard</span>
                 <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Live Stream Synced
+                  Live Firestore Synced
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
@@ -43,30 +168,34 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({ isOpen, on
           {/* Top Metric Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-slate-500 text-[11px]">อัตราการส่งบันทึกงาน</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">92.4%</div>
+              <span className="text-slate-500 text-[11px]">ความครอบคลุมส่งงาน/นิเทศ</span>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{analytics.activityRate}%</div>
               <div className="text-[10px] text-emerald-600 flex items-center gap-1 mt-1 font-medium">
                 <TrendingUp className="w-3 h-3" />
-                <span>สูงกว่าเกณฑ์มาตรฐาน (80%)</span>
+                <span>{analytics.engagedStudentsCount}/{analytics.totalStudents} คน ({analytics.allSubsCount} บันทึกสัปดาห์)</span>
               </div>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <span className="text-slate-500 text-[11px]">นักศึกษาในระบบทั้งหมด</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">42 คน</div>
-              <div className="text-[10px] text-slate-500 mt-1">ปวส.2: 28 | ปวช.3: 14</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{analytics.totalStudents} คน</div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                ปวส.2: {analytics.pvs2Count} | ปวส.1: {analytics.pvs1Count}{analytics.otherLevelCount > 0 ? ` | อื่นๆ: ${analytics.otherLevelCount}` : ''}
+              </div>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-slate-500 text-[11px]">สถานประกอบการ MOU</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">24 แห่ง</div>
-              <div className="text-[10px] text-sky-600 mt-1">ครอบคลุม 4 โซนรอบเมือง</div>
+              <span className="text-slate-500 text-[11px]">สถานประกอบการฝึกจริง</span>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{analytics.totalCompanies} แห่ง</div>
+              <div className="text-[10px] text-sky-600 mt-1">นิเทศแล้ว {analytics.form3Count} รายการ</div>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <span className="text-slate-500 text-[11px]">คะแนนสมรรถนะเฉลี่ย</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">18.6 / 20</div>
-              <div className="text-[10px] text-emerald-600 mt-1">ระดับดีเยี่ยม (Grade A)</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {analytics.avgScore > 0 ? `${analytics.avgScore.toFixed(1)} / 20` : '- / 20'}
+              </div>
+              <div className="text-[10px] text-emerald-600 mt-1">{analytics.avgGrade}</div>
             </div>
           </div>
 
@@ -76,73 +205,36 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({ isOpen, on
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <span className="font-bold text-slate-800">การกระจายตัวสายงานไฟฟ้าที่ฝึกจริง</span>
-                <span className="text-[11px] text-slate-400">24 สถานประกอบการ</span>
+                <span className="text-[11px] text-slate-400">{analytics.totalCompanies} สถานประกอบการ</span>
               </div>
               <div className="space-y-2.5">
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-600">สถานีไฟฟ้าแรงสูง / PEA / EGAT (35%)</span>
-                    <span className="font-semibold text-slate-800">8 แห่ง (14 คน)</span>
+                {analytics.sectorRows.map((sec) => (
+                  <div key={sec.label}>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-slate-600">{sec.label} ({sec.percent}%)</span>
+                      <span className="font-semibold text-slate-800">{sec.companies} แห่ง ({sec.students} คน)</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                      <div className={`${sec.color} h-2.5 rounded-full transition-all`} style={{ width: `${sec.percent}%` }}></div>
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-sky-600 h-2.5 rounded-full" style={{ width: '35%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-600">โรงงานอุตสาหกรรม / ตู้ MDB / PLC (40%)</span>
-                    <span className="font-semibold text-slate-800">10 แห่ง (18 คน)</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: '40%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-600">Solar Cell & พลังงานแสงอาทิตย์ (15%)</span>
-                    <span className="font-semibold text-slate-800">4 แห่ง (6 คน)</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: '15%' }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-600">งานติดตั้งระบบไฟฟ้าอาคาร & รพ. (10%)</span>
-                    <span className="font-semibold text-slate-800">2 แห่ง (4 คน)</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-emerald-600 h-2.5 rounded-full" style={{ width: '10%' }}></div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
-            {/* Chart 2: Weekly On-site Inspection Progress */}
+            {/* Chart 2: Weekly Submission Progress */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-800">ความคืบหน้าการลงพื้นที่นิเทศก์ (สัปดาห์ 1-8)</span>
-                <span className="text-[11px] text-emerald-600 font-medium">ตรวจแล้ว 75%</span>
+                <span className="font-bold text-slate-800">สถิติการส่งบันทึกการฝึกงานรายสัปดาห์ (ข้อมูลจริง)</span>
+                <span className="text-[11px] text-emerald-600 font-medium">รวม {analytics.allSubsCount} รายการ</span>
               </div>
               <div className="flex items-end gap-2 h-36 pt-4 px-2">
-                {[
-                  { w: 'W1', val: 100, label: '100%' },
-                  { w: 'W2', val: 95, label: '95%' },
-                  { w: 'W3', val: 92, label: '92%' },
-                  { w: 'W4', val: 88, label: '88%' },
-                  { w: 'W5', val: 94, label: '94%' },
-                  { w: 'W6', val: 90, label: '90%' },
-                  { w: 'W7', val: 96, label: '96%' },
-                  { w: 'W8', val: 75, label: '75%', active: true },
-                ].map((bar, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                    <span className="text-[9px] text-slate-500 font-mono">{bar.label}</span>
+                {analytics.weeklyBars.map((bar) => (
+                  <div key={bar.w} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                    <span className="text-[9px] text-slate-500 font-mono">{bar.count}</span>
                     <div
                       className={`w-full rounded-t-md transition-all ${
-                        bar.active ? 'bg-amber-500' : 'bg-sky-600'
+                        bar.active ? 'bg-amber-500' : bar.count > 0 ? 'bg-sky-600' : 'bg-slate-200'
                       }`}
                       style={{ height: `${bar.val}%` }}
                     ></div>
@@ -160,9 +252,9 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({ isOpen, on
                 <CheckCircle className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-semibold text-sm">การปฏิบัติตามมาตรฐานความปลอดภัย PPE & LOTO: 100%</div>
+                <div className="font-semibold text-sm">การปฏิบัติตามมาตรฐานความปลอดภัย PPE & LOTO: {analytics.ppePercent}%</div>
                 <div className="text-[11px] text-slate-400">
-                  นักศึกษาทุกคนสวมใส่อุปกรณ์คุ้มครองความปลอดภัยส่วนบุคคลครบถ้วน ไม่มีอุบัติเหตุเกิดขึ้นในงวดนี้
+                  ประมวลผลสดจากบันทึกการนิเทศทั้งหมด {analytics.form3Count} รายการในฐานข้อมูล Firestore
                 </div>
               </div>
             </div>

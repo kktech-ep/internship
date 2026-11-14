@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShieldCheck, 
   Database, 
@@ -33,6 +33,8 @@ import {
 import { downloadAllWebZip } from '../services/webZipService';
 import { subscribeForm3Supervisions } from '../services/firestoreService';
 import { getLocalForm3Rows } from '../services/googleSheetsService';
+import { getAllLoginSheetTeachers, fetchSheetLoginAccounts } from '../services/sheetAuthService';
+import { getCachedCourses, getRoomsByTeacher } from '../services/courseDataService';
 
 interface AdminViewProps {
   students: Student[];
@@ -69,26 +71,46 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [supSearch, setSupSearch] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
+  const [loginAccountsCount, setLoginAccountsCount] = useState<number>(() => Math.max(students.length, 152));
+  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
+
   useEffect(() => {
-    const local = getLocalForm3Rows();
-    if (local && local.length > 0) {
-      setSupervisions(local);
-    }
+    fetchSheetLoginAccounts()
+      .then((accs) => {
+        if (accs && accs.length > 0) setLoginAccountsCount(accs.length);
+      })
+      .catch(() => {});
+
+    const mergeAndSet = (remoteList?: Form3SupervisionRecord[]) => {
+      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
+      const local = getLocalForm3Rows();
+      const map = new Map<string, Form3SupervisionRecord>();
+      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      setSupervisions(Array.from(map.values()));
+    };
+
+    mergeAndSet([]);
 
     const unsub = subscribeForm3Supervisions(
       (remoteRecords) => {
-        if (remoteRecords && remoteRecords.length > 0) {
-          const map = new Map<string, Form3SupervisionRecord>();
-          local.forEach(r => map.set(r.id, r));
-          remoteRecords.forEach(r => map.set(r.id, r));
-          setSupervisions(Array.from(map.values()));
-        }
+        const recs = remoteRecords || [];
+        remoteForm3Ref.current = recs;
+        mergeAndSet(recs);
       },
       (err) => console.warn('Form3 supervision stream notice in AdminView:', err)
     );
 
-    return () => unsub();
-  }, []);
+    const handleSync = () => mergeAndSet();
+    window.addEventListener('kktech_form3_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      unsub();
+      window.removeEventListener('kktech_form3_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [students.length]);
 
   // Map student details
   const studentMap = useMemo(() => {
@@ -113,6 +135,58 @@ export const AdminView: React.FC<AdminViewProps> = ({
     });
     return list.sort((a, b) => b.weekNumber - a.weekNumber);
   }, [submissions, studentMap]);
+
+  const sheetTeachers = useMemo(() => getAllLoginSheetTeachers(), []);
+  const sheetCoursesCount = useMemo(() => getCachedCourses().length, []);
+
+  const liveMetrics = useMemo(() => {
+    const totalStudents = students.length;
+    const totalTeachers = sheetTeachers.length;
+    const totalRecords = totalStudents + companies.length + allSubmissionsList.length + supervisions.length + sheetCoursesCount;
+    const supervisedStudentIds = new Set(supervisions.map(r => r.studentCode || r.studentName).filter(Boolean));
+    const gradedStudentIds = new Set(allSubmissionsList.filter(s => s.status === 'graded').map(s => s.studentId));
+    const coveredCount = new Set([...supervisedStudentIds, ...gradedStudentIds]).size;
+    const passRate = totalStudents > 0 ? Math.min(100, Math.round((coveredCount / totalStudents) * 1000) / 10) : 0;
+
+    return {
+      totalStudents,
+      totalTeachers,
+      totalRecords,
+      passRate
+    };
+  }, [students.length, sheetTeachers.length, companies.length, allSubmissionsList, supervisions, sheetCoursesCount]);
+
+  const teacherAssignments = useMemo(() => {
+    const courses = getCachedCourses();
+    return sheetTeachers.slice(0, 6).map((t) => {
+      const assignedRooms = Array.from(new Set([...(t.rooms || []), ...getRoomsByTeacher(t.name, courses)]));
+      const cleanTName = t.name.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim();
+      const assignedStudents = students.filter(s =>
+        (s.room && assignedRooms.includes(s.room)) ||
+        (cleanTName && s.supervisorTeacher && s.supervisorTeacher.includes(cleanTName))
+      );
+      const uniqueCompanies = new Set(
+        assignedStudents.map(s => (s.companyName || '').trim()).filter(n => n && !n.includes('รออัปเดต'))
+      );
+      const supervisedSet = new Set(
+        supervisions
+          .filter(r => r.teacherName?.includes(cleanTName) || assignedStudents.some(s => s.studentCode === r.studentCode))
+          .map(r => r.studentCode || r.studentName)
+      );
+      const pct = assignedStudents.length > 0
+        ? Math.min(100, Math.round((supervisedSet.size / assignedStudents.length) * 100))
+        : 0;
+      return {
+        id: t.id,
+        name: t.name,
+        role: t.role,
+        roomsText: assignedRooms.length > 0 ? assignedRooms.join(', ') : (t.department || 'แผนกวิชาช่างไฟฟ้ากำลัง'),
+        studentsCount: assignedStudents.length,
+        companiesCount: uniqueCompanies.size,
+        supervisedPct: pct
+      };
+    });
+  }, [sheetTeachers, students, supervisions]);
 
   const filteredSubmissions = useMemo(() => {
     return allSubmissionsList.filter(s => {
@@ -420,9 +494,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
               ฐานข้อมูลผู้ใช้งาน (User & Pass) เชื่อมโยงตรงจาก Google Sheets สู่ Firebase Firestore
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
-              ข้อมูลเก่าถูกล้างออกจาก Firebase (internship2-2569) ทั้งหมดแล้ว และทดแทนด้วยข้อมูลผู้ใช้จริงจาก Google Sheets แผ่นงาน Login: 
-              <strong className="text-slate-900"> นักศึกษา 123 คน</strong> (คอลเลกชัน <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/students</code>) และ 
-              <strong className="text-slate-900"> ครูนิเทศก์/ประจำวิชา 37 ท่าน</strong> (คอลเลกชัน <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/teachers</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/users</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/login_sheet</code>)
+              ข้อมูลผู้ใช้จริงซิงค์จาก Google Sheets แผ่นงาน Login เข้าสู่ Firebase (internship2-2569): 
+              <strong className="text-slate-900"> นักศึกษา {liveMetrics.totalStudents} คน</strong> (คอลเลกชัน <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/students</code>) และ 
+              <strong className="text-slate-900"> ครูนิเทศก์/ประจำวิชา {liveMetrics.totalTeachers} ท่าน</strong> (คอลเลกชัน <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/teachers</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/users</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-xs">/login_sheet</code>)
             </p>
           </div>
 
@@ -451,17 +525,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100 text-sm">
           <div className="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200">
             <div className="text-xs text-amber-800 font-semibold">นักศึกษาในระบบ</div>
-            <div className="text-xl font-bold text-slate-900 mt-0.5">123 <span className="text-sm font-normal text-slate-500">คน</span></div>
+            <div className="text-xl font-bold text-slate-900 mt-0.5">{liveMetrics.totalStudents} <span className="text-sm font-normal text-slate-500">คน</span></div>
             <div className="text-xs text-slate-500">/students collection</div>
           </div>
           <div className="p-2.5 rounded-xl bg-sky-50/50 border border-sky-200">
             <div className="text-xs text-sky-800 font-semibold">ครูนิเทศก์ / ประจำวิชา</div>
-            <div className="text-xl font-bold text-slate-900 mt-0.5">37 <span className="text-sm font-normal text-slate-500">ท่าน</span></div>
+            <div className="text-xl font-bold text-slate-900 mt-0.5">{liveMetrics.totalTeachers} <span className="text-sm font-normal text-slate-500">ท่าน</span></div>
             <div className="text-xs text-slate-500">/teachers collection</div>
           </div>
           <div className="p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200">
             <div className="text-xs text-emerald-800 font-semibold">ผู้ใช้งานทั้งหมด (Sheet)</div>
-            <div className="text-xl font-bold text-slate-900 mt-0.5">152 <span className="text-sm font-normal text-slate-500">บัญชี</span></div>
+            <div className="text-xl font-bold text-slate-900 mt-0.5">{loginAccountsCount} <span className="text-sm font-normal text-slate-500">บัญชี</span></div>
             <div className="text-xs text-slate-500">/users & /login_sheet</div>
           </div>
           <div className="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-200">
@@ -511,7 +585,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               Connected
             </span>
           </div>
-          <div className="text-xl font-bold text-slate-900">2,450 เรคคอร์ด</div>
+          <div className="text-xl font-bold text-slate-900">{liveMetrics.totalRecords.toLocaleString()} เรคคอร์ด</div>
           <p className="text-[13px] text-slate-500">ID: #KK-PWR-2569 (Master Sheet ทวิภาคี)</p>
           <div className="pt-2">
             <button
@@ -533,7 +607,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               Live Engine
             </span>
           </div>
-          <div className="text-xl font-bold text-slate-900">อัตราผ่าน 92.4%</div>
+          <div className="text-xl font-bold text-slate-900">อัตราการนิเทศ/ประเมิน {liveMetrics.passRate}%</div>
           <p className="text-[13px] text-slate-500">ซิงค์สถิติคะแนนสมรรถนะแบบอัตโนมัติ</p>
           <div className="pt-2">
             <button
@@ -840,39 +914,29 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span className="text-sm text-sky-600 font-medium">เพิ่มกลุ่ม</span>
           </div>
 
-          <div className="space-y-3 text-sm">
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-slate-900">นายทักษิณ โสภาปิยะ</div>
-                <div className="text-[13px] text-slate-500">กลุ่ม ปวส.2 ช่างไฟฟ้ากำลัง (สอฟ.2/5 และ สอฟ.2/8)</div>
-                <div className="text-xs text-sky-700 font-medium mt-0.5">ดูแล 42 คน • 24 สถานประกอบการ</div>
+          <div className="space-y-3 text-sm max-h-80 overflow-y-auto pr-1">
+            {teacherAssignments.map((t) => (
+              <div key={t.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold text-slate-900 truncate">{t.name}</div>
+                  <div className="text-[13px] text-slate-500 truncate">กลุ่มรับผิดชอบ: {t.roomsText}</div>
+                  <div className="text-xs text-sky-700 font-medium mt-0.5">
+                    ดูแล {t.studentsCount} คน • {t.companiesCount} สถานประกอบการ
+                  </div>
+                </div>
+                {t.role === 'admin' ? (
+                  <span className="px-2.5 py-1 rounded text-[13px] font-semibold bg-slate-200 text-slate-700 shrink-0">
+                    Super Admin
+                  </span>
+                ) : (
+                  <span className={`px-2.5 py-1 rounded text-[13px] font-semibold shrink-0 ${
+                    t.supervisedPct >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                  }`}>
+                    นิเทศแล้ว {t.supervisedPct}%
+                  </span>
+                )}
               </div>
-              <span className="px-2.5 py-1 rounded text-[13px] font-semibold bg-emerald-100 text-emerald-800">
-                ตรวจแล้ว 75%
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-slate-900">อาจารย์ประสิทธิ์ วงศ์วิริยะ</div>
-                <div className="text-[13px] text-slate-500">กลุ่ม ปวช.3 ช่างไฟฟ้ากำลัง (กลุ่มทวิภาคี)</div>
-                <div className="text-xs text-sky-700 font-medium mt-0.5">ดูแล 28 คน • 14 สถานประกอบการ</div>
-              </div>
-              <span className="px-2.5 py-1 rounded text-[13px] font-semibold bg-sky-100 text-sky-800">
-                ตรวจแล้ว 80%
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-slate-900">อาจารย์สมศักดิ์ ว. (หัวหน้าแผนก)</div>
-                <div className="text-[13px] text-slate-500">ตรวจสอบคุณภาพและมาตรฐานการประเมินผลกลาง</div>
-                <div className="text-xs text-slate-500 mt-0.5">รับรองผลคะแนนเพื่อส่งงานทะเบียนวิทยาลัย</div>
-              </div>
-              <span className="px-2.5 py-1 rounded text-[13px] font-semibold bg-slate-200 text-slate-700">
-                Super Admin
-              </span>
-            </div>
+            ))}
           </div>
         </div>
 

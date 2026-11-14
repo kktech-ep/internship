@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   MapPin, 
   Search, 
@@ -136,22 +136,37 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [selectedPhoto, setSelectedPhoto] = useState<Form3Photo | null>(null);
   const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
+  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
 
   // Listen to Firestore real-time Form 3 supervision records and merge with local
   useEffect(() => {
+    const mergeAndSet = (remoteList?: Form3SupervisionRecord[]) => {
+      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
+      const local = getLocalForm3Rows();
+      const map = new Map<string, Form3SupervisionRecord>();
+      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
+      setForm3List(Array.from(map.values()));
+    };
+
     const unsub = subscribeForm3Supervisions(
       (remoteRecords) => {
-        if (remoteRecords && remoteRecords.length > 0) {
-          const local = getLocalForm3Rows();
-          const map = new Map<string, Form3SupervisionRecord>();
-          local.forEach(r => map.set(r.id, r));
-          remoteRecords.forEach(r => map.set(r.id, r));
-          setForm3List(Array.from(map.values()));
-        }
+        const recs = remoteRecords || [];
+        remoteForm3Ref.current = recs;
+        mergeAndSet(recs);
       },
       (err) => console.warn('Form 3 stream notice:', err)
     );
-    return () => unsub();
+
+    const handleSync = () => mergeAndSet();
+    window.addEventListener('kktech_form3_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      unsub();
+      window.removeEventListener('kktech_form3_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, []);
 
   // Merge propStudents with complete Google Sheets "login" tab students

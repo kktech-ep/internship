@@ -22,47 +22,51 @@
     margin: 0;
   }
 
-  body * {
-    visibility: hidden;
-  }
-
-  #a4-printable-document,
-  #a4-printable-document * {
-    visibility: visible;
-  }
-
-  #a4-printable-document {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 10mm 10mm !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: white !important;
-  }
-
-  /* Workplace teaching reports: Document 1 and Document 2 */
-  body:has(.workplace-report-print-root),
-  html:has(.workplace-report-print-root) {
+  html,
+  body {
     background: white !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 210mm !important;
+    width: auto !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
   }
 
+  /* Hide non-printable elements when a printable document container is active */
+  body:has(#a4-printable-document) *,
+  body:has(.workplace-report-print-root) *,
+  body:has(#student-guide-pdf-content) *,
+  body:has(#group-summary-a4-printable) * {
+    visibility: hidden;
+  }
+
+  /* Collapse all outer app wrappers so hidden spacers/padding never trigger blank pages */
+  body:has(#a4-printable-document) #root,
+  body:has(#a4-printable-document) #root > div,
+  body:has(#a4-printable-document) #root > div > div,
+  body:has(#a4-printable-document) main,
+  body:has(#a4-printable-document) .a4-report-root,
+  body:has(#a4-printable-document) .a4-sheet-scroll-wrap,
   body:has(.workplace-report-print-root) #root,
   body:has(.workplace-report-print-root) #root > div,
+  body:has(.workplace-report-print-root) #root > div > div,
   body:has(.workplace-report-print-root) main,
+  body:has(.workplace-report-print-root) .a4-report-root,
   body:has(.workplace-report-print-root) .workplace-report-print-root,
-  body:has(.workplace-report-print-root) .workplace-pages-stack {
+  body:has(.workplace-report-print-root) .workplace-pages-stack,
+  body:has(#student-guide-pdf-content) #root,
+  body:has(#student-guide-pdf-content) #root > div,
+  body:has(#student-guide-pdf-content) #root > div > div,
+  body:has(#student-guide-pdf-content) main,
+  body:has(#group-summary-a4-printable) #root,
+  body:has(#group-summary-a4-printable) #root > div,
+  body:has(#group-summary-a4-printable) #root > div > div,
+  body:has(#group-summary-a4-printable) main,
+  body:has(#group-summary-a4-printable) .a4-report-root {
     display: block !important;
-    width: 210mm !important;
-    max-width: 210mm !important;
+    width: 100% !important;
+    max-width: none !important;
     min-height: 0 !important;
     height: auto !important;
     margin: 0 !important;
@@ -70,6 +74,54 @@
     gap: 0 !important;
     background: white !important;
     overflow: visible !important;
+  }
+
+  /* Ensure print:hidden elements never occupy layout space */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Single-page individual A4 report (ทว.04) */
+  body:has(#a4-printable-document) #a4-printable-document,
+  body:has(#a4-printable-document) #a4-printable-document * {
+    visibility: visible !important;
+  }
+
+  body:has(#a4-printable-document) #a4-printable-document {
+    position: static !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: 293mm !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Workplace teaching reports: Document 1 and Document 2 */
+  body:has(.workplace-report-print-root),
+  html:has(.workplace-report-print-root) {
+    width: 210mm !important;
+  }
+
+  body:has(.workplace-report-print-root) .workplace-report-print-root,
+  body:has(.workplace-report-print-root) .workplace-pages-stack {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
   }
 
   body:has(.workplace-report-print-root) .workplace-doc-card {
@@ -83,19 +135,23 @@
     box-shadow: none !important;
     background: white !important;
     overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   body:has(.workplace-report-print-root) .workplace-doc-card.print\:hidden {
     display: none !important;
   }
 
-  body:has(#memo-printable-page) #memo-printable-page,
-  body:has(#memo-printable-page) #memo-printable-page *,
-  body:has(#weekly-report-page-1) #weekly-report-page-1,
-  body:has(#weekly-report-page-1) #weekly-report-page-1 *,
-  body:has(#weekly-report-page-2) #weekly-report-page-2,
-  body:has(#weekly-report-page-2) #weekly-report-page-2 * {
+  body:has(.workplace-report-print-root) .workplace-doc-card:not(.print\:hidden),
+  body:has(.workplace-report-print-root) .workplace-doc-card:not(.print\:hidden) * {
     visibility: visible !important;
+  }
+
+  body:has(.workplace-report-print-root) .workplace-doc-card:not(.print\:hidden) .print\:hidden,
+  body:has(.workplace-report-print-root) .workplace-doc-card:not(.print\:hidden) .print\:hidden * {
+    display: none !important;
+    visibility: hidden !important;
   }
 
   body:has(.workplace-report-print-root) #memo-printable-page,
@@ -105,9 +161,9 @@
     left: 0 !important;
     top: 0 !important;
     width: 210mm !important;
-    height: 296.5mm !important;
-    min-height: 296.5mm !important;
-    max-height: 296.5mm !important;
+    height: 293mm !important;
+    min-height: 0 !important;
+    max-height: 293mm !important;
     margin: 0 !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
@@ -141,29 +197,6 @@
     margin: 12mm;
   }
 
-  body:has(#student-guide-pdf-content),
-  html:has(#student-guide-pdf-content) {
-    background: white !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  body:has(#student-guide-pdf-content) #root,
-  body:has(#student-guide-pdf-content) #root > div,
-  body:has(#student-guide-pdf-content) main {
-    display: block !important;
-    width: 100% !important;
-    max-width: none !important;
-    min-height: 0 !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
-    overflow: visible !important;
-  }
-
   body:has(#student-guide-pdf-content) #student-guide-pdf-content,
   body:has(#student-guide-pdf-content) #student-guide-pdf-content * {
     visibility: visible !important;
@@ -174,8 +207,10 @@
     position: static !important;
     width: 100% !important;
     max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
     margin: 0 !important;
-    padding: 4mm 6mm !important;
+    padding: 2mm 4mm !important;
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
@@ -190,29 +225,6 @@
     margin: 10mm 8mm;
   }
 
-  body:has(#group-summary-a4-printable),
-  html:has(#group-summary-a4-printable) {
-    background: white !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  body:has(#group-summary-a4-printable) #root,
-  body:has(#group-summary-a4-printable) #root > div,
-  body:has(#group-summary-a4-printable) main {
-    display: block !important;
-    width: 100% !important;
-    max-width: none !important;
-    min-height: 0 !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
-    overflow: visible !important;
-  }
-
   body:has(#group-summary-a4-printable) #group-summary-a4-printable,
   body:has(#group-summary-a4-printable) #group-summary-a4-printable * {
     visibility: visible !important;
@@ -223,6 +235,9 @@
     position: static !important;
     width: 100% !important;
     max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     box-shadow: none !important;

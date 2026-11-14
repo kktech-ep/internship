@@ -78,7 +78,26 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
 
     let syncedCount = 0;
     let studentRows = 0;
-    const detectedCompanies = new Map<string, { name: string; phone?: string; leader?: string; gps?: string }>();
+    const detectedCompanies = new Map<string, {
+      name: string;
+      phone?: string;
+      leader?: string;
+      gps?: string;
+      notes?: string;
+      department?: string;
+      students: Student[];
+    }>();
+
+    // Load existing Firestore /students to protect newer Form 1 updates and uploaded avatars from being clobbered by older CSV rows
+    const existingStudentsMap = new Map<string, Student & { lastSyncSource?: string }>();
+    try {
+      const existingSnap = await getDocs(collection(db, 'students'));
+      existingSnap.forEach((docSnap) => {
+        existingStudentsMap.set(docSnap.id, docSnap.data() as Student & { lastSyncSource?: string });
+      });
+    } catch (readErr) {
+      console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
+    }
 
     // 2. Loop through every row and save to Firestore
     for (const row of sheetRows) {
@@ -120,42 +139,72 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
 
       // 2.2 For students, map to full Student entity and sync to /students/{studentId}
       const isStudent = row.status?.includes('นักศึกษา') || /^\d+/.test(userRaw) || row.room?.includes('สอฟ');
+      let effectiveCompanyName = (row.Company || '').trim();
+      let effectiveStudent: Student | null = null;
+
       if (isStudent && row.name) {
         const student = convertLoginRowToStudent(row);
+        const existing = existingStudentsMap.get(student.id);
+        const keepExistingForm1 = Boolean(
+          existing &&
+          existing.lastSyncSource === 'web_portal_form1' &&
+          existing.companyName &&
+          existing.companyName !== 'ยังไม่ระบุสถานประกอบการ'
+        );
+
+        const mergedStudent: Student & Record<string, unknown> = {
+          ...student,
+          companyName: keepExistingForm1 && existing ? existing.companyName : student.companyName,
+          companyId: keepExistingForm1 && existing ? existing.companyId : student.companyId,
+          room: (keepExistingForm1 && existing?.room) ? existing.room : student.room,
+          companyRegistration: keepExistingForm1 && existing?.companyRegistration
+            ? existing.companyRegistration
+            : student.companyRegistration,
+          ...(existing?.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
+          ...(typeof existing?.accumulatedHours === 'number' && existing.accumulatedHours !== 320
+            ? { accumulatedHours: existing.accumulatedHours }
+            : {}),
+          ...(typeof existing?.actualWeeks === 'number' && existing.actualWeeks !== 8
+            ? { actualWeeks: existing.actualWeeks }
+            : {}),
+          syncedFromSheet: true,
+          sheetRowNumber: row.rowNumber,
+          lastSyncAt: startTime.toISOString()
+        };
+
+        effectiveStudent = mergedStudent as Student;
+        effectiveCompanyName = (effectiveStudent.companyName || '').trim();
+
         try {
-          await setDoc(
-            doc(db, 'students', student.id),
-            {
-              ...student,
-              syncedFromSheet: true,
-              sheetRowNumber: row.rowNumber,
-              lastSyncAt: startTime.toISOString()
-            },
-            { merge: true }
-          );
+          await setDoc(doc(db, 'students', student.id), mergedStudent, { merge: true });
           studentRows++;
         } catch (err) {
           console.warn(`[SyncEngine] Notice writing student doc ${student.id}:`, err);
         }
       }
 
-      // 2.3 Gather company info to update /companies/{companyId}
-      if (row.Company && row.Company.trim().length > 2) {
-        const compName = row.Company.trim();
-        if (!detectedCompanies.has(compName)) {
-          detectedCompanies.set(compName, {
-            name: compName,
-            phone: row.CompanyPhone || row.leaderPhone,
-            leader: row.leader,
-            gps: row.GPS
+      // 2.3 Gather company info with aggregated students to update /companies/{companyId}
+      if (effectiveCompanyName && effectiveCompanyName.length > 2 && effectiveCompanyName !== 'ยังไม่ระบุสถานประกอบการ') {
+        if (!detectedCompanies.has(effectiveCompanyName)) {
+          detectedCompanies.set(effectiveCompanyName, {
+            name: effectiveCompanyName,
+            phone: effectiveStudent?.companyRegistration?.emergencyPhone || row.CompanyPhone || row.leaderPhone,
+            leader: effectiveStudent?.companyRegistration?.mentorName || row.leader,
+            gps: effectiveStudent?.companyRegistration?.gpsCoordinates || row.GPS,
+            notes: effectiveStudent?.companyRegistration?.notes || row.delial,
+            department: effectiveStudent?.companyRegistration?.department || row.department,
+            students: []
           });
+        }
+        if (effectiveStudent) {
+          detectedCompanies.get(effectiveCompanyName)!.students.push(effectiveStudent);
         }
       }
 
       syncedCount++;
     }
 
-    // 2.4 Synchronize distinct companies to Firestore /companies
+    // 2.4 Synchronize distinct companies to Firestore /companies with real student counts & supervisors
     let compIndex = 1;
     for (const [compName, compInfo] of detectedCompanies.entries()) {
       const compId = `comp-sheet-${compIndex++}`;
@@ -171,6 +220,10 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         }
       }
 
+      const firstStudent = compInfo.students[0];
+      const assignedTeacher = firstStudent?.supervisorTeacher || 'นายทักษิณ โสภาปิยะ';
+      const studentCount = Math.max(1, compInfo.students.length);
+
       try {
         await setDoc(
           doc(db, 'companies', compId),
@@ -178,20 +231,27 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             id: compId,
             name: compName,
             shortName: compName.slice(0, 30),
-            address: 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
+            address: compInfo.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
             zone: 'อ.เมืองขอนแก่น',
             distanceKm: 5.5,
             sector: 'high-voltage',
             sectorLabel: 'ระบบไฟฟ้าและควบคุม',
-            contactPerson: compInfo.leader || 'ผู้จัดการฝ่าย',
-            phone: compInfo.phone || '-',
+            contactPerson: (compInfo.leader && compInfo.leader !== '-') ? compInfo.leader : 'ผู้จัดการฝ่าย',
+            phone: (compInfo.phone && compInfo.phone !== '-') ? compInfo.phone : '-',
             lat: lat,
             lng: lng,
-            studentsCount: 1,
+            studentsCount: studentCount,
             status: 'completed',
             statusText: 'เชื่อมต่อแล้ว',
-            assignedTeacher: 'นายทักษิณ โสภาปิยะ',
-            jobScope: 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
+            assignedTeacher,
+            assignedStudents: compInfo.students.map(cs => ({
+              studentId: cs.id,
+              studentName: cs.name,
+              studentCode: cs.studentCode,
+              level: cs.level,
+              latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
+            })),
+            jobScope: compInfo.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
             lastSyncAt: startTime.toISOString()
           },
           { merge: true }

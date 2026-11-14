@@ -9,7 +9,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
-import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord } from '../types';
+import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow } from '../types';
 import { getAllLoginSheetStudents } from './sheetAuthService';
 
 export const COLLECTIONS = {
@@ -18,6 +18,8 @@ export const COLLECTIONS = {
   SUBMISSIONS: 'submissions',
   ANNOUNCEMENTS: 'announcements',
   FORM3_SUPERVISIONS: 'form3_supervisions',
+  COURSES: 'courses',
+  TEACHERS: 'teachers',
 } as const;
 
 /**
@@ -129,13 +131,61 @@ export async function saveSubmissionToFirestore(submission: WeeklySubmission): P
 }
 
 /**
+ * Listen for real-time changes to the Announcements collection
+ */
+export function subscribeAnnouncements(
+  onData: (announcements: Announcement[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.ANNOUNCEMENTS;
+  return onSnapshot(
+    collection(db, colPath),
+    (snapshot) => {
+      const items: Announcement[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as Announcement);
+      });
+      onData(items);
+    },
+    (error) => {
+      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
+      if (onError) onError(error as Error);
+    }
+  );
+}
+
+/**
+ * Listen for real-time changes to the Courses collection
+ */
+export function subscribeCourses(
+  onData: (courses: CourseDataRow[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.COURSES;
+  return onSnapshot(
+    collection(db, colPath),
+    (snapshot) => {
+      const items: CourseDataRow[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as CourseDataRow);
+      });
+      onData(items);
+    },
+    (error) => {
+      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
+      if (onError) onError(error as Error);
+    }
+  );
+}
+
+/**
  * Seed initial data if the Firestore collection is empty
- * Strictly seeds directly from Google Sheets "login" tab students & companies
+ * Strictly seeds directly from Google Sheets "login" tab students & real derived companies
  */
 export async function seedFirestoreIfEmpty(
   _mockStudents: Student[],
   mockCompanies: Company[],
-  mockWeeklySubmissions: Record<string, WeeklySubmission[]>,
+  _mockWeeklySubmissions: Record<string, WeeklySubmission[]>,
   mockAnnouncements: Announcement[]
 ): Promise<void> {
   try {
@@ -149,15 +199,50 @@ export async function seedFirestoreIfEmpty(
         await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), student);
       }
 
-      // Seed companies
-      for (const company of mockCompanies) {
-        await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company);
+      // Derive and seed real companies from real students (fallback to mockCompanies only if none)
+      const companyMap = new Map<string, Student[]>();
+      for (const s of realStudents) {
+        const cName = (s.companyName || '').trim();
+        if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
+        if (!companyMap.has(cName)) companyMap.set(cName, []);
+        companyMap.get(cName)!.push(s);
       }
 
-      // Seed submissions
-      for (const studentSubs of Object.values(mockWeeklySubmissions)) {
-        for (const sub of studentSubs) {
-          await setDoc(doc(db, COLLECTIONS.SUBMISSIONS, sub.id), sub);
+      if (companyMap.size > 0) {
+        let compIdx = 1;
+        for (const [cName, compStudents] of companyMap.entries()) {
+          const first = compStudents[0];
+          const compId = `comp-sheet-${compIdx++}`;
+          await setDoc(doc(db, COLLECTIONS.COMPANIES, compId), {
+            id: compId,
+            name: cName,
+            shortName: cName.slice(0, 30),
+            address: first.companyRegistration?.notes || 'จังหวัดขอนแก่น',
+            zone: 'อ.เมืองขอนแก่น',
+            distanceKm: 5.5,
+            sector: 'high-voltage',
+            sectorLabel: 'ระบบไฟฟ้าและควบคุม',
+            contactPerson: first.companyRegistration?.mentorName || 'ผู้จัดการฝ่าย',
+            phone: first.companyRegistration?.emergencyPhone || first.companyRegistration?.mentorPhone || '-',
+            lat: first.companyRegistration?.gpsLat || 16.4322,
+            lng: first.companyRegistration?.gpsLng || 102.8236,
+            studentsCount: compStudents.length,
+            status: 'completed',
+            statusText: 'เชื่อมต่อแล้ว',
+            assignedTeacher: first.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
+            assignedStudents: compStudents.map(cs => ({
+              studentId: cs.id,
+              studentName: cs.name,
+              studentCode: cs.studentCode,
+              level: cs.level,
+              latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
+            })),
+            jobScope: first.companyRegistration?.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า'
+          });
+        }
+      } else {
+        for (const company of mockCompanies) {
+          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company);
         }
       }
 
@@ -166,6 +251,14 @@ export async function seedFirestoreIfEmpty(
         await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), ann);
       }
       console.log('Firestore seed completed successfully from Google Sheets login tab.');
+    } else {
+      // Ensure announcements exist if collection is empty
+      const annSnap = await getDocs(query(collection(db, COLLECTIONS.ANNOUNCEMENTS), limit(1)));
+      if (annSnap.empty) {
+        for (const ann of mockAnnouncements) {
+          await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), ann);
+        }
+      }
     }
   } catch (error) {
     console.warn('Seed operation check note:', error);

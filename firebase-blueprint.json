@@ -118,12 +118,95 @@
         "lastSync": { "type": "string", "maxLength": 100 }
       },
       "required": ["user", "name"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Supervisor and course instructor profile from Google Sheets login and data tabs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "user": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "maxLength": 80 },
+        "role": { "type": "string", "maxLength": 30 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "department": { "type": "string", "maxLength": 200 },
+        "room": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Unified login account record synchronized from Google Sheet login tab",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 150 },
+        "name": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "maxLength": 30 },
+        "studentId": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 80 },
+        "room": { "type": "string", "maxLength": 50 },
+        "department": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role"]
+    },
+    "Form3Supervision": {
+      "title": "Form3Supervision",
+      "description": "On-site supervision evaluation and evidence photos (Form_3)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 100 },
+        "visitDate": { "type": "string", "maxLength": 100 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentCode": { "type": "string", "maxLength": 30 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "studentRoom": { "type": "string", "maxLength": 50 },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "teacherName": { "type": "string", "maxLength": 200 },
+        "mentorName": { "type": "string", "maxLength": 150 },
+        "safetyPassed": { "type": "boolean" },
+        "score": { "type": "number" },
+        "grade": { "type": "string", "maxLength": 50 },
+        "teacherComment": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "studentCode", "studentName", "companyName", "score"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Subject-room-teacher mapping synchronized from Google Sheet data tab",
+      "type": "object",
+      "properties": {
+        "room": { "type": "string", "maxLength": 50 },
+        "subjectCode": { "type": "string", "maxLength": 50 },
+        "subjectName": { "type": "string", "maxLength": 200 },
+        "teacherName": { "type": "string", "maxLength": 150 },
+        "nites1": { "type": "string", "maxLength": 100 },
+        "nites2": { "type": "string", "maxLength": 100 },
+        "nites3": { "type": "string", "maxLength": 100 },
+        "lastSyncAt": { "type": "string" }
+      },
+      "required": ["room", "subjectCode", "subjectName", "teacherName"]
     }
   },
   "firestore": {
     "/students/{studentId}": {
       "schema": "Student",
       "description": "Individual student intern profile and training records"
+    },
+    "/teachers/{teacherId}": {
+      "schema": "Teacher",
+      "description": "Supervisor and course instructor records"
+    },
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Unified login account directory synced from Google Sheet login tab"
     },
     "/companies/{companyId}": {
       "schema": "Company",
@@ -136,6 +219,14 @@
     "/announcements/{announcementId}": {
       "schema": "Announcement",
       "description": "Official announcements for academic term 2/2569"
+    },
+    "/form3_supervisions/{recordId}": {
+      "schema": "Form3Supervision",
+      "description": "Teacher on-site supervision reports, scores, and photos (Form_3)"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Course-room-supervisor mapping synced from Google Sheet data tab"
     },
     "/login_sheet/{userId}": {
       "schema": "LoginSheetRow",

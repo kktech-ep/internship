@@ -437,7 +437,7 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 print:space-y-0">
       {/* Control Panel (hidden when printing) */}
       <div className="bg-slate-50/90 rounded-2xl border border-slate-200 p-4 space-y-3.5 print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -597,10 +597,10 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       </div>
 
       {/* Printable A4 Sheet */}
-      <div className="w-full overflow-x-auto pb-2 flex lg:justify-center print:overflow-visible print:block">
+      <div className="w-full overflow-x-auto pb-2 flex lg:justify-center print:overflow-visible print:block print:pb-0">
         <div
           id="group-summary-a4-printable"
-          className="bg-white min-w-[740px] w-full max-w-[210mm] min-h-[297mm] p-[10mm] shadow-2xl rounded-sm border border-slate-300 text-slate-900 font-sarabun text-[11px] leading-snug shrink-0"
+          className="bg-white min-w-[740px] print:min-w-0 w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0 p-[10mm] print:p-0 shadow-2xl print:shadow-none rounded-sm border print:border-none border-slate-300 text-slate-900 font-sarabun text-[11px] leading-snug shrink-0"
           style={{ boxSizing: 'border-box' }}
         >
           {/* Official Header */}
