@@ -2171,7 +2171,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <span className="font-bold">รหัสนักศึกษา:</span> <span className="font-mono">{currentStudent.studentCode}</span>
                     </div>
                     <div>
-                      <span className="font-bold">ระดับชั้น / กลุ่ม:</span> {currentStudent.level} กลุ่ม {currentStudent.room} {studentDepartmentTitle}
+                      <span className="font-bold">ระดับชั้น / กลุ่ม:</span> {(currentStudent.room || '').includes('ทลฟ') ? 'ปริญญาตรี' : currentStudent.level} กลุ่ม {currentStudent.room} {studentDepartmentTitle}
                     </div>
                     <div>
                       <span className="font-bold">ช่วงวันที่บันทึก:</span> {currentSub.dateRange}

@@ -174,7 +174,7 @@ export const HubView: React.FC<HubViewProps> = ({
           </h1>
 
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed max-w-2xl">
-            พอร์ทัลรวมศูนย์การติดตามและประเมินผลการฝึกประสบการณ์วิชาชีพ ช่างไฟฟ้ากำลัง สำหรับนักศึกษาระดับ ปวช. และ ปวส. เชื่อมโยงข้อมูลแบบเรียลไทม์ผ่านแพลตฟอร์ม Google Cloud & Google Workspace
+            พอร์ทัลรวมศูนย์การติดตามและประเมินผลการฝึกประสบการณ์วิชาชีพ ช่างไฟฟ้ากำลัง สำหรับนักศึกษาระดับ ปวส. และ ปริญญาตรี เชื่อมโยงข้อมูลแบบเรียลไทม์ผ่านแพลตฟอร์ม Google Cloud & Google Workspace
           </p>
 
           {/* Badges */}
