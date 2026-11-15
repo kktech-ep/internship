@@ -54,6 +54,17 @@ import {
   computeSubmissionTotalHours,
 } from './utils/submissionUtils';
 
+function normalizeStudentAcademicInfo(student: Student): Student {
+  if ((student.room || '').includes('ทลฟ')) {
+    return {
+      ...student,
+      level: 'ปริญญาตรี',
+      department: 'ภาควิชาเทคโนโลยีไฟฟ้า',
+    };
+  }
+  return student;
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
   const [gatewayRole, setGatewayRole] = useState<'student' | 'teacher' | 'admin'>('student');
@@ -68,7 +79,8 @@ export default function App() {
   // App data state: initialized directly with all students from Google Sheet login tab (1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28)
   const [students, setStudents] = useState<Student[]>(() => {
     const sheetStudents = getAllLoginSheetStudents();
-    return sheetStudents.length > 0 ? sheetStudents : mockStudents;
+    const base = sheetStudents.length > 0 ? sheetStudents : mockStudents;
+    return base.map(normalizeStudentAcademicInfo);
   });
   const [companies, setCompanies] = useState<Company[]>(mockCompanies);
   const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>({});
@@ -98,14 +110,17 @@ export default function App() {
 
   // Target currentStudent strictly matches the logged-in student user from Google Sheet login tab
   const currentStudent = useMemo(() => {
+    let target: Student | undefined;
     if (currentUser && currentUser.role === 'student') {
       const code = currentUser.studentId || currentUser.email.split('@')[0];
-      const match = students.find(
+      target = students.find(
         s => s.studentCode === code || s.id === `std-${code}` || s.email.toLowerCase() === currentUser.email.toLowerCase() || s.name === currentUser.name
       );
-      if (match) return match;
     }
-    return students.find((s) => s.id === activeStudentId) || students[0];
+    if (!target) {
+      target = students.find((s) => s.id === activeStudentId) || students[0];
+    }
+    return target ? normalizeStudentAcademicInfo(target) : students[0];
   }, [students, activeStudentId, currentUser]);
 
   // Keep student section in sync with logged-in user from Google Spreadsheet login tab
@@ -165,11 +180,14 @@ export default function App() {
                   localStorage.getItem(`kktech_avatar_std-${rs.studentCode}`))) ||
               undefined;
             const prev = mergedMap.get(rs.id);
-            mergedMap.set(rs.id, {
-              ...prev,
-              ...rs,
-              avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
-            });
+            mergedMap.set(
+              rs.id,
+              normalizeStudentAcademicInfo({
+                ...prev,
+                ...rs,
+                avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
+              })
+            );
           });
           setStudents(Array.from(mergedMap.values()));
         }

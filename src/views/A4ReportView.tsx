@@ -2184,7 +2184,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     </div>
                     <div className="col-span-2 border-t border-slate-300 pt-1 mt-0.5 flex flex-wrap items-center justify-between text-[11px]">
                       <div>
-                        <span className="font-bold">รายวิชาฝึกอาชีพ (แผ่นงาน data):</span> {matchedCourse ? `${matchedCourse.subjectCode} ${matchedCourse.subjectName}` : '30000-2005 กิจกรรมในสถานประกอบการ 1'}
+                        <span className="font-bold">รายวิชาฝึกอาชีพ:</span> {matchedCourse ? `${matchedCourse.subjectCode} ${matchedCourse.subjectName}` : '30000-2005 กิจกรรมในสถานประกอบการ 1'}
                       </div>
                       <div>
                         <span className="font-bold">ครูนิเทศก์/ครูประจำวิชา:</span> {effectiveTeacherName}

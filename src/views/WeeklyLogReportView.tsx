@@ -297,7 +297,10 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
             </div>
             <div>
               <span className="font-bold text-slate-900">{student.name} ({student.studentCode})</span>
-              <span className="text-slate-500 block text-[13px]">{student.level} {student.department}</span>
+              <span className="text-slate-500 block text-[13px]">
+                {(student.room || '').includes('ทลฟ') ? 'ปริญญาตรี' : student.level}{' '}
+                {(student.room || '').includes('ทลฟ') ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : student.department}
+              </span>
             </div>
           </div>
           <div className="text-right">

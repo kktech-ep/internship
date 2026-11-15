@@ -254,7 +254,9 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
   const userStr = (row.user || '').trim();
   const code = userStr.split('@')[0] || `std-${row.rowNumber}`;
   const room = (row.room || '').trim() || 'สอฟ.2/1';
-  const level = room.includes('1/') ? 'ปวส.1' : 'ปวส.2';
+  const isTechDept = room.includes('ทลฟ');
+  const level = isTechDept ? 'ปริญญาตรี' : room.includes('1/') ? 'ปวส.1' : 'ปวส.2';
+  const studentDepartment = isTechDept ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
   
   let gpsLat = 16.4322;
   let gpsLng = 102.8236;
@@ -279,7 +281,7 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
     name: row.name || 'นักศึกษาฝึกงาน',
     initials: getInitialsFromName(row.name || code),
     level: level,
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง',
+    department: studentDepartment,
     room: room,
     email: userStr.includes('@') ? userStr : `${userStr}@kktech.ac.th`,
     avatarUrl: (typeof localStorage !== 'undefined' ? localStorage.getItem(`kktech_avatar_std-${code}`) : null) || undefined,
@@ -818,16 +820,6 @@ export async function authenticateWithGoogleSheet(
   const initials = getInitialsFromName(matchedUser.name);
   const studentCode = matchedUser.user.split('@')[0];
 
-  const authUser: AuthUser = {
-    email: userEmail,
-    name: matchedUser.name,
-    role,
-    initials,
-    department: role === 'student' ? 'แผนกช่างไฟฟ้ากำลัง (นักศึกษาฝึกงาน)' : 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    studentId: role === 'student' ? studentCode : undefined,
-    provider: 'google'
-  };
-
   let studentProfile: Student | undefined;
   if (role === 'student') {
     const fullRows = await fetchFullLoginSheetRows();
@@ -839,6 +831,21 @@ export async function authenticateWithGoogleSheet(
       studentProfile = convertLoginRowToStudent(rowMatch);
     }
   }
+
+  const authUser: AuthUser = {
+    email: userEmail,
+    name: matchedUser.name,
+    role,
+    initials,
+    department:
+      role === 'student'
+        ? (studentProfile?.room || '').includes('ทลฟ')
+          ? 'ภาควิชาเทคโนโลยีไฟฟ้า (นักศึกษาฝึกงาน)'
+          : 'แผนกช่างไฟฟ้ากำลัง (นักศึกษาฝึกงาน)'
+        : 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+    studentId: role === 'student' ? studentCode : undefined,
+    provider: 'google'
+  };
 
   return {
     success: true,

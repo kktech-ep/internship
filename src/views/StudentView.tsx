@@ -111,9 +111,9 @@ export const StudentView: React.FC<StudentViewProps> = ({
 
             <div>
               <div className="text-sm text-slate-500 font-medium flex items-center gap-1.5 flex-wrap">
-                <span>{student.level}</span>
+                <span>{(student.room || '').includes('ทลฟ') ? 'ปริญญาตรี' : student.level}</span>
                 <span>•</span>
-                <span>{student.department}</span>
+                <span>{(student.room || '').includes('ทลฟ') ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : student.department}</span>
                 <span>•</span>
                 <span className="font-semibold text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded border border-sky-200 text-[13px]">
                   กลุ่ม: {student.room}

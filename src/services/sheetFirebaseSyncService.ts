@@ -506,7 +506,10 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
     if (isStudent) {
       const code = userRaw.split('@')[0] || `std-${row.rowNumber}`;
       const studentId = `std-${code}`;
-      const level = (row.room || '').includes('1/') ? 'ปวส.1' : 'ปวส.2';
+      const roomStr = (row.room || '').trim() || 'สอฟ.2/8';
+      const isTechDept = roomStr.includes('ทลฟ');
+      const level = isTechDept ? 'ปริญญาตรี' : roomStr.includes('1/') ? 'ปวส.1' : 'ปวส.2';
+      const studentDepartment = isTechDept ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
 
       let lat = 16.4322;
       let lng = 102.8236;
@@ -526,8 +529,8 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
         name: name,
         initials: name.slice(0, 2),
         level: level,
-        department: 'แผนกวิชาช่างไฟฟ้ากำลัง',
-        room: row.room || 'สอฟ.2/8',
+        department: studentDepartment,
+        room: roomStr,
         email: userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`,
         companyId: `comp-${code}`,
         companyName: row.Company || 'ยังไม่ระบุสถานประกอบการ',
@@ -561,7 +564,7 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
           studentId: code,
           status: row.status || 'นักศึกษา',
           room: row.room,
-          department: 'แผนกวิชาช่างไฟฟ้ากำลัง',
+          department: studentDepartment,
           phone: row.phoneStudent,
           pass: row.pass,
           companyName: row.Company,

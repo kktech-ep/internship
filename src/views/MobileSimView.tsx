@@ -1133,7 +1133,7 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
                         <div>
                           <h3 className="font-bold text-sm text-slate-900">{student.name}</h3>
                           <div className="text-[10px] text-slate-500">
-                            {student.level} • รหัสนักศึกษา: {student.studentCode} • ห้อง {student.room}
+                            {(student.room || '').includes('ทลฟ') ? 'ปริญญาตรี' : student.level} • รหัสนักศึกษา: {student.studentCode} • ห้อง {student.room}
                           </div>
                         </div>
                       </div>
