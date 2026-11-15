@@ -29,12 +29,13 @@ import {
   UserCheck,
   RotateCcw
 } from 'lucide-react';
-import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission } from '../types';
+import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow } from '../types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo, getWeekDates } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { 
   getCoursesByTeacher, 
   getAllTeachersFromData, 
+  getCachedCourses,
   DATA_SHEET_CONFIG,
   fetchDataSheetCourses,
   fetchPivotSheetCourses
@@ -239,11 +240,83 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncMsg, setCourseSyncMsg] = useState<string | null>(null);
+  const [isCoursePickerOpen, setIsCoursePickerOpen] = useState(false);
+  const [courseCatalog, setCourseCatalog] = useState<CourseDataRow[]>(() => getCachedCourses());
+  const [coursePickerSearch, setCoursePickerSearch] = useState('');
+  const [coursePickerRoomFilter, setCoursePickerRoomFilter] = useState<string>('all');
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+
+  const courseCatalogRooms = useMemo(() => {
+    const rooms = new Set<string>();
+    courseCatalog.forEach((c) => {
+      const r = (c.room || '').trim();
+      if (r) rooms.add(r);
+    });
+    return Array.from(rooms).sort((a, b) => a.localeCompare(b, 'th'));
+  }, [courseCatalog]);
+
+  const groupedCourseCatalog = useMemo(() => {
+    const filteredRows =
+      coursePickerRoomFilter === 'all'
+        ? courseCatalog
+        : courseCatalog.filter((c) => (c.room || '').trim() === coursePickerRoomFilter);
+
+    const map = new Map<
+      string,
+      { subjectCode: string; subjectName: string; rooms: Set<string>; teachers: Set<string> }
+    >();
+
+    filteredRows.forEach((c) => {
+      const code = (c.subjectCode || '').trim();
+      const name = (c.subjectName || '').trim();
+      if (!code && !name) return;
+      const key = `${code}::${name}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          subjectCode: code,
+          subjectName: name,
+          rooms: new Set(),
+          teachers: new Set(),
+        });
+      }
+      const entry = map.get(key)!;
+      if (c.room?.trim()) entry.rooms.add(c.room.trim());
+      if (c.teacherName?.trim()) entry.teachers.add(c.teacherName.trim());
+    });
+
+    const list = Array.from(map.values()).map((item) => ({
+      subjectCode: item.subjectCode,
+      subjectName: item.subjectName,
+      rooms: Array.from(item.rooms).sort((a, b) => a.localeCompare(b, 'th')),
+      teachers: Array.from(item.teachers).sort((a, b) => a.localeCompare(b, 'th')),
+    }));
+
+    const q = coursePickerSearch.trim().toLowerCase();
+    const searched = q
+      ? list.filter(
+          (item) =>
+            item.subjectCode.toLowerCase().includes(q) ||
+            item.subjectName.toLowerCase().includes(q) ||
+            item.rooms.some((r) => r.toLowerCase().includes(q)) ||
+            item.teachers.some((t) => t.toLowerCase().includes(q))
+        )
+      : list;
+
+    return searched.sort((a, b) => a.subjectCode.localeCompare(b.subjectCode));
+  }, [courseCatalog, coursePickerRoomFilter, coursePickerSearch]);
+
+  const existingSubjectCodes = useMemo(
+    () => new Set(courses.map((c) => c.subjectCode.trim())),
+    [courses]
+  );
 
   const handleSyncCoursesFromSheets = async () => {
     setIsSyncingCourses(true);
     try {
       const refreshed = await fetchDataSheetCourses(true);
+      if (refreshed && refreshed.length > 0) {
+        setCourseCatalog(refreshed);
+      }
       const rawCourses = getCoursesByTeacher(reporterName, refreshed);
       if (rawCourses && rawCourses.length > 0) {
         const map = new Map<string, { code: string; name: string; rooms: Set<string> }>();
@@ -275,19 +348,89 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     }
   };
 
+  const handleRefreshCourseCatalog = async () => {
+    setIsRefreshingCatalog(true);
+    try {
+      const refreshed = await fetchDataSheetCourses(true);
+      if (refreshed && refreshed.length > 0) {
+        setCourseCatalog(refreshed);
+      }
+    } catch {
+      // Keep cached catalog on offline error
+    } finally {
+      setIsRefreshingCatalog(false);
+    }
+  };
+
+  const handleOpenCoursePicker = () => {
+    setCourseCatalog(getCachedCourses());
+    setIsCoursePickerOpen(true);
+    fetchDataSheetCourses(false)
+      .then((list) => {
+        if (list && list.length > 0) setCourseCatalog(list);
+      })
+      .catch(() => {});
+  };
+
+  const handleSelectCourseFromDb = (item: {
+    subjectCode: string;
+    subjectName: string;
+    rooms: string[];
+    teachers: string[];
+  }) => {
+    const cleanReporter = reporterName.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim();
+    let roomText = '';
+    if (coursePickerRoomFilter !== 'all') {
+      roomText = coursePickerRoomFilter;
+    } else {
+      const teacherMatchedRooms = courseCatalog
+        .filter(
+          (c) =>
+            c.subjectCode.trim() === item.subjectCode &&
+            c.subjectName.trim() === item.subjectName &&
+            cleanReporter &&
+            c.teacherName.includes(cleanReporter)
+        )
+        .map((c) => c.room.trim())
+        .filter(Boolean);
+      const chosenRooms =
+        teacherMatchedRooms.length > 0
+          ? Array.from(new Set(teacherMatchedRooms)).sort((a, b) => a.localeCompare(b, 'th'))
+          : item.rooms;
+      roomText = chosenRooms.join(', ') || 'สอฟ.2/5';
+    }
+
+    const newId = `crs-${Date.now()}`;
+    setCourses((prev) => [
+      ...prev,
+      {
+        id: newId,
+        subjectCode: item.subjectCode,
+        subjectName: item.subjectName,
+        room: roomText,
+        teachDate: reportDate,
+        teachTime: '13.00-16.00',
+      },
+    ]);
+    setIsCoursePickerOpen(false);
+    setCourseSyncMsg(`เพิ่มรายวิชา ${item.subjectCode} ${item.subjectName} ลงในตารางสอนเรียบร้อย`);
+    setTimeout(() => setCourseSyncMsg(null), 4000);
+  };
+
   const handleAddCourse = () => {
     const newId = `crs-${Date.now()}`;
     setCourses(prev => [
       ...prev,
       {
         id: newId,
-        subjectCode: '30104-2011',
-        subjectName: 'การประมาณการระบบไฟฟ้า',
+        subjectCode: '',
+        subjectName: '',
         room: 'สอฟ.2/5',
         teachDate: reportDate,
         teachTime: '13.00-16.00'
       }
     ]);
+    setIsCoursePickerOpen(false);
   };
 
   const handleRemoveCourse = (id: string) => {
@@ -1676,8 +1819,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <span>{isSyncingCourses ? 'กำลังซิงค์ชีต...' : 'ซิงค์ชีตตารางสอน'}</span>
               </button>
               <button
-                onClick={handleAddCourse}
+                type="button"
+                onClick={handleOpenCoursePicker}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[13px] font-semibold transition cursor-pointer"
+                title="ดูรหัสวิชา ชื่อวิชา และเลือกเพิ่มรายวิชาจากฐานข้อมูลรายวิชา"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>เพิ่มรายวิชา</span>
@@ -2698,6 +2843,193 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </div>
           </div>
         )}
+
+      {/* COURSE DATABASE PICKER MODAL */}
+      {isCoursePickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-3 sm:p-5 print:hidden"
+          onClick={() => setIsCoursePickerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-sky-950 text-white px-5 py-4 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="p-2 rounded-xl bg-white/10 border border-white/15 shrink-0">
+                  <BookOpen className="w-5 h-5 text-sky-300" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                    เลือกเพิ่มรายวิชาจากฐานข้อมูลรายวิชา
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5 truncate">
+                    ข้อมูลรหัสวิชา ชื่อรายวิชา กลุ่มเรียน และครูผู้สอน จากฐานข้อมูลแผ่นงาน data ({groupedCourseCatalog.length} รายวิชา)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRefreshCourseCatalog}
+                  disabled={isRefreshingCatalog}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-60"
+                  title="ดึงข้อมูลรายวิชาล่าสุดจาก Google Sheets (data)"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCatalog ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">{isRefreshingCatalog ? 'กำลังโหลด...' : 'อัปเดตฐานข้อมูล'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCoursePickerOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  aria-label="ปิดหน้าต่าง"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Room Filter Bar */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2.5 shrink-0">
+              <div className="sm:col-span-7 relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={coursePickerSearch}
+                  onChange={(e) => setCoursePickerSearch(e.target.value)}
+                  placeholder="ค้นหารหัสวิชา ชื่อรายวิชา กลุ่มเรียน หรือชื่อครู..."
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white text-[13px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  autoFocus
+                />
+              </div>
+              <div className="sm:col-span-5">
+                <select
+                  value={coursePickerRoomFilter}
+                  onChange={(e) => setCoursePickerRoomFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-[13px] font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">ทุกกลุ่มเรียนทั้งหมด ({courseCatalogRooms.length} กลุ่ม)</option>
+                  {courseCatalogRooms.map((room) => (
+                    <option key={room} value={room}>
+                      กลุ่มเรียน {room}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Course List Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {groupedCourseCatalog.length === 0 ? (
+                <div className="py-12 text-center space-y-2">
+                  <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-600">
+                    ไม่พบรายวิชาที่ตรงกับเงื่อนไขการค้นหา
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    ลองล้างคำค้นหา หรือกดปุ่มเพิ่มรายวิชาแบบกรอกเองด้านล่าง
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse text-[13px]">
+                    <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2.5 w-[120px]">รหัสวิชา</th>
+                        <th className="px-3 py-2.5">ชื่อรายวิชา / ครูผู้สอน</th>
+                        <th className="px-3 py-2.5 hidden md:table-cell w-[210px]">กลุ่มเรียน</th>
+                        <th className="px-3 py-2.5 text-right w-[125px]">เลือกเพิ่ม</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {groupedCourseCatalog.map((item) => {
+                        const alreadyAdded = existingSubjectCodes.has(item.subjectCode);
+                        return (
+                          <tr
+                            key={`${item.subjectCode}::${item.subjectName}`}
+                            className="hover:bg-indigo-50/50 transition"
+                          >
+                            <td className="px-3 py-2.5 align-top">
+                              <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-mono font-bold text-slate-800 text-xs whitespace-nowrap">
+                                {item.subjectCode || '-'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 align-top">
+                              <div className="font-bold text-slate-900 flex flex-wrap items-center gap-1.5">
+                                <span>{item.subjectName}</span>
+                                {alreadyAdded && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
+                                    <Check className="w-3 h-3" />
+                                    อยู่ในรายการแล้ว
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-0.5">
+                                ผู้สอน: {item.teachers.join(', ') || '-'}
+                              </div>
+                              <div className="text-xs text-indigo-700 mt-0.5 md:hidden">
+                                กลุ่มเรียน: {item.rooms.join(', ') || '-'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 align-top hidden md:table-cell text-xs text-slate-700">
+                              <div className="flex flex-wrap gap-1">
+                                {item.rooms.slice(0, 6).map((r) => (
+                                  <span
+                                    key={r}
+                                    className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-medium"
+                                  >
+                                    {r}
+                                  </span>
+                                ))}
+                                {item.rooms.length > 6 && (
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                                    +{item.rooms.length - 6} กลุ่ม
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 align-top text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectCourseFromDb(item)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-2xs transition cursor-pointer whitespace-nowrap"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>เลือกเพิ่ม</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleAddCourse}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                <span>เพิ่มรายวิชาเปล่า (กรอกเอง)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCoursePickerOpen(false)}
+                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition cursor-pointer"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
