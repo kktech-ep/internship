@@ -45,6 +45,14 @@ import {
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore
 } from './services/firestoreService';
+import {
+  getCandidateStudentKeys,
+  getMergedStudentSubmissions,
+  writeSubmissionToLocalCache,
+  removeSubmissionFromLocalCache,
+  mergeSubmissionsWithLocalCache,
+  computeSubmissionTotalHours,
+} from './utils/submissionUtils';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
@@ -179,7 +187,7 @@ export default function App() {
       (err) => console.warn('Companies firestore stream note:', err)
     );
 
-    // 5. Real-time subscription to Weekly Submissions collection (replace directly so deletions sync cleanly)
+    // 5. Real-time subscription to Weekly Submissions collection merged with local cache
     const unsubSubmissions = subscribeSubmissions(
       (remoteSubs) => {
         const grouped: Record<string, WeeklySubmission[]> = {};
@@ -189,7 +197,7 @@ export default function App() {
           }
           grouped[sub.studentId].push(sub);
         });
-        setSubmissions(grouped);
+        setSubmissions(mergeSubmissionsWithLocalCache(grouped));
       },
       (err) => console.warn('Submissions firestore stream note:', err)
     );
@@ -307,27 +315,34 @@ export default function App() {
   const handleSubmitWeeklyReport = async (submissionData: Partial<WeeklySubmission>) => {
     const weekNum = submissionData.weekNumber || 8;
     const weekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum);
+    const existingForWeek = getMergedStudentSubmissions(currentStudent, submissions).find(
+      s => s.weekNumber === weekNum
+    );
+    const isAlreadyGraded = existingForWeek?.status === 'graded';
+    const computedHours = computeSubmissionTotalHours(submissionData);
+
     const newSub: WeeklySubmission = {
       id: `sub-${currentStudent.id}-w${weekNum}`,
       studentId: currentStudent.id,
       weekNumber: weekNum,
       dateRange: submissionData.dateRange || weekMeta?.dateRange || '10 มิ.ย. 2569 - 14 มิ.ย. 2569',
       submittedAt: submissionData.submittedAt || new Date().toLocaleString('th-TH'),
-      status: 'pending',
+      status: isAlreadyGraded ? 'graded' : 'pending',
       taskTitle: submissionData.taskTitle || weekMeta?.defaultTask || 'งานติดตั้งตู้ Distribution Board (MDB)',
       dailyLogs: submissionData.dailyLogs || [],
       photos: submissionData.photos || [],
-      totalHours: submissionData.totalHours || 40.0,
-      mentorRating: 5.0,
-      mentorComment: 'นักศึกษาตั้งใจทำงาน ปฏิบัติตามมาตรฐานวิศวกรรมไฟฟ้า',
+      totalHours: computedHours,
+      mentorRating: existingForWeek?.mentorRating || 5.0,
+      mentorComment: existingForWeek?.mentorComment || 'นักศึกษาตั้งใจทำงาน ปฏิบัติตามมาตรฐานวิศวกรรมไฟฟ้า',
       mentorName: currentStudent.companyRegistration.mentorName,
       mentorPosition: 'วิศวกรไฟฟ้า / พี่เลี้ยง',
-      teacherScore: 19.5,
-      teacherGrade: 'A',
+      teacherScore: isAlreadyGraded ? (existingForWeek?.teacherScore ?? 0) : 0,
+      teacherGrade: isAlreadyGraded ? (existingForWeek?.teacherGrade ?? '') : '',
+      teacherComment: isAlreadyGraded ? existingForWeek?.teacherComment : undefined,
       teacherName: currentStudent.supervisorTeacher,
       studentSignature: currentStudent.name.replace(/^(นาย|นางสาว)\s*/, ''),
-      mentorSignature: 'ชาญชัย มงคลศรี',
-      teacherSignature: 'ทักษิณ โสภาปิยะ',
+      mentorSignature: (currentStudent.companyRegistration.mentorName || 'ชาญชัย มงคลศรี').replace(/^(นาย|นางสาว|นาง|ช่าง)\s*/, ''),
+      teacherSignature: (currentStudent.supervisorTeacher || 'ทักษิณ โสภาปิยะ').replace(/^(นาย|นางสาว|นาง|อาจารย์|ว่าที่ร้อยตรี|ดร\.)\s*/, ''),
       verifiedHash: `7B8C${currentStudent.studentCode}-KKTECH-2569-W${String(weekNum).padStart(2, '0')}-OK`,
       safetyChecklist: submissionData.safetyChecklist || {
         hardHat: true,
@@ -336,6 +351,9 @@ export default function App() {
         lotoProcedure: true
       }
     };
+
+    setSelectedLogWeek(weekNum);
+    writeSubmissionToLocalCache(newSub, currentStudent);
 
     setSubmissions(prev => ({
       ...prev,
@@ -374,23 +392,31 @@ export default function App() {
     setSubmissions(prev => {
       const next = { ...prev };
       for (const sId of idsToUpdate) {
-        const studentSubs = next[sId] || [];
-        if (studentSubs.length > 0) {
-          next[sId] = studentSubs.map((sub, i) => {
-            if (i === 0) {
-              const modSub: WeeklySubmission = {
-                ...sub,
-                status: 'graded' as const,
-                teacherScore: evalData.score,
-                teacherGrade: evalData.grade,
-                teacherComment: evalData.comment,
-                mentorComment: evalData.mentorFeedback
-              };
-              modifiedSubs.push(modSub);
-              return modSub;
-            }
-            return sub;
-          });
+        const keys = getCandidateStudentKeys(sId);
+        let updatedAnyBucket = false;
+        for (const k of keys) {
+          const studentSubs = next[k] || [];
+          if (studentSubs.length > 0) {
+            const latestWeek = Math.max(...studentSubs.map(s => Number(s.weekNumber) || 0));
+            next[k] = studentSubs.map((sub) => {
+              if (sub.weekNumber === latestWeek) {
+                const modSub: WeeklySubmission = {
+                  ...sub,
+                  status: 'graded' as const,
+                  teacherScore: evalData.score,
+                  teacherGrade: evalData.grade,
+                  teacherComment: evalData.comment,
+                  mentorComment: evalData.mentorFeedback
+                };
+                modifiedSubs.push(modSub);
+                writeSubmissionToLocalCache(modSub);
+                updatedAnyBucket = true;
+                return modSub;
+              }
+              return sub;
+            });
+            if (updatedAnyBucket) break;
+          }
         }
       }
       return next;
@@ -410,18 +436,24 @@ export default function App() {
   const handleDeleteSubmission = async (submissionId: string, studentId: string): Promise<boolean> => {
     try {
       await deleteSubmissionFromFirestore(submissionId);
-      const targetSub = (submissions[studentId] || []).find(s => s.id === submissionId);
-      if (targetSub && typeof localStorage !== 'undefined') {
-        const cleanCode = studentId.replace(/^std-/, '');
-        localStorage.removeItem(`kktech_submission_${studentId}_w${targetSub.weekNumber}`);
-        localStorage.removeItem(`kktech_submission_${cleanCode}_w${targetSub.weekNumber}`);
+      const keys = new Set(getCandidateStudentKeys(studentId));
+      let targetWeek: number | undefined;
+      Object.values(submissions).flat().forEach((s) => {
+        if (s.id === submissionId) targetWeek = s.weekNumber;
+      });
+      if (targetWeek !== undefined) {
+        removeSubmissionFromLocalCache(studentId, targetWeek);
       }
       setSubmissions(prev => {
-        const studentSubs = prev[studentId] || [];
-        return {
-          ...prev,
-          [studentId]: studentSubs.filter(s => s.id !== submissionId)
-        };
+        const next: Record<string, WeeklySubmission[]> = {};
+        for (const [k, arr] of Object.entries(prev)) {
+          if (keys.has(k) || arr.some(s => s.id === submissionId)) {
+            next[k] = arr.filter(s => s.id !== submissionId);
+          } else {
+            next[k] = arr;
+          }
+        }
+        return next;
       });
       return true;
     } catch (err) {
@@ -543,7 +575,7 @@ export default function App() {
     if (!currentUser) return;
     const role = currentUser.role;
     if (role === 'student') {
-      const allowedStudentViews = ['hub', 'student', 'weekly-log', 'guide'];
+      const allowedStudentViews = ['hub', 'student', 'weekly-log', 'a4', 'guide'];
       if (!allowedStudentViews.includes(currentView)) {
         setCurrentView('student');
       }
@@ -554,6 +586,12 @@ export default function App() {
       }
     }
   }, [currentUser, currentView]);
+
+  const effectiveSubmissionsMap = useMemo(() => mergeSubmissionsWithLocalCache(submissions), [submissions]);
+  const currentStudentSubmissions = useMemo(
+    () => getMergedStudentSubmissions(currentStudent, effectiveSubmissionsMap),
+    [currentStudent, effectiveSubmissionsMap]
+  );
 
   const handleSignOut = () => {
     signOutKktechUser();
@@ -636,7 +674,7 @@ export default function App() {
               student={currentStudent}
               students={students}
               companies={companies}
-              submissions={submissions}
+              submissions={effectiveSubmissionsMap}
               onOpenForm1={() => setIsForm1Open(true)}
               onOpenForm2={() => setIsForm2Open(true)}
               onOpenForm3={(stdId) => {
@@ -673,7 +711,7 @@ export default function App() {
               student={currentStudent}
               students={students}
               companies={companies}
-              submissions={submissions}
+              submissions={effectiveSubmissionsMap}
               form3List={form3List}
               currentUser={currentUser}
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
@@ -686,10 +724,13 @@ export default function App() {
               {currentView === 'student' && (
                 <StudentView
                   student={currentStudent}
-                  submissions={submissions[currentStudent.id] || []}
+                  submissions={currentStudentSubmissions}
                   onOpenForm1={() => setIsForm1Open(true)}
                   onOpenForm2={() => setIsForm2Open(true)}
-                  onNavigateA4={() => setCurrentView('a4')}
+                  onNavigateA4={(weekNum) => {
+                    if (typeof weekNum === 'number') setSelectedLogWeek(weekNum);
+                    setCurrentView('a4');
+                  }}
                   onNavigateWeeklyLog={(w) => {
                     if (w) setSelectedLogWeek(w);
                     setCurrentView('weekly-log');
@@ -702,7 +743,7 @@ export default function App() {
               {currentView === 'weekly-log' && (
                 <WeeklyLogReportView
                   student={currentStudent}
-                  submissions={submissions[currentStudent.id] || []}
+                  submissions={currentStudentSubmissions}
                   initialWeek={selectedLogWeek}
                   currentUser={currentUser}
                   onNavigateA4={(weekNum) => {
@@ -710,6 +751,8 @@ export default function App() {
                     setCurrentView('a4');
                   }}
                   onSubmissionUpdated={(newSub) => {
+                    setSelectedLogWeek(newSub.weekNumber);
+                    writeSubmissionToLocalCache(newSub, currentStudent);
                     setSubmissions(prev => ({
                       ...prev,
                       [currentStudent.id]: [
@@ -726,7 +769,7 @@ export default function App() {
                 <TeacherView
                   students={students}
                   companies={companies}
-                  submissions={submissions}
+                  submissions={effectiveSubmissionsMap}
                   currentUser={currentUser}
                   onOpenForm3={(stdId) => {
                     setTargetStudentForForm3(stdId);
@@ -756,9 +799,10 @@ export default function App() {
               {currentView === 'a4' && (
                 <A4ReportView
                   students={students}
-                  submissions={submissions}
+                  submissions={effectiveSubmissionsMap}
                   companies={companies}
                   initialStudentId={activeStudentId}
+                  initialWeek={selectedLogWeek}
                   currentUser={currentUser}
                   onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
                   onOpenLookerModal={() => setIsLookerModalOpen(true)}
@@ -778,7 +822,7 @@ export default function App() {
                 <AdminView
                   students={students}
                   companies={companies}
-                  submissions={submissions}
+                  submissions={effectiveSubmissionsMap}
                   onDeleteSubmission={handleDeleteSubmission}
                   onDeleteSupervision={handleDeleteSupervision}
                   onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
@@ -813,6 +857,11 @@ export default function App() {
         student={currentStudent}
         currentWeek={currentStudent.currentWeek}
         onSubmit={handleSubmitWeeklyReport}
+        onNavigateA4={(weekNum) => {
+          setSelectedLogWeek(weekNum);
+          setIsMobileMode(false);
+          setCurrentView('a4');
+        }}
       />
 
       <Form3SupervisionModal
@@ -832,7 +881,7 @@ export default function App() {
         onClose={() => setIsLookerModalOpen(false)}
         students={students}
         companies={companies}
-        submissions={submissions}
+        submissions={effectiveSubmissionsMap}
         form3List={form3List}
       />
 
@@ -840,7 +889,7 @@ export default function App() {
         isOpen={isSheetsModalOpen}
         onClose={() => setIsSheetsModalOpen(false)}
         students={students}
-        submissions={submissions}
+        submissions={effectiveSubmissionsMap}
         form3List={form3List}
       />
 

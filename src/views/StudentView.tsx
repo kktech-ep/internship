@@ -30,7 +30,7 @@ interface StudentViewProps {
   submissions: WeeklySubmission[];
   onOpenForm1: () => void;
   onOpenForm2: () => void;
-  onNavigateA4: () => void;
+  onNavigateA4: (weekNum?: number) => void;
   onNavigateWeeklyLog?: (weekNum?: number) => void;
   onNavigateGuide?: () => void;
   isMobileLayout?: boolean;
@@ -48,7 +48,15 @@ export const StudentView: React.FC<StudentViewProps> = ({
   isMobileLayout = false,
   onUpdateAvatar,
 }) => {
-  const currentSubmission = submissions.find(s => s.weekNumber === student.currentWeek);
+  const sortedSubmissions = [...submissions].sort((a, b) => b.weekNumber - a.weekNumber);
+  const currentSubmission = sortedSubmissions.find(s => s.weekNumber === student.currentWeek);
+  const submittedHoursSum = sortedSubmissions.reduce((sum, s) => sum + (Number(s.totalHours) || 40), 0);
+  const effectiveActualWeeks = sortedSubmissions.length > 0 ? sortedSubmissions.length : student.actualWeeks;
+  const effectiveAccumulatedHours = sortedSubmissions.length > 0 ? submittedHoursSum : student.accumulatedHours;
+  const requiredHours = student.requiredHours || 720;
+  const totalWeeks = student.totalWeeks || 18;
+  const progressPercent = Math.min(100, Math.round((effectiveAccumulatedHours / requiredHours) * 100));
+  const remainingWeeks = Math.max(0, totalWeeks - effectiveActualWeeks);
 
   return (
     <div className="space-y-6 pb-12">
@@ -78,8 +86,8 @@ export const StudentView: React.FC<StudentViewProps> = ({
               </button>
             )}
             <button
-              onClick={onNavigateA4}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-medium text-sm shadow-2xs transition"
+              onClick={() => onNavigateA4(currentSubmission?.weekNumber || sortedSubmissions[0]?.weekNumber || student.currentWeek)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-medium text-sm shadow-2xs transition cursor-pointer"
             >
               <Printer className="w-4 h-4 text-slate-500" />
               <span>พิมพ์ใบประเมิน A4</span>
@@ -180,10 +188,10 @@ export const StudentView: React.FC<StudentViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-slate-500">สะสม:</span>
               <span className="text-lg font-bold text-slate-900">
-                {student.accumulatedHours} / {student.requiredHours} ชม.
+                {effectiveAccumulatedHours} / {requiredHours} ชม.
               </span>
               <span className="px-2.5 py-0.5 rounded text-[13px] font-semibold bg-emerald-100 text-emerald-800">
-                {Math.round((student.accumulatedHours / student.requiredHours) * 100)}% ครบตามเกณฑ์
+                {progressPercent}% {progressPercent >= 100 ? 'ครบตามเกณฑ์' : 'ตามแผนการฝึก'}
               </span>
             </div>
           </div>
@@ -191,14 +199,14 @@ export const StudentView: React.FC<StudentViewProps> = ({
           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
             <div
               className="bg-emerald-500 h-3 rounded-full transition-all duration-500"
-              style={{ width: `${(student.accumulatedHours / student.requiredHours) * 100}%` }}
+              style={{ width: `${progressPercent}%` }}
             ></div>
           </div>
 
           <div className="flex items-center justify-between text-[13px] text-slate-500">
-            <span>สัปดาห์ที่ฝึกจริง: {student.actualWeeks} สัปดาห์</span>
+            <span>สัปดาห์ที่ฝึกจริง: {effectiveActualWeeks} สัปดาห์</span>
             <div className="flex items-center gap-2">
-              <span>กำหนดทั้งหมด {student.totalWeeks} สัปดาห์ (เหลืออีก {student.totalWeeks - student.actualWeeks} สัปดาห์)</span>
+              <span>กำหนดทั้งหมด {totalWeeks} สัปดาห์ (เหลืออีก {remainingWeeks} สัปดาห์)</span>
               <span className="hidden sm:inline-flex items-center gap-1 text-emerald-700 font-medium">
                 <Award className="w-4 h-4" />
                 <span>เกณฑ์ชั่วโมงขั้นต่ำ พร้อมจบการศึกษา</span>
@@ -420,14 +428,14 @@ export const StudentView: React.FC<StudentViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {submissions.length === 0 ? (
+              {sortedSubmissions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400">
                     ยังไม่มีรายการส่งรายงานประจำสัปดาห์ในระบบ (คลิก "เปิดหน้าบันทึกการปฏิบัติงาน" เพื่อส่งสัปดาห์ที่ {student.currentWeek})
                   </td>
                 </tr>
               ) : (
-                submissions.map((sub) => (
+                sortedSubmissions.map((sub) => (
                   <tr key={sub.id} className="hover:bg-slate-50/80 transition">
                     <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
                       สัปดาห์ที่ {sub.weekNumber}
@@ -442,7 +450,7 @@ export const StudentView: React.FC<StudentViewProps> = ({
                   <td className="py-3 px-3 text-center">
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 text-xs font-medium">
                       <Camera className="w-3.5 h-3.5" />
-                      <span>{sub.photos?.length || 4} รูป</span>
+                      <span>{sub.photos?.length ?? 0} รูป</span>
                     </span>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
@@ -459,16 +467,16 @@ export const StudentView: React.FC<StudentViewProps> = ({
                     )}
                   </td>
                   <td className="py-3 px-4 text-sm font-sarabun italic text-slate-700">
-                    {sub.teacherSignature}
+                    {sub.status === 'graded' ? (sub.teacherSignature || sub.teacherName) : 'รอตรวจประเมิน'}
                   </td>
                   <td className="py-3 px-3 text-center">
                     <button
-                      onClick={onNavigateA4}
-                      className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-800 text-sm font-medium cursor-pointer"
-                      title="เปิดดูรายงานฉบับสมบูรณ์"
+                      onClick={() => onNavigateA4(sub.weekNumber)}
+                      className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-800 text-sm font-semibold cursor-pointer"
+                      title={`เปิดดูและพิมพ์เอกสาร A4 สัปดาห์ที่ ${sub.weekNumber}`}
                     >
                       <Eye className="w-4 h-4" />
-                      <span>เรียกดู</span>
+                      <span>เรียกดู A4</span>
                     </button>
                   </td>
                 </tr>

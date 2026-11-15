@@ -254,11 +254,19 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
     });
 
     students.forEach(std => {
-      const stdSubs =
-        subsByKey.get(std.id) ||
-        subsByKey.get(std.studentCode) ||
-        subsByKey.get(`std-${std.studentCode}`) ||
-        [];
+      const candidateKeys = Array.from(
+        new Set([std.id, std.studentCode, `std-${std.studentCode}`, std.id?.replace(/^std-/, '')].filter(Boolean) as string[])
+      );
+      const weekMap = new Map<number, WeeklySubmission>();
+      candidateKeys.forEach((k) => {
+        (subsByKey.get(k) || []).forEach((s) => {
+          const existing = weekMap.get(s.weekNumber);
+          if (!existing || (existing.status !== 'graded' && s.status === 'graded')) {
+            weekMap.set(s.weekNumber, s);
+          }
+        });
+      });
+      const stdSubs = Array.from(weekMap.values());
       const f3 = form3ByKey.get(std.id) || form3ByKey.get(std.studentCode);
       const gradedSub = stdSubs.find(s => s.status === 'graded');
 

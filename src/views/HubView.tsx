@@ -71,10 +71,15 @@ export const HubView: React.FC<HubViewProps> = ({
     if (r.studentCode) supervisedStudentKeys.add(r.studentCode);
   });
   Object.values(submissions).flat().forEach(s => {
-    if (s.studentId) supervisedStudentKeys.add(s.studentId);
+    if (s.studentId) {
+      supervisedStudentKeys.add(s.studentId);
+      const stripped = s.studentId.replace(/^std-/, '');
+      supervisedStudentKeys.add(stripped);
+      supervisedStudentKeys.add(`std-${stripped}`);
+    }
   });
   const activeOrSubmittedStudentsCount = students.filter(
-    s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode)
+    s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode) || supervisedStudentKeys.has(`std-${s.studentCode}`)
   ).length;
   const remainingStudentsCount = Math.max(0, totalStudentsCount - activeOrSubmittedStudentsCount);
   const totalLinkedRows = students.length + allSubsCount + form3List.length + getCachedCourses().length;
@@ -337,6 +342,13 @@ export const HubView: React.FC<HubViewProps> = ({
                     >
                       <span>3. ดูประวัติบันทึกปฏิบัติงาน & ภาพถ่าย</span>
                       <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onNavigate('a4')}
+                      className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-sm font-semibold transition cursor-pointer"
+                    >
+                      <span>4. เรียกดู & พิมพ์เอกสาร A4 (ทว.04)</span>
+                      <Printer className="w-4 h-4 text-emerald-700" />
                     </button>
                   </div>
                 </div>

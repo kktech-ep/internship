@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Student, WeeklySubmission, DailyLog, PhotoEvidence } from '../../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../../data/weeksData';
+import { readSubmissionFromLocalCache } from '../../utils/submissionUtils';
 
 interface Form2WeeklyReportModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ interface Form2WeeklyReportModalProps {
   student: Student;
   currentWeek: number;
   onSubmit: (submission: Partial<WeeklySubmission>) => void;
+  onNavigateA4?: (weekNum: number) => void;
 }
 
 export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
@@ -29,6 +31,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   student,
   currentWeek = 8,
   onSubmit,
+  onNavigateA4,
 }) => {
   const [selectedWeek, setSelectedWeek] = useState<number>(currentWeek || 8);
   const [taskTitle, setTaskTitle] = useState('');
@@ -46,24 +49,43 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
 
+  const loadWeekState = (weekNum: number) => {
+    const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
+    const saved = readSubmissionFromLocalCache(student, weekNum);
+    if (saved) {
+      setTaskTitle(saved.taskTitle || meta.defaultTask);
+      setDailyTasks(saved.dailyLogs && saved.dailyLogs.length > 0 ? saved.dailyLogs : getDefaultDailyLogsForWeek(weekNum));
+      setPhotos(saved.photos && saved.photos.length > 0 ? saved.photos : meta.samplePhotos);
+      if (saved.safetyChecklist) {
+        setSafetyChecklist(saved.safetyChecklist);
+      }
+    } else {
+      setTaskTitle(meta.defaultTask);
+      setDailyTasks(getDefaultDailyLogsForWeek(weekNum));
+      setPhotos(meta.samplePhotos);
+      setSafetyChecklist({
+        hardHat: true,
+        highVoltageGloves: true,
+        safetyShoes: true,
+        lotoProcedure: true,
+      });
+    }
+  };
+
   // Update fields when selectedWeek or modal open state changes
   useEffect(() => {
     if (isOpen) {
-      setSelectedWeek(currentWeek || 8);
-      const meta = WEEKS_1_TO_18.find(w => w.weekNumber === (currentWeek || 8)) || WEEKS_1_TO_18[7];
-      setTaskTitle(meta.defaultTask);
-      setDailyTasks(getDefaultDailyLogsForWeek(currentWeek || 8));
-      setPhotos(meta.samplePhotos);
+      const targetW = currentWeek || 8;
+      setSelectedWeek(targetW);
+      setIsSuccess(false);
+      loadWeekState(targetW);
     }
-  }, [isOpen, currentWeek]);
+  }, [isOpen, currentWeek, student.id]);
 
   // When user switches week dropdown inside modal
   const handleSelectWeek = (weekNum: number) => {
     setSelectedWeek(weekNum);
-    const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
-    setTaskTitle(meta.defaultTask);
-    setDailyTasks(getDefaultDailyLogsForWeek(weekNum));
-    setPhotos(meta.samplePhotos);
+    loadWeekState(weekNum);
   };
 
   if (!isOpen) return null;
@@ -131,12 +153,13 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const totalWeeklyHours = dailyTasks.reduce((sum, d) => sum + (Number(d.hours) || 0), 0) || 40.0;
     onSubmit({
       weekNumber: selectedWeek,
       dateRange: currentWeekMeta.dateRange,
       taskTitle,
       dailyLogs: dailyTasks,
-      totalHours: 40.0,
+      totalHours: totalWeeklyHours,
       safetyChecklist,
       photos,
       status: 'pending',
@@ -148,10 +171,12 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
     });
 
     setIsSuccess(true);
-    setTimeout(() => {
-      setIsSuccess(false);
-      onClose();
-    }, 1400);
+    if (!onNavigateA4) {
+      setTimeout(() => {
+        setIsSuccess(false);
+        onClose();
+      }, 1400);
+    }
   };
 
   return (
@@ -177,21 +202,46 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+            className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {isSuccess ? (
-          <div className="p-12 text-center space-y-3">
+          <div className="p-10 text-center space-y-4">
             <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto animate-bounce" />
             <h4 className="text-lg font-bold text-slate-800">
               บันทึกและซิงค์ข้อมูลสัปดาห์ที่ {selectedWeek} สำเร็จ!
             </h4>
             <p className="text-xs text-slate-600 font-medium">
-              ข้อมูลถูกจัดเก็บลง <span className="font-bold text-amber-700">Firebase Firestore (internship2-2569)</span> เรียบร้อยแล้ว
+              ข้อมูลถูกจัดเก็บลง <span className="font-bold text-amber-700">Firebase Firestore (internship2-2569)</span> และเชื่อมโยงไปยังแบบบันทึก ทว.04 เรียบร้อยแล้ว
             </p>
+            {onNavigateA4 && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    onClose();
+                    onNavigateA4(selectedWeek);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition cursor-pointer"
+                >
+                  เรียกดู / พิมพ์เอกสาร A4 สัปดาห์ที่ {selectedWeek}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    onClose();
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">

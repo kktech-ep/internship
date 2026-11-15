@@ -46,12 +46,18 @@ import { subscribeForm3Supervisions, subscribeSubmissions } from '../services/fi
 import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
 import { WorkplaceTeachingReportView } from './WorkplaceTeachingReportView';
 import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
+import {
+  mergeSubmissionsWithLocalCache,
+  readSubmissionFromLocalCache,
+  computeSubmissionTotalHours,
+} from '../utils/submissionUtils';
 
 interface A4ReportViewProps {
   students: Student[];
   submissions: Record<string, WeeklySubmission[]>;
   companies?: Company[];
   initialStudentId?: string;
+  initialWeek?: number;
   currentUser?: AuthUser | null;
   onOpenSheetsModal: () => void;
   onOpenLookerModal: () => void;
@@ -96,6 +102,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   submissions,
   companies: _propCompanies,
   initialStudentId,
+  initialWeek,
   currentUser,
   onOpenSheetsModal,
   onOpenLookerModal,
@@ -104,11 +111,15 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   onDeleteSubmission,
   onDeleteSupervision,
 }) => {
+  const isStudentRole = currentUser?.role === 'student';
   // Main view tab: 'table' (All Companies Form_3 Summary), 'a4' (Official Weekly A4 Document), or 'teaching' (Workplace Integrated Learning Report)
-  const [activeTab, setActiveTab] = useState<'table' | 'a4' | 'teaching'>('table');
+  const [activeTab, setActiveTab] = useState<'table' | 'a4' | 'teaching'>(() =>
+    currentUser?.role === 'student' ? 'a4' : 'table'
+  );
   const [a4SubView, setA4SubView] = useState<'individual' | 'group-summary'>('individual');
   const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId || propStudents[0]?.id || 'std-68301040105');
-  const [selectedWeek, setSelectedWeek] = useState('8');
+  const [selectedWeek, setSelectedWeek] = useState(() => String(initialWeek || 8));
+  const [localSyncTick, setLocalSyncTick] = useState(0);
   
   // Table search & filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -124,6 +135,29 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
   // Real-time Weekly Submissions from Firestore (internship2-2569)
   const [remoteSubmissions, setRemoteSubmissions] = useState<Record<string, WeeklySubmission[]>>({});
+
+  useEffect(() => {
+    if (initialWeek && initialWeek >= 1 && initialWeek <= 18) {
+      setSelectedWeek(String(initialWeek));
+    }
+  }, [initialWeek]);
+
+  useEffect(() => {
+    if (initialStudentId) {
+      setSelectedStudentId(initialStudentId);
+    }
+  }, [initialStudentId]);
+
+  useEffect(() => {
+    if (isStudentRole) {
+      setActiveTab('a4');
+      setA4SubView('individual');
+      if (currentUser) {
+        const code = currentUser.studentId || currentUser.email.split('@')[0];
+        setSelectedStudentId(`std-${code}`);
+      }
+    }
+  }, [isStudentRole, currentUser]);
 
   // Global Sync State
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -181,14 +215,19 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     );
 
     const handleForm3LocalSync = () => mergeAndSetForm3();
+    const handleSubLocalSync = () => setLocalSyncTick((t) => t + 1);
     window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
+    window.addEventListener('kktech_submissions_updated', handleSubLocalSync);
     window.addEventListener('storage', handleForm3LocalSync);
+    window.addEventListener('storage', handleSubLocalSync);
 
     return () => {
       unsubSubs();
       unsubForm3();
       window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
+      window.removeEventListener('kktech_submissions_updated', handleSubLocalSync);
       window.removeEventListener('storage', handleForm3LocalSync);
+      window.removeEventListener('storage', handleSubLocalSync);
     };
   }, []);
 
@@ -662,29 +701,41 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   };
 
   // Selected student for A4 Document View
-  const currentStudent = allSheetStudents.find(s => s.id === selectedStudentId || s.studentCode === selectedStudentId) || allSheetStudents[0];
+  const currentStudent =
+    allSheetStudents.find(
+      s => s.id === selectedStudentId || s.studentCode === selectedStudentId || `std-${s.studentCode}` === selectedStudentId
+    ) || allSheetStudents[0];
   const studentCourses = currentStudent.courses || getCoursesByRoom(currentStudent.room);
   const [selectedCourseCode, setSelectedCourseCode] = useState<string>(() => {
     return studentCourses.find(c => c.subjectCode.startsWith('30000'))?.subjectCode || studentCourses[0]?.subjectCode || '30000-2005';
   });
 
+  useEffect(() => {
+    if (studentCourses.length > 0 && !studentCourses.some(c => c.subjectCode === selectedCourseCode)) {
+      const preferred =
+        studentCourses.find(c => c.subjectCode.startsWith('30000'))?.subjectCode ||
+        studentCourses[0].subjectCode;
+      setSelectedCourseCode(preferred);
+    }
+  }, [currentStudent.id, studentCourses, selectedCourseCode]);
+
   const matchedCourse = studentCourses.find(c => c.subjectCode === selectedCourseCode) || studentCourses[0];
 
-  // Merge submissions from props and Firestore real-time listener
+  // Merge submissions from props, Firestore real-time listener, and localStorage cache
   const mergedSubmissions = useMemo(() => {
-    const merged: Record<string, WeeklySubmission[]> = { ...submissions };
+    const combined: Record<string, WeeklySubmission[]> = { ...submissions };
     for (const [key, subs] of Object.entries(remoteSubmissions)) {
-      if (!merged[key]) {
-        merged[key] = subs;
+      if (!combined[key]) {
+        combined[key] = subs;
       } else {
         const byId = new Map<string, WeeklySubmission>();
-        merged[key].forEach(s => byId.set(s.id, s));
+        combined[key].forEach(s => byId.set(s.id, s));
         subs.forEach(s => byId.set(s.id, s));
-        merged[key] = Array.from(byId.values());
+        combined[key] = Array.from(byId.values());
       }
     }
-    return merged;
-  }, [submissions, remoteSubmissions]);
+    return mergeSubmissionsWithLocalCache(combined);
+  }, [submissions, remoteSubmissions, localSyncTick]);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === parseInt(selectedWeek)) || WEEKS_1_TO_18[7];
 
@@ -717,20 +768,11 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     if (match) return match;
 
     // 3. Check localStorage for any saved submission for this student and week
-    try {
-      const localKey1 = `kktech_submission_${currentStudent?.id}_w${targetWeek}`;
-      const localKey2 = `kktech_submission_${currentStudent?.studentCode}_w${targetWeek}`;
-      const raw = localStorage.getItem(localKey1) || localStorage.getItem(localKey2);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && (parsed.dailyLogs || parsed.photos)) return parsed as WeeklySubmission;
-      }
-    } catch (e) {
-      console.warn('LocalStorage submission check notice:', e);
-    }
+    const localSub = readSubmissionFromLocalCache(currentStudent, targetWeek);
+    if (localSub) return localSub;
 
     return null;
-  }, [mergedSubmissions, selectedStudentId, currentStudent, selectedWeek]);
+  }, [mergedSubmissions, selectedStudentId, currentStudent, selectedWeek, localSyncTick]);
 
   // Find matching Form 3 supervision record for this student/company in database
   const studentForm3 = useMemo(() => {
@@ -788,22 +830,37 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
 
   const isRealDatabaseSubmission = Boolean(foundSub || (studentForm3 && studentForm3.photos && studentForm3.photos.length > 0));
 
+  const computedTotalHours = computeSubmissionTotalHours({
+    dailyLogs: databaseDailyLogs,
+    totalHours: foundSub?.totalHours,
+  });
+
+  const isGradedSubmission = foundSub?.status === 'graded' || Boolean(studentForm3);
+  const effectiveScore =
+    foundSub?.status === 'graded'
+      ? (foundSub.teacherScore ?? 0)
+      : (studentForm3?.score ?? 0);
+  const effectiveGrade =
+    foundSub?.status === 'graded'
+      ? (foundSub.teacherGrade ?? '')
+      : (studentForm3?.grade ?? '');
+
   const currentSub: WeeklySubmission = {
     id: foundSub?.id || `sub-w${selectedWeek}`,
     studentId: currentStudent.id,
     weekNumber: parseInt(selectedWeek),
     dateRange: foundSub?.dateRange || currentWeekMeta.dateRange,
     submittedAt: foundSub?.submittedAt || `${currentWeekMeta.dateRange.split('-')[1]?.trim() || '14 มิ.ย. 2569'} 17:30 น.`,
-    status: foundSub?.status || (studentForm3 ? 'graded' : 'pending'),
+    status: isGradedSubmission ? 'graded' : 'pending',
     taskTitle: foundSub?.taskTitle || currentWeekMeta.defaultTask,
-    totalHours: foundSub?.totalHours || 40.0,
-    mentorRating: foundSub?.mentorRating || (studentForm3 ? 5.0 : 5.0),
+    totalHours: computedTotalHours,
+    mentorRating: foundSub?.mentorRating || 5.0,
     mentorComment: foundSub?.mentorComment || studentForm3?.mentorFeedback || 'นักศึกษาตั้งใจปฏิบัติงาน สวมใส่อุปกรณ์คุ้มครองความปลอดภัย (PPE) ครบถ้วน มีความละเอียดรอบคอบในการปฏิบัติงานระบบไฟฟ้า',
     mentorName: foundSub?.mentorName || studentForm3?.mentorName || currentStudent.companyRegistration?.mentorName || 'นายชาญชัย มงคลศรี',
     mentorPosition: foundSub?.mentorPosition || 'วิศวกรไฟฟ้า / พี่เลี้ยงประจำสถานประกอบการ',
-    teacherScore: foundSub?.teacherScore || studentForm3?.score || 19.5,
-    teacherGrade: foundSub?.teacherGrade || studentForm3?.grade || 'ดีเยี่ยม (A)',
-    teacherComment: foundSub?.teacherComment || studentForm3?.teacherComment || 'บันทึกข้อมูลเรียบร้อย ภาพหลักฐานชัดเจน มีการคำนวณและระบุค่าทดสอบความต้านทานดินตรงตามเกณฑ์มาตรฐาน สอศ.',
+    teacherScore: effectiveScore,
+    teacherGrade: effectiveGrade,
+    teacherComment: foundSub?.teacherComment || studentForm3?.teacherComment || (isGradedSubmission ? 'บันทึกข้อมูลเรียบร้อย ภาพหลักฐานชัดเจน ตรงตามเกณฑ์มาตรฐาน สอศ.' : 'อยู่ระหว่างรอครูนิเทศก์ตรวจประเมิน'),
     teacherName: effectiveTeacherName,
     studentSignature: '',
     mentorSignature: '',
@@ -909,6 +966,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             clonedDocEl.style.minWidth = '0px';
             clonedDocEl.style.minHeight = '0px';
             clonedDocEl.style.height = 'auto';
+            clonedDocEl.style.padding = '10mm 11mm';
             clonedDocEl.style.backgroundColor = '#ffffff';
             clonedDocEl.style.boxShadow = 'none';
             clonedDocEl.style.border = 'none';
@@ -941,9 +999,13 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     }
   };
 
+  const isTechDept = (currentStudent?.room || '').includes('ทลฟ.');
+  const studentDepartmentTitle = isTechDept ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
+
   return (
     <div className="space-y-6 pb-16 print:space-y-0 print:pb-0 a4-report-root">
-      {/* Top Main Navigation Tabs & Action Bar */}
+      {/* Top Main Navigation Tabs & Action Bar (Teacher/Admin Full Workspace; Simplified for Students) */}
+      {!isStudentRole && (
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div className="space-y-1">
@@ -963,7 +1025,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             {onOpenForm3 && (
               <button
                 onClick={() => onOpenForm3(selectedStudentId)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-medium text-sm shadow-sm transition"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-medium text-sm shadow-sm transition cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
                 <span>+ บันทึกการนิเทศ</span>
@@ -1002,7 +1064,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           <div className="inline-flex p-1 bg-slate-100 rounded-xl text-sm font-semibold">
             <button
               onClick={() => setActiveTab('table')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'table'
                   ? 'bg-white text-slate-900 shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1018,7 +1080,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('a4')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'a4'
                   ? 'bg-white text-slate-900 shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1029,7 +1091,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('teaching')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'teaching'
                   ? 'bg-white text-slate-900 shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1043,7 +1105,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           {activeTab === 'table' && (
             <button
               onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-sm font-semibold shadow-2xs transition"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-sm font-semibold shadow-2xs transition cursor-pointer"
             >
               <Download className="w-4 h-4 text-emerald-700" />
               <span>ส่งออกตารางสรุปนิเทศ (CSV Excel)</span>
@@ -1051,8 +1113,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           )}
         </div>
       </div>
+      )}
 
-      {/* 4 Summary Stat Cards */}
+      {/* 4 Summary Stat Cards (Teacher/Admin only) */}
+      {!isStudentRole && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-slate-500 text-sm">
@@ -1115,6 +1179,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           TAB 1: Comprehensive Company & Form_3 Supervision Table
@@ -1856,14 +1921,17 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-base">
-                  แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา
+                  แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา (ใบรายบุคคล ทว.04)
                 </h3>
                 <p className="text-sm text-slate-500">
-                  เลือกดูใบแบบบันทึกรายบุคคล (ทว.04) หรือสรุปการส่งงาน & คะแนนประเมินตามกลุ่มเรียน
+                  {isStudentRole
+                    ? 'ตรวจสอบข้อมูลการปฏิบัติงานรายสัปดาห์ที่บันทึกไว้ พร้อมสั่งพิมพ์บนกระดาษ A4 หรือดาวน์โหลดเป็น PDF'
+                    : 'เลือกดูใบแบบบันทึกรายบุคคล (ทว.04) หรือสรุปการส่งงาน & คะแนนประเมินตามกลุ่มเรียน'}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {!isStudentRole && (
                 <div className="inline-flex p-1 bg-slate-100 rounded-xl text-sm font-semibold">
                   <button
                     type="button"
@@ -1890,6 +1958,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     <span>สรุปส่งงาน & คะแนนตามกลุ่มเรียน</span>
                   </button>
                 </div>
+                )}
 
                 {a4SubView === 'individual' && (
                   <>
@@ -1899,7 +1968,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-2xs transition cursor-pointer"
                     >
                       <Printer className="w-4 h-4 text-sky-400" />
-                      <span>สั่งพิมพ์</span>
+                      <span>สั่งพิมพ์ A4</span>
                     </button>
                     <button
                       type="button"
@@ -1913,14 +1982,14 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                   </>
                 )}
 
-                {a4SubView === 'individual' && currentUser?.role === 'admin' && currentSub && onDeleteSubmission && (
+                {a4SubView === 'individual' && currentUser?.role === 'admin' && foundSub && onDeleteSubmission && (
                   <button
                     onClick={async () => {
                       if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกสัปดาห์ที่ ${selectedWeek} ของ ${currentStudent.name} (${currentStudent.studentCode})? การกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-                        await onDeleteSubmission(currentSub.id, currentStudent.id);
+                        await onDeleteSubmission(foundSub.id, currentStudent.id);
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-sm font-semibold transition"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-sm font-semibold transition cursor-pointer"
                     title="ลบบันทึกสัปดาห์นี้สำหรับนักศึกษาคนนี้ (Admin)"
                   >
                     <Trash2 className="w-4 h-4 text-rose-600" />
@@ -1928,6 +1997,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                   </button>
                 )}
 
+                {!isStudentRole && (
                 <button
                   onClick={() => setActiveTab('table')}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer"
@@ -1935,6 +2005,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                   <ArrowRight className="w-4 h-4 rotate-180" />
                   <span>กลับสู่ตารางสรุปสถานประกอบการ</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -1943,8 +2014,13 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end text-sm">
               <div className="md:col-span-5">
                 <label className="block text-[13px] font-semibold text-slate-700 mb-1">
-                  เลือกรหัสนักศึกษาและชื่อ-สกุล
+                  {isStudentRole ? 'ข้อมูลนักศึกษาผู้บันทึก' : 'เลือกรหัสนักศึกษาและชื่อ-สกุล'}
                 </label>
+                {isStudentRole ? (
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 font-semibold text-slate-900 text-sm truncate">
+                    {currentStudent.studentCode} - {currentStudent.name} (กลุ่ม {currentStudent.room})
+                  </div>
+                ) : (
                 <select
                   value={selectedStudentId}
                   onChange={(e) => {
@@ -1959,6 +2035,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     </option>
                   ))}
                 </select>
+                )}
               </div>
 
               <div className="md:col-span-4">
@@ -1997,15 +2074,27 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             </div>
 
             {/* Database status banner */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-sm">
+            <div className={`flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-sm ${foundSub ? 'border-slate-100' : 'border-amber-200 bg-amber-50/70 -mx-2 px-3 py-2 rounded-lg'}`}>
               <div className="flex items-center gap-2 text-slate-700">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                {foundSub ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                )}
                 <span>
-                  <strong>แหล่งข้อมูล:</strong> ดึงข้อมูลบันทึกการปฏิบัติงานวิชาชีพ & รูปถ่ายหน้างานจริงจากฐานข้อมูลและระบบบันทึกการนิเทศเรียบร้อย
+                  {foundSub ? (
+                    <>
+                      <strong>แหล่งข้อมูล:</strong> เชื่อมโยงข้อมูลที่บันทึกสัปดาห์ที่ {selectedWeek} (เมื่อ {foundSub.submittedAt}) จากฐานข้อมูลเรียบร้อยแล้ว
+                    </>
+                  ) : (
+                    <>
+                      <strong>หมายเหตุ:</strong> สัปดาห์ที่ {selectedWeek} ยังไม่มีรายการบันทึกในระบบ — แสดงโครงร่างตัวอย่าง (กรุณาบันทึกปฏิบัติงานรายสัปดาห์ก่อน)
+                    </>
+                  )}
                 </span>
               </div>
               <span className="text-[13px] font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-                รหัส: {currentStudent.studentCode} • สัปดาห์ที่ {selectedWeek} • รูปถ่ายหน้างาน {currentSub.photos.length} รูป • บันทึกงาน {currentSub.dailyLogs.length} วัน
+                รหัส: {currentStudent.studentCode} • สัปดาห์ที่ {selectedWeek} • รูปถ่าย {currentSub.photos.length} รูป • {computedTotalHours.toFixed(1)} ชม.
               </span>
             </div>
             </>
@@ -2053,7 +2142,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                         วิทยาลัยเทคนิคขอนแก่น
                       </h1>
                       <p className="text-xs text-slate-700 font-semibold font-sarabun">
-                        แผนกวิชาช่างไฟฟ้ากำลัง • สำนักงานคณะกรรมการการอาชีวศึกษา
+                        {studentDepartmentTitle} • สำนักงานคณะกรรมการการอาชีวศึกษา
                       </p>
                       <p className="text-xs text-slate-800 font-bold font-sarabun mt-0.5">
                         แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา (ทวิภาคี / ทว.04)
@@ -2066,7 +2155,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       สัปดาห์ที่ {currentSub.weekNumber}
                     </span>
                     <div className="text-[11px] text-slate-500 mt-1">ประจำปีการศึกษา 2/2569</div>
-                    <div className="text-[10px] text-slate-400 font-mono">Google Form Sync ID: 40018-W08</div>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      รหัสอ้างอิง: {currentStudent.studentCode}-W{String(currentSub.weekNumber).padStart(2, '0')}
+                    </div>
                   </div>
                 </div>
 
@@ -2080,7 +2171,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <span className="font-bold">รหัสนักศึกษา:</span> <span className="font-mono">{currentStudent.studentCode}</span>
                     </div>
                     <div>
-                      <span className="font-bold">ระดับชั้น / กลุ่ม:</span> {currentStudent.level} กลุ่ม {currentStudent.room} แผนกวิชาช่างไฟฟ้ากำลัง
+                      <span className="font-bold">ระดับชั้น / กลุ่ม:</span> {currentStudent.level} กลุ่ม {currentStudent.room} {studentDepartmentTitle}
                     </div>
                     <div>
                       <span className="font-bold">ช่วงวันที่บันทึก:</span> {currentSub.dateRange}
@@ -2107,10 +2198,16 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                   <div className="flex items-center justify-between text-xs font-bold text-slate-900">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-amber-600" />
-                      <span>ตารางบันทึกการปฏิบัติงานวิชาชีพรายวัน (Daily Electrical Work Log)</span>
+                      <span>ตารางบันทึกการปฏิบัติงานวิชาชีพรายวัน: {currentSub.taskTitle}</span>
                     </span>
-                    <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      ✓ ข้อมูลจากการบันทึกปฏิบัติงานจริงในฐานข้อมูล ({currentSub.dailyLogs.length} วัน)
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                      foundSub
+                        ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                        : 'text-amber-800 bg-amber-50 border-amber-200'
+                    }`}>
+                      {foundSub
+                        ? `✓ ข้อมูลจากการบันทึกปฏิบัติงานจริงในฐานข้อมูล (${currentSub.dailyLogs.length} วัน)`
+                        : `โครงร่างประจำสัปดาห์ (${currentSub.dailyLogs.length} วัน)`}
                     </span>
                   </div>
 
@@ -2138,7 +2235,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                             {log.toolsUsed}
                           </td>
                           <td className="border border-slate-800 p-1.5 text-center font-bold font-mono">
-                            {log.hours.toFixed(1)}
+                            {(Number(log.hours) || 0).toFixed(1)}
                           </td>
                           <td className="border border-slate-800 p-1.5 text-center">
                             <span className="text-emerald-700 font-bold text-[10px] bg-emerald-50 px-1 rounded">
@@ -2153,10 +2250,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                           รวมเวลาปฏิบัติงานทั้งสิ้นประจำสัปดาห์:
                         </td>
                         <td className="border border-slate-800 p-1.5 text-center font-mono text-sm text-sky-800">
-                          40.0
+                          {computedTotalHours.toFixed(1)}
                         </td>
                         <td className="border border-slate-800 p-1.5 text-center text-emerald-800 text-[10px]">
-                          สมบูรณ์ 100%
+                          {computedTotalHours >= 40 ? 'สมบูรณ์ 100%' : 'บันทึกครบถ้วน'}
                         </td>
                       </tr>
                     </tbody>
@@ -2170,8 +2267,14 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <Camera className="w-3.5 h-3.5 text-sky-600" />
                       <span>รูปภาพประกอบการปฏิบัติงานจริง (On-site Photographic Evidence)</span>
                     </span>
-                    <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      ✓ ดึงจากฐานข้อมูลรูปถ่ายหน้างานจริง ({currentSub.photos.length} รูป)
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                      isRealDatabaseSubmission
+                        ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                        : 'text-amber-800 bg-amber-50 border-amber-200'
+                    }`}>
+                      {isRealDatabaseSubmission
+                        ? `✓ ดึงจากฐานข้อมูลรูปถ่ายหน้างานจริง (${currentSub.photos.length} รูป)`
+                        : `ภาพตัวอย่างประจำสัปดาห์ (${currentSub.photos.length} รูป)`}
                     </span>
                   </div>
 
@@ -2214,7 +2317,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <span className="inline-block w-36 border-b border-dotted border-slate-800"></span>
                     </div>
                     <div className="text-[10px] text-slate-600">({currentStudent.name})</div>
-                    <div className="text-[9px] text-slate-400">วันที่ 14 มิ.ย. 2569</div>
+                    <div className="text-[9px] text-slate-500">
+                      {foundSub ? `บันทึกเมื่อ ${foundSub.submittedAt}` : currentSub.dateRange}
+                    </div>
                   </div>
 
                   {/* Mentor Signature */}
@@ -2224,7 +2329,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <span className="inline-block w-36 border-b border-dotted border-slate-800"></span>
                     </div>
                     <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1 py-0.5 rounded">
-                      [รับรองการปฏิบัติงาน 40 ชม. ครบถ้วน]
+                      [รับรองการปฏิบัติงาน {computedTotalHours.toFixed(0)} ชม. ครบถ้วน]
                     </span>
                     <div className="text-[10px] text-slate-600">({currentSub.mentorName})</div>
                     <div className="text-[9px] text-slate-400">วิศวกรไฟฟ้า / พี่เลี้ยงประจำสัปดาห์</div>
@@ -2236,11 +2341,17 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     <div className="h-10 flex items-end justify-center pb-1">
                       <span className="inline-block w-36 border-b border-dotted border-slate-800"></span>
                     </div>
-                    <span className="text-[10px] text-sky-700 font-semibold bg-sky-50 px-1 py-0.5 rounded">
-                      [ผ่านเกณฑ์สมรรถนะวิชาชีพ]
-                    </span>
+                    {isGradedSubmission && currentSub.teacherScore > 0 ? (
+                      <span className="text-[10px] text-sky-700 font-semibold bg-sky-50 px-1 py-0.5 rounded">
+                        [ผ่านเกณฑ์สมรรถนะ {currentSub.teacherScore.toFixed(1)}/20 {currentSub.teacherGrade ? `(${currentSub.teacherGrade})` : ''}]
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-1 py-0.5 rounded">
+                        [รอครูนิเทศก์ตรวจประเมิน]
+                      </span>
+                    )}
                     <div className="text-[10px] text-slate-600">({currentSub.teacherName})</div>
-                    <div className="text-[9px] text-slate-400">แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น</div>
+                    <div className="text-[9px] text-slate-400">{studentDepartmentTitle} วท.ขอนแก่น</div>
                   </div>
                 </div>
               </div>

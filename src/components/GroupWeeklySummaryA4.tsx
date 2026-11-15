@@ -174,7 +174,12 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       const gradedWeeksCount = gradedSubs.length;
       const pendingWeeksCount = weekSubs.filter((s) => s.status === 'pending').length;
 
-      const accumulatedHours = weekSubs.reduce((acc, s) => acc + (Number(s.totalHours) || 40), 0);
+      const accumulatedHours = weekSubs.reduce((acc, s) => {
+        const hrs = Array.isArray(s.dailyLogs) && s.dailyLogs.length > 0
+          ? s.dailyLogs.reduce((dSum, d) => dSum + (Number(d.hours) || 0), 0)
+          : (Number(s.totalHours) || 40);
+        return acc + (hrs > 0 ? hrs : 40);
+      }, 0);
 
       const latestForm3 =
         (student.studentCode && form3ByStudent.byCode.get(student.studentCode)) ||
@@ -863,9 +868,13 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
                 ) : (
                   filteredSummaries.map((item, idx) => {
                     const sub = item.weekMap[selectedWeekNum];
-                    const score = sub?.teacherScore ?? item.latestForm3?.score ?? null;
+                    const gradedSubScore =
+                      sub?.status === 'graded' && typeof sub.teacherScore === 'number' && sub.teacherScore > 0
+                        ? sub.teacherScore
+                        : null;
+                    const score = gradedSubScore ?? item.latestForm3?.score ?? null;
                     const grade =
-                      sub?.teacherGrade ||
+                      (sub?.status === 'graded' ? sub.teacherGrade : null) ||
                       item.latestForm3?.grade ||
                       (score !== null ? getGradeFromScore(score) : null);
 

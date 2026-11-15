@@ -20,6 +20,10 @@ import {
 import { Student, WeeklySubmission, DailyLog, PhotoEvidence, AuthUser } from '../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { saveSubmissionToFirestore } from '../services/firestoreService';
+import {
+  readSubmissionFromLocalCache,
+  writeSubmissionToLocalCache,
+} from '../utils/submissionUtils';
 
 interface WeeklyLogReportViewProps {
   student: Student;
@@ -58,7 +62,16 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
-  const existingSubmission = submissions.find(s => s.weekNumber === selectedWeek);
+  const existingSubmission =
+    submissions.find(s => s.weekNumber === selectedWeek) ||
+    readSubmissionFromLocalCache(student, selectedWeek) ||
+    undefined;
+
+  useEffect(() => {
+    if (initialWeek && initialWeek >= 1 && initialWeek <= 18) {
+      setSelectedWeek(initialWeek);
+    }
+  }, [initialWeek]);
 
   // When selectedWeek changes, load submission or load default template for that week
   useEffect(() => {
@@ -82,7 +95,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
     }
     setSaveSuccessMessage(null);
     setErrorMessage(null);
-  }, [selectedWeek, existingSubmission]);
+  }, [selectedWeek, existingSubmission?.id, existingSubmission?.submittedAt]);
 
   // Handle file uploads and convert to compressed data URLs
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,11 +166,14 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
     });
   };
 
+  const totalWeeklyHours = dailyLogs.reduce((sum, d) => sum + (Number(d.hours) || 0), 0) || 40.0;
+
   const handleSaveToFirestore = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setErrorMessage(null);
 
+    const isAlreadyGraded = existingSubmission?.status === 'graded';
     const submissionDocId = `sub-${student.id}-w${selectedWeek}`;
     const newSubmission: WeeklySubmission = {
       id: submissionDocId,
@@ -169,36 +185,40 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         month: 'short',
         year: 'numeric'
       }) + ' ' + new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.',
-      status: existingSubmission?.status === 'graded' ? 'graded' : 'pending',
+      status: isAlreadyGraded ? 'graded' : 'pending',
       taskTitle: taskTitle || currentWeekMeta.defaultTask,
       dailyLogs,
       photos,
-      totalHours: 40.0,
+      totalHours: totalWeeklyHours,
       mentorRating: existingSubmission?.mentorRating || 5.0,
       mentorComment: existingSubmission?.mentorComment || 'นักศึกษาปฏิบัติตามมาตรฐานความปลอดภัยและขั้นตอนวิศวกรรมไฟฟ้าครบถ้วน',
       mentorName: student.companyRegistration?.mentorName || 'นายชาญชัย มงคลศรี',
       mentorPosition: 'วิศวกรไฟฟ้า / พี่เลี้ยง',
-      teacherScore: existingSubmission?.teacherScore || 19.5,
-      teacherGrade: existingSubmission?.teacherGrade || 'A',
+      teacherScore: isAlreadyGraded ? (existingSubmission?.teacherScore ?? 0) : 0,
+      teacherGrade: isAlreadyGraded ? (existingSubmission?.teacherGrade ?? '') : '',
+      teacherComment: isAlreadyGraded ? existingSubmission?.teacherComment : undefined,
       teacherName: student.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
       studentSignature: student.name.replace(/^(นาย|นางสาว)\s*/, ''),
-      mentorSignature: 'ชาญชัย มงคลศรี',
-      teacherSignature: 'ทักษิณ โสภาปิยะ',
+      mentorSignature: (student.companyRegistration?.mentorName || 'ชาญชัย มงคลศรี').replace(/^(นาย|นางสาว|นาง|ช่าง)\s*/, ''),
+      teacherSignature: (student.supervisorTeacher || 'ทักษิณ โสภาปิยะ').replace(/^(นาย|นางสาว|นาง|อาจารย์|ว่าที่ร้อยตรี|ดร\.)\s*/, ''),
       verifiedHash: `7B8C${student.studentCode}-KKTECH-2569-W${selectedWeek.toString().padStart(2, '0')}-OK`,
       safetyChecklist
     };
 
+    // Write immediately to localStorage cache & parent state so all views reflect changes right away
+    writeSubmissionToLocalCache(newSubmission, student);
+    if (onSubmissionUpdated) {
+      onSubmissionUpdated(newSubmission);
+    }
+
     try {
       await saveSubmissionToFirestore(newSubmission);
       setIsSaving(false);
-      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลง Firebase Firestore (internship2-2569) สำเร็จเรียบร้อยแล้ว!`);
-      if (onSubmissionUpdated) {
-        onSubmissionUpdated(newSubmission);
-      }
+      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลงฐานข้อมูลและเชื่อมโยงเอกสาร ทว.04 เรียบร้อยแล้ว!`);
     } catch (err) {
       console.error('Error saving submission to Firestore:', err);
       setIsSaving(false);
-      setErrorMessage('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลงเครื่องและเชื่อมโยงเอกสาร ทว.04 แล้ว (รอซิงค์คลาวด์อัตโนมัติ)`);
     }
   };
 
@@ -308,7 +328,9 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {WEEKS_1_TO_18.map((w) => {
             const isSelected = selectedWeek === w.weekNumber;
-            const sub = submissions.find(s => s.weekNumber === w.weekNumber);
+            const sub =
+              submissions.find(s => s.weekNumber === w.weekNumber) ||
+              readSubmissionFromLocalCache(student, w.weekNumber);
             const isGraded = sub?.status === 'graded';
             const isPending = sub?.status === 'pending';
 
@@ -373,13 +395,21 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
       <form onSubmit={handleSaveToFirestore} className="space-y-6">
         {/* Success Alert */}
         {saveSuccessMessage && (
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3 animate-in fade-in">
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex flex-wrap items-center gap-3 animate-in fade-in">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <div className="flex-1 font-medium">{saveSuccessMessage}</div>
+            <div className="flex-1 font-medium min-w-[200px]">{saveSuccessMessage}</div>
+            <button
+              type="button"
+              onClick={() => onNavigateA4(selectedWeek)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs sm:text-sm shadow-xs transition cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-sky-400" />
+              <span>เรียกดู / พิมพ์เอกสาร A4 (ทว.04)</span>
+            </button>
             <button
               type="button"
               onClick={() => setSaveSuccessMessage(null)}
-              className="text-emerald-700 hover:text-emerald-900 font-bold"
+              className="text-emerald-700 hover:text-emerald-900 font-bold px-1.5 cursor-pointer"
             >
               ✕
             </button>
@@ -596,7 +626,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
               <p className="text-sm text-slate-500">บันทึกเวลาทำงาน 08:30 - 16:30 น. วันละ 8.0 ชั่วโมง</p>
             </div>
             <span className="font-mono font-bold text-sm text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
-              รวม: 40.0 ชม./สัปดาห์
+              รวม: {totalWeeklyHours.toFixed(1)} ชม./สัปดาห์
             </span>
           </div>
 
@@ -660,9 +690,10 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
             <button
               type="button"
               onClick={() => onNavigateA4(selectedWeek)}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition cursor-pointer"
             >
-              ดูเอกสาร A4
+              <Printer className="w-4 h-4" />
+              <span>ดูเอกสาร / พิมพ์ A4</span>
             </button>
             <button
               type="submit"

@@ -691,8 +691,20 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
   }, [scopedCompanies]);
 
   const studentSubs = useMemo(() => {
-    return submissions[student.id] || [];
-  }, [submissions, student.id]);
+    const candidateKeys = Array.from(
+      new Set([student.id, student.studentCode, `std-${student.studentCode}`, student.id?.replace(/^std-/, '')].filter(Boolean) as string[])
+    );
+    const byWeek = new Map<number, WeeklySubmission>();
+    candidateKeys.forEach((k) => {
+      (submissions[k] || []).forEach((s) => {
+        const existing = byWeek.get(s.weekNumber);
+        if (!existing || (existing.status !== 'graded' && s.status === 'graded')) {
+          byWeek.set(s.weekNumber, s);
+        }
+      });
+    });
+    return Array.from(byWeek.values());
+  }, [submissions, student.id, student.studentCode]);
 
   const sortedStudentSubs = useMemo(() => {
     return [...studentSubs].sort((a, b) => b.weekNumber - a.weekNumber);

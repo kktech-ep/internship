@@ -285,6 +285,18 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   บันทึกปฏิบัติงาน & ภาพถ่าย
                 </button>
+                {userRole === 'student' && (
+                  <button
+                    onClick={() => onNavigate('a4')}
+                    className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                      currentView === 'a4'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    เอกสาร A4 (ทว.04)
+                  </button>
+                )}
               </>
             )}
 

@@ -112,28 +112,43 @@ export const AdminView: React.FC<AdminViewProps> = ({
     };
   }, [students.length]);
 
-  // Map student details
+  // Map student details across id, studentCode, and std-prefixed keys
   const studentMap = useMemo(() => {
     const map = new Map<string, Student>();
-    students.forEach(s => map.set(s.id, s));
+    students.forEach(s => {
+      if (s.id) map.set(s.id, s);
+      if (s.studentCode) {
+        map.set(s.studentCode, s);
+        map.set(`std-${s.studentCode}`, s);
+      }
+    });
     return map;
   }, [students]);
 
-  // Flatten submissions
+  // Flatten and deduplicate submissions
   const allSubmissionsList = useMemo(() => {
-    const list: Array<WeeklySubmission & { studentName?: string; studentCode?: string; companyName?: string }> = [];
+    const byId = new Map<string, WeeklySubmission & { studentName?: string; studentCode?: string; companyName?: string }>();
     Object.entries(submissions).forEach(([studentId, subs]) => {
-      const std = studentMap.get(studentId);
-      subs.forEach(s => {
-        list.push({
-          ...s,
-          studentName: std?.name || s.studentId,
-          studentCode: std?.studentCode || '',
-          companyName: std?.companyName || ''
-        });
+      (subs || []).forEach(s => {
+        const cleanId = s.studentId?.replace(/^std-/, '') || studentId.replace(/^std-/, '');
+        const std =
+          studentMap.get(s.studentId) ||
+          studentMap.get(studentId) ||
+          studentMap.get(cleanId) ||
+          studentMap.get(`std-${cleanId}`);
+        const key = s.id || `${std?.id || s.studentId}-w${s.weekNumber}`;
+        const existing = byId.get(key);
+        if (!existing || (existing.status !== 'graded' && s.status === 'graded')) {
+          byId.set(key, {
+            ...s,
+            studentName: std?.name || s.studentSignature || s.studentId,
+            studentCode: std?.studentCode || cleanId,
+            companyName: std?.companyName || ''
+          });
+        }
       });
     });
-    return list.sort((a, b) => b.weekNumber - a.weekNumber);
+    return Array.from(byId.values()).sort((a, b) => b.weekNumber - a.weekNumber);
   }, [submissions, studentMap]);
 
   const sheetTeachers = useMemo(() => getAllLoginSheetTeachers(), []);
