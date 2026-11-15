@@ -20,12 +20,14 @@ import { StudentGuideView } from './views/StudentGuideView';
 import { mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements } from './data/mockData';
 import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Announcement } from './types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
-import { getStoredAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
+import { getStoredAuthUser, saveAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
 import { appendForm1ToGoogleSheet, deleteLocalForm3Row, getLocalForm3Rows } from './services/googleSheetsService';
 import { 
   getAllLoginSheetStudents,
   findStudentInLoginSheet,
   convertLoginRowToStudent,
+  fetchSheetLoginAccounts,
+  mapStatusToRole,
 } from './services/sheetAuthService';
 import {
   syncAllLoginSheetRowsToFirebase,
@@ -51,7 +53,9 @@ export default function App() {
   const [showGuidePreLogin, setShowGuidePreLogin] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<string>('hub');
   const [isMobileMode, setIsMobileMode] = useState<boolean>(false);
-  const [currentRole, setCurrentRole] = useState<'student' | 'teacher' | 'admin'>('student');
+  const [currentRole, setCurrentRole] = useState<'student' | 'teacher' | 'admin'>(
+    () => getStoredAuthUser()?.role || 'student'
+  );
   
   // App data state: initialized directly with all students from Google Sheet login tab (1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28)
   const [students, setStudents] = useState<Student[]>(() => {
@@ -443,6 +447,7 @@ export default function App() {
     // If user clicked the teacher gateway, ensure their effective role is teacher
     const effectiveRole = (gatewayRole === 'teacher' && user.role === 'admin') ? 'teacher' : user.role;
     const effectiveUser = { ...user, role: effectiveRole };
+    saveAuthUser(effectiveUser);
     setCurrentUser(effectiveUser);
     setCurrentRole(effectiveUser.role);
 
@@ -488,6 +493,51 @@ export default function App() {
     setIsAuthModalOpen(false);
   };
 
+  // Keep currentRole aligned with currentUser account role (non-admin cannot drift)
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role !== 'admin' && currentRole !== currentUser.role) {
+      setCurrentRole(currentUser.role);
+    }
+  }, [currentUser, currentRole]);
+
+  // Verify restored user account role against live Google Sheet login tab on startup
+  useEffect(() => {
+    const stored = getStoredAuthUser();
+    if (!stored) return;
+    let cancelled = false;
+    fetchSheetLoginAccounts(true)
+      .then((accounts) => {
+        if (cancelled) return;
+        const cleanEmail = stored.email.trim().toLowerCase();
+        const emailPrefix = cleanEmail.split('@')[0];
+        const matched = accounts.find((acc) => {
+          const accUser = acc.user.trim().toLowerCase();
+          const accPrefix = accUser.split('@')[0];
+          return accUser === cleanEmail || accPrefix === emailPrefix;
+        });
+        if (matched && matched.status) {
+          const sheetRole = mapStatusToRole(matched.status);
+          if (sheetRole !== stored.role || (matched.name && matched.name !== stored.name)) {
+            const refreshedUser: AuthUser = {
+              ...stored,
+              role: sheetRole,
+              name: matched.name || stored.name,
+            };
+            saveAuthUser(refreshedUser);
+            setCurrentUser(refreshedUser);
+            setCurrentRole(sheetRole);
+          }
+        }
+      })
+      .catch(() => {
+        // Keep stored user if offline
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Guard views based on user's active role
   useEffect(() => {
     if (!currentUser) return;
@@ -508,6 +558,7 @@ export default function App() {
   const handleSignOut = () => {
     signOutKktechUser();
     setCurrentUser(null);
+    setCurrentRole('student');
   };
 
   // If user is not logged in and wants to read student guide
