@@ -28,7 +28,6 @@ import {
   getCoursesByTeacher, 
   getRoomsByTeacher 
 } from './courseDataService';
-import preloadedAccounts from '../data/loginSheetAccounts.json';
 import preloadedFullRows from '../data/loginSheetFullData.json';
 
 export const LOGIN_SHEET_CONFIG = {
@@ -52,20 +51,58 @@ export interface LoginSheetFullRow {
   pass: string; // Col C
   name: string; // Col D
   status: string; // Col E
-  phoneStudent: string; // Col F
+  phoneStudent: string; // Col F (phoneUser / phoneStudent)
   Company: string; // Col G
   CompanyID: string; // Col H
   CompanyPhone: string; // Col I
   room: string; // Col J
-  department: string; // Col K
-  leader: string; // Col L
-  leaderPhone: string; // Col M
-  GPS: string; // Col N
-  delial: string; // Col O
+  level?: string; // Col K (ระดับชั้น เช่น ปวส. / ปริญญาตรี)
+  department: string; // Col L
+  leader: string; // Col M
+  leaderPhone: string; // Col N
+  GPS: string; // Col O
+  delial: string; // Col P
 }
 
-const STORAGE_LOGIN_ACCOUNTS_KEY = 'kktech_sheet_login_accounts_cache_v1';
-const STORAGE_LOGIN_FULL_ROWS_KEY = 'kktech_login_sheet_full_rows_v2';
+const STORAGE_LOGIN_ACCOUNTS_KEY = 'kktech_sheet_login_accounts_cache_v2';
+const STORAGE_LOGIN_FULL_ROWS_KEY = 'kktech_login_sheet_full_rows_v3';
+
+function purgeLegacyLoginCaches(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem('kktech_sheet_login_accounts_cache_v1');
+    localStorage.removeItem('kktech_login_sheet_full_rows_v2');
+  } catch {
+    // ignore
+  }
+}
+
+export function extractStudentCode(userOrCode: string): string {
+  const clean = (userOrCode || '').replace(/\u00a0/g, ' ').trim();
+  const prefix = clean.split('@')[0].trim();
+  return prefix.replace(/^s(?=\d{8,})/i, '');
+}
+
+export function isStudentSheetRow(row: Pick<LoginSheetFullRow, 'user' | 'status' | 'room' | 'name'>): boolean {
+  const status = (row.status || '').toLowerCase().trim();
+  const user = (row.user || '').trim();
+  const room = (row.room || '').trim();
+  if (
+    status.includes('ครู') ||
+    status.includes('อาจารย์') ||
+    status.includes('admin') ||
+    status.includes('ผู้ดูแล') ||
+    status.includes('นิเทศ')
+  ) {
+    return false;
+  }
+  return (
+    status.includes('นักศึกษา') ||
+    /^s?\d{8,}/i.test(user) ||
+    room.includes('สอฟ') ||
+    room.includes('ทลฟ')
+  );
+}
 
 /**
  * Helper to parse CSV string into array of rows
@@ -116,9 +153,11 @@ function parseCSV(csvText: string): string[][] {
 }
 
 /**
- * Fetch all full 15-column rows from Google Sheet tab: login
+ * Fetch all full 16-column rows from Google Sheet tab: login
  */
 export async function fetchFullLoginSheetRows(forceRefresh = false): Promise<LoginSheetFullRow[]> {
+  purgeLegacyLoginCaches();
+
   if (!forceRefresh) {
     try {
       const cached = localStorage.getItem(STORAGE_LOGIN_FULL_ROWS_KEY);
@@ -136,6 +175,7 @@ export async function fetchFullLoginSheetRows(forceRefresh = false): Promise<Log
   try {
     const response = await fetch(LOGIN_SHEET_CONFIG.csvUrl, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         'Accept': 'text/csv, text/plain, */*'
       }
@@ -146,52 +186,47 @@ export async function fetchFullLoginSheetRows(forceRefresh = false): Promise<Log
       const rawRows = parseCSV(csvText);
 
       const fullRows: LoginSheetFullRow[] = [];
+      const firstRowUser = (rawRows[0]?.[1] || '').replace(/\u00a0/g, ' ').trim();
+      const isMergedHeader = firstRowUser.startsWith('user ') && firstRowUser.length > 5;
+      const isPureHeader = firstRowUser.toLowerCase() === 'user';
 
       for (let i = 0; i < rawRows.length; i++) {
-        const r = rawRows[i];
-        const padded = r.concat(Array(Math.max(0, 15 - r.length)).fill(''));
-        const rowNum = i + 1;
+        if (i === 0 && isPureHeader) continue;
 
-        if (i === 0) {
-          // Row 0 header may contain data
-          fullRows.push({
-            rowNumber: rowNum,
-            timestamp: padded[0].replace('Timestamp ', '').trim(),
-            user: padded[1].replace('user ', '').trim(),
-            pass: padded[2].replace('pass ', '').trim(),
-            name: padded[3].replace('name ', '').trim(),
-            status: padded[4].replace('status ', '').trim(),
-            phoneStudent: padded[5].replace('phoneStudent ', '').trim(),
-            Company: padded[6].replace('Company ', '').trim(),
-            CompanyID: padded[7].replace('CompanyID ', '').trim(),
-            CompanyPhone: padded[8].replace('CompanyPhone ', '').trim(),
-            room: padded[9].replace('room ', '').trim(),
-            department: padded[10].replace('department ', '').trim(),
-            leader: padded[11].replace('leader ', '').trim(),
-            leaderPhone: padded[12].replace('leaderPhone ', '').trim(),
-            GPS: padded[13].replace('GPS ', '').trim(),
-            delial: padded[14].replace('delial ', '').trim(),
-          });
-        } else {
-          fullRows.push({
-            rowNumber: rowNum,
-            timestamp: padded[0].trim(),
-            user: padded[1].trim(),
-            pass: padded[2].trim(),
-            name: padded[3].trim(),
-            status: padded[4].trim(),
-            phoneStudent: padded[5].trim(),
-            Company: padded[6].trim(),
-            CompanyID: padded[7].trim(),
-            CompanyPhone: padded[8].trim(),
-            room: padded[9].trim(),
-            department: padded[10].trim(),
-            leader: padded[11].trim(),
-            leaderPhone: padded[12].trim(),
-            GPS: padded[13].trim(),
-            delial: padded[14].trim(),
-          });
-        }
+        const r = rawRows[i];
+        const padded = r.concat(Array(Math.max(0, 16 - r.length)).fill(''));
+        const rowNum = isMergedHeader ? i + 2 : i + 1;
+
+        const cleanCell = (val: string, prefix?: string): string => {
+          let cleaned = (val || '').replace(/\u00a0/g, ' ').trim();
+          if (i === 0 && isMergedHeader && prefix && cleaned.startsWith(prefix)) {
+            cleaned = cleaned.slice(prefix.length).trim();
+          }
+          return cleaned;
+        };
+
+        const rowObj: LoginSheetFullRow = {
+          rowNumber: rowNum,
+          timestamp: cleanCell(padded[0], 'Timestamp'),
+          user: cleanCell(padded[1], 'user'),
+          pass: cleanCell(padded[2], 'pass'),
+          name: cleanCell(padded[3], 'name'),
+          status: cleanCell(padded[4], 'status'),
+          phoneStudent: cleanCell(padded[5], 'phoneUser') || cleanCell(padded[5], 'phoneStudent'),
+          Company: cleanCell(padded[6], 'Company'),
+          CompanyID: cleanCell(padded[7], 'CompanyID'),
+          CompanyPhone: cleanCell(padded[8], 'CompanyPhone'),
+          room: cleanCell(padded[9], 'room'),
+          level: cleanCell(padded[10], 'level'),
+          department: cleanCell(padded[11], 'department'),
+          leader: cleanCell(padded[12], 'leader'),
+          leaderPhone: cleanCell(padded[13], 'leaderPhone'),
+          GPS: cleanCell(padded[14], 'GPS'),
+          delial: cleanCell(padded[15], 'delial'),
+        };
+
+        if (!rowObj.user && !rowObj.name) continue;
+        fullRows.push(rowObj);
       }
 
       if (fullRows.length > 0) {
@@ -214,6 +249,7 @@ export async function fetchFullLoginSheetRows(forceRefresh = false): Promise<Log
  * Save updated full rows to localStorage
  */
 export function saveLocalFullLoginRows(rows: LoginSheetFullRow[]): void {
+  purgeLegacyLoginCaches();
   try {
     localStorage.setItem(STORAGE_LOGIN_FULL_ROWS_KEY, JSON.stringify(rows));
   } catch (e) {
@@ -230,14 +266,16 @@ export async function findStudentInLoginSheet(
 ): Promise<LoginSheetFullRow | null> {
   const rows = await fetchFullLoginSheetRows();
   const cleanTarget = (studentCodeOrUser || '').trim().toLowerCase();
-  const targetCode = cleanTarget.split('@')[0];
+  const targetPrefix = cleanTarget.split('@')[0];
+  const targetCode = extractStudentCode(targetPrefix).toLowerCase();
 
   return rows.find(r => {
     const rUser = r.user.trim().toLowerCase();
-    const rCode = rUser.split('@')[0];
+    const rPrefix = rUser.split('@')[0];
+    const rCode = extractStudentCode(rPrefix).toLowerCase();
     const rName = r.name.trim();
 
-    if (rUser === cleanTarget || rCode === targetCode) {
+    if (rUser === cleanTarget || rPrefix === targetPrefix || rCode === targetCode) {
       return true;
     }
     if (studentName && rName && (rName.includes(studentName) || studentName.includes(rName))) {
@@ -251,11 +289,18 @@ export async function findStudentInLoginSheet(
  * Convert a full row from Google Sheet login tab into a complete Student profile
  */
 export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 320): Student {
-  const userStr = (row.user || '').trim();
-  const code = userStr.split('@')[0] || `std-${row.rowNumber}`;
+  const userStr = (row.user || '').replace(/\u00a0/g, ' ').trim();
+  const code = extractStudentCode(userStr) || `std-${row.rowNumber}`;
   const room = (row.room || '').trim() || 'สอฟ.2/1';
-  const isTechDept = room.includes('ทลฟ');
-  const level = isTechDept ? 'ปริญญาตรี' : room.includes('1/') ? 'ปวส.1' : 'ปวส.2';
+  const rowLevel = (row.level || '').trim();
+  const isTechDept = room.includes('ทลฟ') || rowLevel.includes('ปริญญาตรี');
+  const level = isTechDept
+    ? 'ปริญญาตรี'
+    : room.includes('1/')
+    ? 'ปวส.1'
+    : room.includes('2/')
+    ? 'ปวส.2'
+    : rowLevel || 'ปวส.2';
   const studentDepartment = isTechDept ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
   
   let gpsLat = 16.4322;
@@ -278,7 +323,7 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
   return {
     id: `std-${code}`,
     studentCode: code,
-    name: row.name || 'นักศึกษาฝึกงาน',
+    name: (row.name || 'นักศึกษาฝึกงาน').trim(),
     initials: getInitialsFromName(row.name || code),
     level: level,
     department: studentDepartment,
@@ -286,7 +331,7 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
     email: userStr.includes('@') ? userStr : `${userStr}@kktech.ac.th`,
     avatarUrl: (typeof localStorage !== 'undefined' ? localStorage.getItem(`kktech_avatar_std-${code}`) : null) || undefined,
     companyId: `comp-${code}`,
-    companyName: row.Company || 'ยังไม่ระบุสถานประกอบการ',
+    companyName: (row.Company || 'ยังไม่ระบุสถานประกอบการ').trim(),
     currentWeek: currentWeek,
     totalWeeks: 18,
     actualWeeks: 8,
@@ -309,26 +354,34 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
 }
 
 /**
- * Get all students mapped directly from Google Sheet login tab dataset (113 records)
+ * Get all students mapped directly from Google Sheet login tab dataset
  */
 export function getAllLoginSheetStudents(): Student[] {
+  purgeLegacyLoginCaches();
+  let sourceRows: LoginSheetFullRow[] = preloadedFullRows as LoginSheetFullRow[];
   try {
     const cached = localStorage.getItem(STORAGE_LOGIN_FULL_ROWS_KEY);
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return (parsed as LoginSheetFullRow[])
-          .filter(r => r.name && (r.status?.includes('นักศึกษา') || /^\d+/.test(r.user)))
-          .map(r => convertLoginRowToStudent(r));
+        sourceRows = parsed as LoginSheetFullRow[];
       }
     }
   } catch (e) {
     console.warn('Could not read cached students from login sheet:', e);
   }
 
-  return (preloadedFullRows as LoginSheetFullRow[])
-    .filter(r => r.name && (r.status?.includes('นักศึกษา') || /^\d+/.test(r.user)))
-    .map(r => convertLoginRowToStudent(r));
+  const deduped = new Map<string, Student>();
+  sourceRows
+    .filter(r => r.name && isStudentSheetRow(r))
+    .forEach(r => {
+      const student = convertLoginRowToStudent(r);
+      if (!deduped.has(student.id)) {
+        deduped.set(student.id, student);
+      }
+    });
+
+  return Array.from(deduped.values());
 }
 
 /**
@@ -338,115 +391,18 @@ export function normalizeTeacherKey(name: string): string {
   return (name || '')
     .trim()
     .toLowerCase()
-    .replace(/^(ว่าที่ร้อยตรี|นาย|นางสาว|นาง|อาจารย์|ดร\.)\s*/, '')
+    .replace(/^(ว่าที่ร้อยตรี|ส\.ต\.ท\.|ส\.อ\.|นาย|นางสาว|นาง|อาจารย์|ดร\.)\s*/, '')
     .replace(/\s+/g, '');
 }
 
 /**
- * Known default teachers and course instructors for KKTECH
- */
-const KNOWN_DEFAULT_TEACHERS: SheetTeacher[] = [
-  {
-    id: 'tch-thaksin',
-    name: 'นายทักษิณ โสภาปิยะ',
-    user: 'thaksinso@kktech.ac.th',
-    email: 'thaksinso@kktech.ac.th',
-    status: 'ครูนิเทศก์ / ผู้ดูแลระบบ (admin)',
-    role: 'teacher',
-    phone: '081-987-6543',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/1', 'สอฟ.2/2', 'สอฟ.2/5', 'สอฟ.2/8'],
-    subjects: ['30000-2005 กิจกรรมในสถานประกอบการ 1', '30104-2028 ระบบปรับอากาศในงานอุตสาหกรรม']
-  },
-  {
-    id: 'tch-puttipong',
-    name: 'นายพุฒิพงศ์ ไชยราช',
-    user: 'puttipong@kktech.ac.th',
-    email: 'puttipong@kktech.ac.th',
-    status: 'ครูประจำวิชา / ครูนิเทศก์',
-    role: 'teacher',
-    phone: '086-123-4567',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/5'],
-    subjects: ['30000-2005 กิจกรรมในสถานประกอบการ 1', '30104-2027 ไฟฟ้าอุตสาหกรรม']
-  },
-  {
-    id: 'tch-yuttasat',
-    name: 'นายยุทธศาสตร์ น้อยศรี',
-    user: 'yuttasat@kktech.ac.th',
-    email: 'yuttasat@kktech.ac.th',
-    status: 'ครูประจำวิชา / ครูนิเทศก์',
-    role: 'teacher',
-    phone: '089-234-5678',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/5'],
-    subjects: ['30104-2011 การประมาณการระบบไฟฟ้า']
-  },
-  {
-    id: 'tch-thanyaporn',
-    name: 'นางสาวธัญพร ถานะ',
-    user: 'thanyaporn@kktech.ac.th',
-    email: 'thanyaporn@kktech.ac.th',
-    status: 'ครูประจำวิชา / ครูนิเทศก์',
-    role: 'teacher',
-    phone: '084-345-6789',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/5'],
-    subjects: ['30104-2017 อินเทอร์เน็ตของสรรพสิ่ง']
-  },
-  {
-    id: 'tch-anarkan',
-    name: 'นายอนรรฆพนธ์ คลังชำนาญ',
-    user: 'anarkan@kktech.ac.th',
-    email: 'anarkan@kktech.ac.th',
-    status: 'ครูประจำวิชา / ครูนิเทศก์',
-    role: 'teacher',
-    phone: '085-456-7890',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/5'],
-    subjects: ['30104-2026 การติดตั้งไฟฟ้า 2']
-  },
-  {
-    id: 'tch-tatthep',
-    name: 'นายทัดเทพ ชีวะโอสถ',
-    user: 'tatthep@kktech.ac.th',
-    email: 'tatthep@kktech.ac.th',
-    status: 'ครูประจำวิชา / ครูนิเทศก์',
-    role: 'teacher',
-    phone: '082-567-8901',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/5'],
-    subjects: ['30104-2036 การซ่อมบํารุงระบบไฟฟ้า']
-  },
-
-  {
-    id: 'tch-ekkachai',
-    name: 'นายเอกชัย พลอยงาม',
-    user: 'ekkachai@kktech.ac.th',
-    email: 'ekkachai@kktech.ac.th',
-    status: 'ครูนิเทศก์ / ครูที่ปรึกษา',
-    role: 'teacher',
-    phone: '087-789-0123',
-    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    rooms: ['สอฟ.2/8'],
-    subjects: ['30000-2005 กิจกรรมในสถานประกอบการ 1']
-  }
-];
-
-/**
- * Get all teachers from Google Sheets "login" tab & cross-reference with "data" tab
+ * Get all current teachers/admin from Google Sheets "login" tab & enrich with "data" tab
  * References Google Sheets ID: 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28
  */
 export function getAllLoginSheetTeachers(): SheetTeacher[] {
+  purgeLegacyLoginCaches();
   const teacherMap = new Map<string, SheetTeacher>();
 
-  // 1. Seed with known default teachers
-  KNOWN_DEFAULT_TEACHERS.forEach(t => {
-    const key = normalizeTeacherKey(t.name);
-    teacherMap.set(key, { ...t });
-  });
-
-  // 2. Read full rows from login tab
   let fullRows: LoginSheetFullRow[] = preloadedFullRows as LoginSheetFullRow[];
   try {
     const cached = localStorage.getItem(STORAGE_LOGIN_FULL_ROWS_KEY);
@@ -460,113 +416,67 @@ export function getAllLoginSheetTeachers(): SheetTeacher[] {
     console.warn('Error reading full rows for teachers:', e);
   }
 
-  // 3. Scan full rows from login sheet for teachers/supervisors/admins
-  fullRows.forEach((r, idx) => {
+  // Build exclusively from current login sheet teacher/admin rows
+  fullRows.forEach((r) => {
+    if (isStudentSheetRow(r)) return;
     const status = (r.status || '').trim();
     const user = (r.user || '').trim();
     const name = (r.name || '').trim();
-    const isTeacherStatus = status.includes('ครู') || 
-                           status.includes('อาจารย์') || 
-                           status.includes('admin') || 
-                           status.includes('ผู้ดูแล') || 
-                           status.includes('นิเทศ');
-    const isNonStudentUser = user.length > 0 && !/^\d+/.test(user) && !status.includes('นักศึกษา');
+    if (!name && !user) return;
 
-    if (name && (isTeacherStatus || isNonStudentUser)) {
-      const key = normalizeTeacherKey(name);
-      const email = user.includes('@') ? user : `${user}@kktech.ac.th`;
-      const existing = teacherMap.get(key);
+    const cleanUserId = user.replace(/[^a-zA-Z0-9_-]/g, '_') || `row_${r.rowNumber}`;
+    const email = user.includes('@') ? user : `${user}@kktech.ac.th`;
+    const key = normalizeTeacherKey(name || user);
+    const existing = teacherMap.get(key);
+    const mappedRole = mapStatusToRole(status);
 
-      if (existing) {
-        if (status) existing.status = status;
-        if (user) existing.user = user;
-        if (email) existing.email = email;
-        if (r.phoneStudent) existing.phone = r.phoneStudent;
-        if (r.department) existing.department = r.department;
-        if (r.room && !existing.rooms?.includes(r.room)) {
-          existing.rooms = [...(existing.rooms || []), r.room];
-        }
-      } else {
-        teacherMap.set(key, {
-          id: `tch-row-${idx}`,
-          name: name,
-          user: user,
-          email: email,
-          status: status || 'ครูนิเทศก์',
-          role: status.includes('admin') ? 'admin' : 'teacher',
-          phone: r.phoneStudent || '',
-          department: r.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-          rooms: r.room ? [r.room] : []
-        });
+    if (existing) {
+      if (status) existing.status = status;
+      if (mappedRole === 'admin') existing.role = 'admin';
+      if (user) existing.user = user;
+      if (email) existing.email = email;
+      if (r.phoneStudent) existing.phone = r.phoneStudent;
+      if (r.department) existing.department = r.department;
+      if (r.room && !existing.rooms?.includes(r.room)) {
+        existing.rooms = [...(existing.rooms || []), r.room];
       }
+    } else {
+      teacherMap.set(key, {
+        id: `tch-${cleanUserId}`,
+        name: name || user,
+        user: user,
+        email: email,
+        status: status || 'ครูนิเทศก์',
+        role: mappedRole === 'admin' ? 'admin' : 'teacher',
+        phone: r.phoneStudent || '',
+        department: r.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+        rooms: r.room && r.room !== 'ครูประจำรายวิชา' ? [r.room] : [],
+        subjects: []
+      });
     }
   });
 
-  // 4. Scan preloaded accounts from login sheet
-  try {
-    preloadedAccounts.forEach((acc, idx) => {
-      const status = (acc.status || '').trim();
-      const user = (acc.user || '').trim();
-      const name = (acc.name || '').trim();
-      if (name && (status.includes('ครู') || status.includes('admin') || status.includes('อาจารย์') || !/^\d+/.test(user))) {
-        const key = normalizeTeacherKey(name);
-        const email = user.includes('@') ? user : `${user}@kktech.ac.th`;
-        const existing = teacherMap.get(key);
-        if (existing) {
-          if (!existing.email) existing.email = email;
-          if (status) existing.status = status;
-        } else {
-          teacherMap.set(key, {
-            id: `tch-acc-${idx}`,
-            name: name,
-            user: user,
-            email: email,
-            status: status || 'ครูนิเทศก์',
-            role: status.includes('admin') ? 'admin' : 'teacher',
-            department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น'
-          });
-        }
-      }
-    });
-  } catch (e) {
-    // ignore
-  }
-
-  // 5. Enrich with course data sheet info (rooms & subjects from data tab)
+  // Enrich matched login-sheet teachers with rooms & subjects from "data" tab
   try {
     const dataTeachers = getAllTeachersFromData();
     dataTeachers.forEach(tName => {
       const key = normalizeTeacherKey(tName);
-      const rooms = getRoomsByTeacher(tName);
-      const courses = getCoursesByTeacher(tName);
-      const subjectLabels = courses.map(c => `${c.subjectCode} ${c.subjectName}`);
-      
       const existing = teacherMap.get(key);
       if (existing) {
+        const rooms = getRoomsByTeacher(tName);
+        const courses = getCoursesByTeacher(tName);
+        const subjectLabels = courses.map(c => `${c.subjectCode} ${c.subjectName}`);
         existing.rooms = Array.from(new Set([...(existing.rooms || []), ...rooms]));
         existing.subjects = Array.from(new Set([...(existing.subjects || []), ...subjectLabels]));
-      } else {
-        teacherMap.set(key, {
-          id: `tch-data-${key}`,
-          name: tName,
-          user: `${key.replace(/\s+/g, '').slice(0, 8)}@kktech.ac.th`,
-          email: `${key.replace(/\s+/g, '').slice(0, 8)}@kktech.ac.th`,
-          status: 'ครูประจำวิชา / นิเทศก์',
-          role: 'teacher',
-          department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-          rooms: rooms,
-          subjects: subjectLabels
-        });
       }
     });
-  } catch (e) {
+  } catch {
     // ignore
   }
 
   return Array.from(teacherMap.values()).sort((a, b) => {
-    // Put นายทักษิณ โสภาปิยะ at top as primary supervisor
-    if (a.name.includes('ทักษิณ')) return -1;
-    if (b.name.includes('ทักษิณ')) return 1;
+    if (a.name.includes('ทักษิณ') || a.user.includes('thaksin')) return -1;
+    if (b.name.includes('ทักษิณ') || b.user.includes('thaksin')) return 1;
     return a.name.localeCompare(b.name, 'th');
   });
 }
@@ -586,19 +496,22 @@ export async function saveCompanyDataToLoginSheet(
     gpsCoordinates: string;
     notes: string;
     room?: string;
+    level?: string;
   },
   accessToken?: string | null
 ): Promise<{ success: boolean; message: string; rowNumber?: number; syncedLive: boolean }> {
   const allRows = await fetchFullLoginSheetRows();
   const cleanTarget = (data.userOrCode || '').trim().toLowerCase();
-  const targetCode = cleanTarget.split('@')[0];
+  const targetPrefix = cleanTarget.split('@')[0];
+  const targetCode = extractStudentCode(targetPrefix).toLowerCase();
 
   const rowIndex = allRows.findIndex(r => {
     const rUser = r.user.trim().toLowerCase();
-    const rCode = rUser.split('@')[0];
+    const rPrefix = rUser.split('@')[0];
+    const rCode = extractStudentCode(rPrefix).toLowerCase();
     const rName = r.name.trim();
 
-    if (rUser === cleanTarget || rCode === targetCode) {
+    if (rUser === cleanTarget || rPrefix === targetPrefix || rCode === targetCode) {
       return true;
     }
     if (data.studentName && rName && (rName.includes(data.studentName) || data.studentName.includes(rName))) {
@@ -608,7 +521,8 @@ export async function saveCompanyDataToLoginSheet(
   });
 
   const nowTimestamp = new Date().toLocaleString('th-TH');
-  let targetRowNumber = rowIndex >= 0 ? allRows[rowIndex].rowNumber : allRows.length + 1;
+  const maxRowNum = allRows.reduce((max, r) => Math.max(max, r.rowNumber || 0), 1);
+  const targetRowNumber = rowIndex >= 0 ? allRows[rowIndex].rowNumber : maxRowNum + 1;
 
   let updatedRow: LoginSheetFullRow;
 
@@ -620,6 +534,7 @@ export async function saveCompanyDataToLoginSheet(
       Company: data.companyName,
       CompanyPhone: data.emergencyPhone || existing.CompanyPhone,
       room: data.room || existing.room,
+      level: data.level || existing.level || ((data.room || existing.room || '').includes('ทลฟ') ? 'ปริญญาตรี' : 'ปวส.'),
       department: data.department,
       leader: data.mentorName,
       leaderPhone: data.mentorPhone,
@@ -628,11 +543,14 @@ export async function saveCompanyDataToLoginSheet(
     };
     allRows[rowIndex] = updatedRow;
   } else {
-    // New entry
+    const roomStr = data.room || 'สอฟ.2/1';
+    const derivedUser = data.userOrCode.includes('@')
+      ? data.userOrCode
+      : `s${targetCode}@kktech.ac.th`;
     updatedRow = {
       rowNumber: targetRowNumber,
       timestamp: nowTimestamp,
-      user: data.userOrCode.includes('@') ? data.userOrCode : `${data.userOrCode}@kktech.ac.th`,
+      user: derivedUser,
       pass: targetCode,
       name: data.studentName || 'นักศึกษาฝึกงาน',
       status: 'นักศึกษา',
@@ -640,7 +558,8 @@ export async function saveCompanyDataToLoginSheet(
       Company: data.companyName,
       CompanyID: 'ขอนแก่น',
       CompanyPhone: data.emergencyPhone,
-      room: data.room || 'สอฟ.2/1',
+      room: roomStr,
+      level: data.level || (roomStr.includes('ทลฟ') ? 'ปริญญาตรี' : 'ปวส.'),
       department: data.department,
       leader: data.mentorName,
       leaderPhone: data.mentorPhone,
@@ -650,10 +569,8 @@ export async function saveCompanyDataToLoginSheet(
     allRows.push(updatedRow);
   }
 
-  // Update localStorage immediately
   saveLocalFullLoginRows(allRows);
 
-  // If OAuth accessToken is available, update Google Sheet live via REST API
   if (accessToken) {
     try {
       const rowValues = [
@@ -667,14 +584,15 @@ export async function saveCompanyDataToLoginSheet(
         updatedRow.CompanyID,    // Col H: CompanyID
         updatedRow.CompanyPhone, // Col I: CompanyPhone
         updatedRow.room,         // Col J: room
-        updatedRow.department,   // Col K: department
-        updatedRow.leader,       // Col L: leader
-        updatedRow.leaderPhone,  // Col M: leaderPhone
-        updatedRow.GPS,          // Col N: GPS
-        updatedRow.delial        // Col O: delial
+        updatedRow.level || '',  // Col K: level
+        updatedRow.department,   // Col L: department
+        updatedRow.leader,       // Col M: leader
+        updatedRow.leaderPhone,  // Col N: leaderPhone
+        updatedRow.GPS,          // Col O: GPS
+        updatedRow.delial        // Col P: delial
       ];
 
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${LOGIN_SHEET_CONFIG.spreadsheetId}/values/login!A${updatedRow.rowNumber}:O${updatedRow.rowNumber}?valueInputOption=USER_ENTERED`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${LOGIN_SHEET_CONFIG.spreadsheetId}/values/login!A${updatedRow.rowNumber}:P${updatedRow.rowNumber}?valueInputOption=USER_ENTERED`;
 
       const res = await fetch(url, {
         method: 'PUT',
@@ -683,7 +601,7 @@ export async function saveCompanyDataToLoginSheet(
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          range: `login!A${updatedRow.rowNumber}:O${updatedRow.rowNumber}`,
+          range: `login!A${updatedRow.rowNumber}:P${updatedRow.rowNumber}`,
           majorDimension: 'ROWS',
           values: [rowValues]
         })
@@ -783,28 +701,36 @@ export async function authenticateWithGoogleSheet(
     return { success: false, error: 'กรุณาระบุ Pass (รหัสผ่าน)' };
   }
 
-  const accounts = await fetchSheetLoginAccounts();
+  // Always check latest live Google Sheet accounts so deleted old users are rejected
+  const fullRows = await fetchFullLoginSheetRows(true);
+  const accounts: SheetLoginAccount[] = fullRows.map(r => ({
+    user: r.user,
+    pass: r.pass,
+    name: r.name,
+    status: r.status
+  }));
   const userPrefix = cleanUser.split('@')[0];
+  const userDigits = extractStudentCode(userPrefix).toLowerCase();
 
   const matchedUser = accounts.find(acc => {
     const accUser = acc.user.trim().toLowerCase();
     const accUserPrefix = accUser.split('@')[0];
+    const accDigits = extractStudentCode(accUserPrefix).toLowerCase();
 
-    const isUserMatch = (
+    return (
       accUser === cleanUser ||
       accUserPrefix === cleanUser ||
       accUser === `${cleanUser}@kktech.ac.th` ||
       cleanUser === `${accUser}@kktech.ac.th` ||
-      accUserPrefix === userPrefix
+      accUserPrefix === userPrefix ||
+      (userDigits.length >= 8 && accDigits === userDigits)
     );
-
-    return isUserMatch;
   });
 
   if (!matchedUser) {
     return {
       success: false,
-      error: `ไม่พบชื่อผู้ใช้ "${inputUser}" ในฐานข้อมูลแผ่นงาน login ของ Google Sheet (ID: ${LOGIN_SHEET_CONFIG.spreadsheetId})`
+      error: `ไม่พบชื่อผู้ใช้ "${inputUser}" ในฐานข้อมูลปัจจุบันของ Google Sheet (แผ่นงาน login)`
     };
   }
 
@@ -818,14 +744,14 @@ export async function authenticateWithGoogleSheet(
   const role = mapStatusToRole(matchedUser.status);
   const userEmail = matchedUser.user.includes('@') ? matchedUser.user : `${matchedUser.user}@kktech.ac.th`;
   const initials = getInitialsFromName(matchedUser.name);
-  const studentCode = matchedUser.user.split('@')[0];
+  const studentCode = role === 'student' ? extractStudentCode(matchedUser.user) : undefined;
 
   let studentProfile: Student | undefined;
   if (role === 'student') {
-    const fullRows = await fetchFullLoginSheetRows();
     const rowMatch = fullRows.find(r => {
-      const rCode = r.user.trim().toLowerCase().split('@')[0];
-      return rCode === studentCode || r.name.trim() === matchedUser.name.trim();
+      const rUser = r.user.trim().toLowerCase();
+      const rCode = extractStudentCode(rUser).toLowerCase();
+      return rUser === userEmail.toLowerCase() || (studentCode && rCode === studentCode.toLowerCase()) || r.name.trim() === matchedUser.name.trim();
     });
     if (rowMatch) {
       studentProfile = convertLoginRowToStudent(rowMatch);
@@ -843,7 +769,7 @@ export async function authenticateWithGoogleSheet(
           ? 'ภาควิชาเทคโนโลยีไฟฟ้า (นักศึกษาฝึกงาน)'
           : 'แผนกช่างไฟฟ้ากำลัง (นักศึกษาฝึกงาน)'
         : 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-    studentId: role === 'student' ? studentCode : undefined,
+    studentId: studentCode,
     provider: 'google'
   };
 

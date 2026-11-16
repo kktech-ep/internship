@@ -1,40 +1,60 @@
 /**
  * Google Spreadsheet (Tab: login) & Firebase Firestore (internship2-2569)
- * Unified Database & Bidirectional Synchronization Service
- * 
+ * Unified Database & Authoritative Synchronization Service
+ *
  * Target Spreadsheet ID: 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28
  * Target Sheet Tab: login
  * Firebase Project: internship2-2569
  * Firestore Collections:
  *   - /students/{studentId}
+ *   - /teachers/{teacherId}
+ *   - /users/{userId}
  *   - /login_sheet/{userId}
  *   - /companies/{companyId}
+ *   - /courses/{courseId}
  */
 
-import { doc, setDoc, getDocs, deleteDoc, collection, onSnapshot, query, limit } from 'firebase/firestore';
-import { db, OperationType, handleFirestoreError } from '../firebase';
-import { 
-  fetchFullLoginSheetRows, 
-  convertLoginRowToStudent, 
+import { doc, getDocs, collection, writeBatch, WriteBatch } from 'firebase/firestore';
+import { db } from '../firebase';
+import {
+  fetchFullLoginSheetRows,
+  convertLoginRowToStudent,
   saveCompanyDataToLoginSheet,
   getAllLoginSheetTeachers,
-  LoginSheetFullRow,
+  isStudentSheetRow,
+  mapStatusToRole,
   LOGIN_SHEET_CONFIG
 } from './sheetAuthService';
-import { Student, Company, SheetTeacher } from '../types';
-import { fetchDataSheetCourses, fetchPivotSheetCourses } from './courseDataService';
+import { Student } from '../types';
+import { fetchDataSheetCourses } from './courseDataService';
 
 export interface SyncSummary {
   success: boolean;
   totalSynced: number;
   studentsCount: number;
+  deletedCount?: number;
   timestamp: string;
   sourceSpreadsheetId: string;
   targetFirebaseProject: string;
   message: string;
 }
 
-const STORAGE_LAST_SYNC_KEY = 'kktech_sheet_firebase_last_sync_info_v1';
+const STORAGE_LAST_SYNC_KEY = 'kktech_sheet_firebase_last_sync_info_v2';
+
+/**
+ * Commit Firestore write/delete operations in safe chunks of 400
+ */
+async function commitBatchOperations(
+  operations: Array<(batch: WriteBatch) => void>
+): Promise<void> {
+  const CHUNK_SIZE = 400;
+  for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+    const chunk = operations.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+    chunk.forEach((op) => op(batch));
+    await batch.commit();
+  }
+}
 
 /**
  * Get cached last sync summary info
@@ -51,16 +71,17 @@ export function getLastSyncInfo(): SyncSummary | null {
 
 /**
  * Synchronize every row from Google Sheet (login tab) into Firebase Firestore (internship2-2569)
- * This links and merges both sources into a unified single source of truth.
+ * AND automatically delete stale/old users & students that are no longer in the Google Sheet.
  */
 export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
-  console.log(`[SyncEngine] Starting full synchronization: Google Sheet login -> Firebase (internship2-2569)...`);
+  console.log('[SyncEngine] Starting authoritative sync: Google Sheet login -> Firebase (internship2-2569)...');
 
   const startTime = new Date();
   const summary: SyncSummary = {
     success: false,
     totalSynced: 0,
     studentsCount: 0,
+    deletedCount: 0,
     timestamp: startTime.toLocaleString('th-TH'),
     sourceSpreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
     targetFirebaseProject: 'internship2-2569',
@@ -76,8 +97,29 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       return summary;
     }
 
+    // Load existing Firestore /students to preserve Form 1 updates and uploaded avatars for current students
+    const existingStudentsMap = new Map<string, Student & { lastSyncSource?: string }>();
+    const existingStudentDocRefs = new Map<string, ReturnType<typeof doc>>();
+    try {
+      const existingSnap = await getDocs(collection(db, 'students'));
+      existingSnap.forEach((docSnap) => {
+        existingStudentsMap.set(docSnap.id, docSnap.data() as Student & { lastSyncSource?: string });
+        existingStudentDocRefs.set(docSnap.id, docSnap.ref);
+      });
+    } catch (readErr) {
+      console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
+    }
+
     let syncedCount = 0;
     let studentRows = 0;
+    const validLoginSheetIds = new Set<string>();
+    const validUserIds = new Set<string>();
+    const validStudentIds = new Set<string>();
+    const validTeacherIds = new Set<string>();
+    const validCompanyIds = new Set<string>();
+
+    const batchOps: Array<(batch: WriteBatch) => void> = [];
+
     const detectedCompanies = new Map<string, {
       name: string;
       phone?: string;
@@ -88,61 +130,47 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       students: Student[];
     }>();
 
-    // Load existing Firestore /students to protect newer Form 1 updates and uploaded avatars from being clobbered by older CSV rows
-    const existingStudentsMap = new Map<string, Student & { lastSyncSource?: string }>();
-    try {
-      const existingSnap = await getDocs(collection(db, 'students'));
-      existingSnap.forEach((docSnap) => {
-        existingStudentsMap.set(docSnap.id, docSnap.data() as Student & { lastSyncSource?: string });
-      });
-    } catch (readErr) {
-      console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
-    }
-
-    // 2. Loop through every row and save to Firestore
+    // 2. Process all live rows from Google Sheet login tab
     for (const row of sheetRows) {
       const userRaw = (row.user || '').trim();
-      if (!userRaw && !row.name) continue;
+      const name = (row.name || '').trim();
+      if (!userRaw && !name) continue;
 
       const cleanUserId = userRaw.replace(/[^a-zA-Z0-9_-]/g, '_') || `row_${row.rowNumber}`;
+      const isStudent = isStudentSheetRow(row);
+      const userEmail = userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`;
 
-      // 2.1 Mirror raw 15-column spreadsheet row into Firestore collection /login_sheet/{userId}
-      try {
-        await setDoc(
-          doc(db, 'login_sheet', cleanUserId),
-          {
-            rowNumber: row.rowNumber,
-            timestamp: row.timestamp || '',
-            user: row.user,
-            pass: row.pass || '',
-            name: row.name,
-            status: row.status || '',
-            phoneStudent: row.phoneStudent || '',
-            Company: row.Company || '',
-            CompanyID: row.CompanyID || '',
-            CompanyPhone: row.CompanyPhone || '',
-            room: row.room || '',
-            department: row.department || '',
-            leader: row.leader || '',
-            leaderPhone: row.leaderPhone || '',
-            GPS: row.GPS || '',
-            delial: row.delial || '',
-            lastSync: startTime.toISOString(),
-            spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
-            sheetTab: LOGIN_SHEET_CONFIG.sheetName
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        console.warn(`[SyncEngine] Notice writing login_sheet for ${cleanUserId}:`, err);
-      }
+      // 2.1 Mirror raw 16-column spreadsheet row into /login_sheet/{userId}
+      validLoginSheetIds.add(cleanUserId);
+      batchOps.push((batch) => {
+        batch.set(doc(db, 'login_sheet', cleanUserId), {
+          rowNumber: row.rowNumber,
+          timestamp: row.timestamp || '',
+          user: row.user,
+          pass: row.pass || '',
+          name: name,
+          status: row.status || '',
+          phoneStudent: row.phoneStudent || '',
+          Company: row.Company || '',
+          CompanyID: row.CompanyID || '',
+          CompanyPhone: row.CompanyPhone || '',
+          room: row.room || '',
+          level: row.level || '',
+          department: row.department || '',
+          leader: row.leader || '',
+          leaderPhone: row.leaderPhone || '',
+          GPS: row.GPS || '',
+          delial: row.delial || '',
+          lastSync: startTime.toISOString(),
+          spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
+          sheetTab: LOGIN_SHEET_CONFIG.sheetName
+        });
+      });
 
-      // 2.2 For students, map to full Student entity and sync to /students/{studentId}
-      const isStudent = row.status?.includes('นักศึกษา') || /^\d+/.test(userRaw) || row.room?.includes('สอฟ');
       let effectiveCompanyName = (row.Company || '').trim();
       let effectiveStudent: Student | null = null;
 
-      if (isStudent && row.name) {
+      if (isStudent && name) {
         const student = convertLoginRowToStudent(row);
         const existing = existingStudentsMap.get(student.id);
         const keepExistingForm1 = Boolean(
@@ -175,15 +203,60 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         effectiveStudent = mergedStudent as Student;
         effectiveCompanyName = (effectiveStudent.companyName || '').trim();
 
-        try {
-          await setDoc(doc(db, 'students', student.id), mergedStudent, { merge: true });
-          studentRows++;
-        } catch (err) {
-          console.warn(`[SyncEngine] Notice writing student doc ${student.id}:`, err);
-        }
+        validStudentIds.add(student.id);
+        validUserIds.add(cleanUserId);
+
+        batchOps.push((batch) => {
+          batch.set(doc(db, 'students', student.id), mergedStudent);
+          batch.set(doc(db, 'users', cleanUserId), {
+            email: userEmail,
+            name: name,
+            role: 'student',
+            studentId: student.studentCode,
+            status: row.status || 'นักศึกษา',
+            room: effectiveStudent?.room || student.room,
+            level: student.level,
+            department: student.department,
+            phone: row.phoneStudent || '',
+            pass: row.pass || '',
+            companyName: effectiveCompanyName,
+            updatedAt: startTime.toISOString()
+          });
+        });
+        studentRows++;
+      } else {
+        const mappedRole = mapStatusToRole(row.status || '');
+        const tchId = `tch-${cleanUserId}`;
+        validTeacherIds.add(tchId);
+        validUserIds.add(cleanUserId);
+
+        batchOps.push((batch) => {
+          batch.set(doc(db, 'teachers', tchId), {
+            id: tchId,
+            name: name || userRaw,
+            user: userRaw,
+            email: userEmail,
+            status: row.status || 'ครูนิเทศก์',
+            role: mappedRole === 'admin' ? 'admin' : 'teacher',
+            phone: row.phoneStudent || '',
+            department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+            room: row.room || '',
+            updatedAt: startTime.toISOString()
+          });
+          batch.set(doc(db, 'users', cleanUserId), {
+            email: userEmail,
+            name: name || userRaw,
+            role: mappedRole,
+            status: row.status || 'ครูนิเทศก์',
+            department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+            phone: row.phoneStudent || '',
+            pass: row.pass || '',
+            updatedAt: startTime.toISOString()
+          });
+        });
       }
 
-      // 2.3 Gather company info with aggregated students to update /companies/{companyId}
+      // Gather company info
       if (effectiveCompanyName && effectiveCompanyName.length > 2 && effectiveCompanyName !== 'ยังไม่ระบุสถานประกอบการ') {
         if (!detectedCompanies.has(effectiveCompanyName)) {
           detectedCompanies.set(effectiveCompanyName, {
@@ -204,10 +277,12 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       syncedCount++;
     }
 
-    // 2.4 Synchronize distinct companies to Firestore /companies with real student counts & supervisors
+    // 2.4 Synchronize distinct companies to Firestore /companies
     let compIndex = 1;
     for (const [compName, compInfo] of detectedCompanies.entries()) {
       const compId = `comp-sheet-${compIndex++}`;
+      validCompanyIds.add(compId);
+
       let lat = 16.4322;
       let lng = 102.8236;
       if (compInfo.gps && compInfo.gps.includes(',')) {
@@ -224,60 +299,99 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       const assignedTeacher = firstStudent?.supervisorTeacher || 'นายทักษิณ โสภาปิยะ';
       const studentCount = Math.max(1, compInfo.students.length);
 
+      batchOps.push((batch) => {
+        batch.set(doc(db, 'companies', compId), {
+          id: compId,
+          name: compName,
+          shortName: compName.slice(0, 30),
+          address: compInfo.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
+          zone: 'อ.เมืองขอนแก่น',
+          distanceKm: 5.5,
+          sector: 'high-voltage',
+          sectorLabel: 'ระบบไฟฟ้าและควบคุม',
+          contactPerson: (compInfo.leader && compInfo.leader !== '-') ? compInfo.leader : 'ผู้จัดการฝ่าย',
+          phone: (compInfo.phone && compInfo.phone !== '-') ? compInfo.phone : '-',
+          lat,
+          lng,
+          studentsCount: studentCount,
+          status: 'completed',
+          statusText: 'เชื่อมต่อแล้ว',
+          assignedTeacher,
+          assignedStudents: compInfo.students.map(cs => ({
+            studentId: cs.id,
+            studentName: cs.name,
+            studentCode: cs.studentCode,
+            level: cs.level,
+            latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
+          })),
+          jobScope: compInfo.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
+          lastSyncAt: startTime.toISOString()
+        });
+      });
+    }
+
+    // 2.5 Delete ALL stale/old documents not in current Google Sheet (students, users, teachers, login_sheet, companies)
+    let deletedCount = 0;
+    existingStudentDocRefs.forEach((ref, docId) => {
+      if (!validStudentIds.has(docId)) {
+        batchOps.push((batch) => batch.delete(ref));
+        deletedCount++;
+      }
+    });
+
+    const cleanupTargets: Array<{ col: string; validSet: Set<string> }> = [
+      { col: 'users', validSet: validUserIds },
+      { col: 'teachers', validSet: validTeacherIds },
+      { col: 'login_sheet', validSet: validLoginSheetIds },
+      { col: 'companies', validSet: validCompanyIds },
+    ];
+
+    for (const target of cleanupTargets) {
       try {
-        await setDoc(
-          doc(db, 'companies', compId),
-          {
-            id: compId,
-            name: compName,
-            shortName: compName.slice(0, 30),
-            address: compInfo.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
-            zone: 'อ.เมืองขอนแก่น',
-            distanceKm: 5.5,
-            sector: 'high-voltage',
-            sectorLabel: 'ระบบไฟฟ้าและควบคุม',
-            contactPerson: (compInfo.leader && compInfo.leader !== '-') ? compInfo.leader : 'ผู้จัดการฝ่าย',
-            phone: (compInfo.phone && compInfo.phone !== '-') ? compInfo.phone : '-',
-            lat: lat,
-            lng: lng,
-            studentsCount: studentCount,
-            status: 'completed',
-            statusText: 'เชื่อมต่อแล้ว',
-            assignedTeacher,
-            assignedStudents: compInfo.students.map(cs => ({
-              studentId: cs.id,
-              studentName: cs.name,
-              studentCode: cs.studentCode,
-              level: cs.level,
-              latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
-            })),
-            jobScope: compInfo.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
-            lastSyncAt: startTime.toISOString()
-          },
-          { merge: true }
-        );
-      } catch (e) {
-        // non-blocking
+        const snap = await getDocs(collection(db, target.col));
+        snap.forEach((d) => {
+          if (!target.validSet.has(d.id)) {
+            batchOps.push((batch) => batch.delete(d.ref));
+            deletedCount++;
+          }
+        });
+      } catch (err) {
+        console.warn(`[SyncEngine] Notice scanning stale docs in ${target.col}:`, err);
       }
     }
 
-    // 2.5 Synchronize courses from Google Sheet 'data' & 'ตาราง Pivot 1' into Firestore /courses
+    // Commit all writes + stale deletions in batches
+    await commitBatchOperations(batchOps);
+
+    // 2.6 Synchronize courses from Google Sheet 'data' into Firestore /courses
     let coursesCount = 0;
     try {
       const courses = await fetchDataSheetCourses(true);
+      const validCourseIds = new Set<string>();
+      const courseOps: Array<(batch: WriteBatch) => void> = [];
       for (const crs of courses) {
         const courseId = `crs-${crs.room}-${crs.subjectCode}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-        await setDoc(
-          doc(db, 'courses', courseId),
-          {
-            ...crs,
-            lastSyncAt: startTime.toISOString(),
-            spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId
-          },
-          { merge: true }
-        );
+        validCourseIds.add(courseId);
+        courseOps.push((batch) => {
+          batch.set(
+            doc(db, 'courses', courseId),
+            {
+              ...crs,
+              lastSyncAt: startTime.toISOString(),
+              spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId
+            },
+            { merge: true }
+          );
+        });
         coursesCount++;
       }
+      const existingCoursesSnap = await getDocs(collection(db, 'courses'));
+      existingCoursesSnap.forEach((d) => {
+        if (!validCourseIds.has(d.id)) {
+          courseOps.push((batch) => batch.delete(d.ref));
+        }
+      });
+      await commitBatchOperations(courseOps);
     } catch (courseErr) {
       console.warn('[SyncEngine] Course sync to Firestore notice:', courseErr);
     }
@@ -285,9 +399,9 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     summary.success = true;
     summary.totalSynced = syncedCount + coursesCount;
     summary.studentsCount = studentRows;
-    summary.message = `เชื่อมโยงสำเร็จ: อัปเดตข้อมูล ${syncedCount} รายการ (${studentRows} นักศึกษา, ${coursesCount} รายวิชาสอน แผ่นงาน login, data, ตาราง Pivot 1) จาก Google Sheet (1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28) สู่ Firebase: internship2-2569 เป็นปัจจุบันเรียบร้อย`;
-    
-    // Save summary cache
+    summary.deletedCount = deletedCount;
+    summary.message = `อัปเดตฐานข้อมูลสำเร็จ: ซิงค์ผู้ใช้ปัจจุบัน ${syncedCount} บัญชี (นักศึกษา ${studentRows} คน, รายวิชา ${coursesCount} วิชา)${deletedCount > 0 ? ` และลบผู้ใช้เก่าออก ${deletedCount} รายการ` : ''} จาก Google Sheet สู่ Firebase เรียบร้อย`;
+
     localStorage.setItem(STORAGE_LAST_SYNC_KEY, JSON.stringify(summary));
     console.log(`[SyncEngine] ${summary.message}`);
     return summary;
@@ -313,11 +427,13 @@ export async function saveAndSyncStudentBothWays(
   };
 
   const now = new Date();
-  const cleanUserId = student.studentCode.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const userEmail = student.email || `s${student.studentCode}@kktech.ac.th`;
+  const cleanUserId = userEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const batch = writeBatch(db);
 
   // 1. Write to Firebase Firestore /students/{studentId}
   try {
-    await setDoc(
+    batch.set(
       doc(db, 'students', student.id),
       {
         ...student,
@@ -326,20 +442,15 @@ export async function saveAndSyncStudentBothWays(
       },
       { merge: true }
     );
-    result.firestoreResult = 'บันทึกลง Firebase Firestore (internship2-2569) สำเร็จ';
-  } catch (err) {
-    console.warn('[SyncEngine] Firestore student save notice:', err);
-    result.firestoreResult = 'บันทึกใน Firestore ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err));
-  }
 
-  // 2. Write to Firebase Firestore /login_sheet/{userId}
-  try {
-    await setDoc(
+    // 2. Write to Firebase Firestore /login_sheet/{userId}
+    batch.set(
       doc(db, 'login_sheet', cleanUserId),
       {
-        user: student.studentCode,
+        user: userEmail,
         name: student.name,
         room: student.room,
+        level: student.level,
         Company: student.companyName,
         department: student.companyRegistration?.department || '',
         leader: student.companyRegistration?.mentorName || '',
@@ -352,15 +463,19 @@ export async function saveAndSyncStudentBothWays(
       },
       { merge: true }
     );
+
+    await batch.commit();
+    result.firestoreResult = 'บันทึกลง Firebase Firestore (internship2-2569) สำเร็จ';
   } catch (err) {
-    console.warn('[SyncEngine] Firestore login_sheet write notice:', err);
+    console.warn('[SyncEngine] Firestore student save notice:', err);
+    result.firestoreResult = 'บันทึกใน Firestore ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err));
   }
 
   // 3. Write directly to Google Sheet ID 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28 tab 'login'
   try {
     const sheetRes = await saveCompanyDataToLoginSheet(
       {
-        userOrCode: student.studentCode,
+        userOrCode: userEmail,
         studentName: student.name,
         companyName: student.companyName,
         department: student.companyRegistration?.department || '',
@@ -369,7 +484,8 @@ export async function saveAndSyncStudentBothWays(
         emergencyPhone: student.companyRegistration?.emergencyPhone || '',
         gpsCoordinates: student.companyRegistration?.gpsCoordinates || '',
         notes: student.companyRegistration?.notes || '',
-        room: student.room
+        room: student.room,
+        level: student.level
       },
       token
     );
@@ -383,8 +499,8 @@ export async function saveAndSyncStudentBothWays(
 }
 
 /**
- * Wipe all old user data (students & teachers) from Firebase (internship2-2569)
- * and replace them with fresh data from Google Sheets (tab: login)
+ * Wipe all old user data (students, teachers, users, login_sheet, companies) from Firebase (internship2-2569)
+ * and replace them strictly with current live data from Google Sheets (tab: login)
  */
 export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
   success: boolean;
@@ -397,20 +513,22 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
   console.log('[SyncEngine] Wiping old database in Firebase (internship2-2569) and replacing from Google Sheets...');
 
   let deletedCount = 0;
-  const collectionsToClear = ['students', 'teachers', 'users', 'login_sheet'];
+  const collectionsToClear = ['students', 'teachers', 'users', 'login_sheet', 'companies'];
+  const deleteOps: Array<(batch: WriteBatch) => void> = [];
 
-  // 1. Delete all old documents in collections
+  // 1. Collect all old documents across user-related collections
   for (const colName of collectionsToClear) {
     try {
       const snap = await getDocs(collection(db, colName));
-      for (const d of snap.docs) {
-        await deleteDoc(doc(db, colName, d.id));
+      snap.forEach((d) => {
+        deleteOps.push((batch) => batch.delete(d.ref));
         deletedCount++;
-      }
+      });
     } catch (e) {
-      console.warn(`[SyncEngine] Notice wiping collection ${colName}:`, e);
+      console.warn(`[SyncEngine] Notice reading collection ${colName} for wipe:`, e);
     }
   }
+  await commitBatchOperations(deleteOps);
 
   // 2. Fetch live rows from Google Sheets login tab
   const rows = await fetchFullLoginSheetRows(true);
@@ -419,68 +537,27 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
   let insertedStudents = 0;
   let insertedTeachers = 0;
   let insertedUsers = 0;
+  const insertOps: Array<(batch: WriteBatch) => void> = [];
+  const seenTeachers = new Set<string>();
+  const detectedCompanies = new Map<string, Student[]>();
 
-  // Insert default verified teachers from system & login sheet
-  const defaultTeachers = getAllLoginSheetTeachers();
-  for (const tch of defaultTeachers) {
-    try {
-      const cleanUserId = tch.email.replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, 'teachers', tch.id), {
-        ...tch,
-        source: 'Google Sheets login sync',
-        updatedAt: startTimeISO
-      });
-      await setDoc(doc(db, 'users', cleanUserId), {
-        email: tch.email,
-        name: tch.name,
-        role: tch.role,
-        status: tch.status,
-        department: tch.department,
-        phone: tch.phone || '',
-        pass: '123456',
-        updatedAt: startTimeISO
-      });
-      insertedTeachers++;
-      insertedUsers++;
-    } catch (e) {
-      // non-blocking
-    }
-  }
+  // Get enriched teacher map from sheetAuthService (which reads exclusively from current login + data sheets)
+  const enrichedTeachers = getAllLoginSheetTeachers();
+  const enrichedByEmail = new Map(enrichedTeachers.map(t => [t.email.toLowerCase(), t]));
 
-  // 3. Process every row from Google Sheets login tab
+  // 3. Process every current row from Google Sheets login tab
   for (const row of rows) {
     const userRaw = (row.user || '').trim();
-    let name = (row.name || '').trim();
+    const name = (row.name || '').trim();
     if (!name && !userRaw) continue;
 
-    // Completely exclude any Supannee Jaidee record
-    if (
-      name.includes('สุพรรณี') || 
-      userRaw.includes('supannee') || 
-      userRaw.includes('supanee')
-    ) {
-      continue;
-    }
-
-    // Standardize prefix: replace ว่าที่ร้อยตรี ทักษิณ with นายทักษิณ
-    if (name.includes('ทักษิณ')) {
-      name = name.replace(/ว่าที่ร้อยตรี\s*ทักษิณ/g, 'นายทักษิณ').replace(/ว่าที่ร้อยตรีทักษิณ/g, 'นายทักษิณ');
-    }
-
     const cleanUserId = userRaw.replace(/[^a-zA-Z0-9_-]/g, '_') || `row_${row.rowNumber}`;
-    const isStudent = row.status.includes('นักศึกษา') || /^\d+/.test(userRaw) || row.room.includes('สอฟ');
-    const isTeacher = !isStudent && (
-      row.status.includes('ครู') || 
-      row.status.includes('อาจารย์') || 
-      row.status.includes('admin') || 
-      row.status.includes('ผู้ดูแล') || 
-      row.status.includes('นิเทศ') ||
-      userRaw.includes('thaksinso')
-    );
+    const userEmail = userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`;
+    const isStudent = isStudentSheetRow(row);
 
     // Save mirror row in /login_sheet
-    try {
-      await setDoc(doc(db, 'login_sheet', cleanUserId), {
+    insertOps.push((batch) => {
+      batch.set(doc(db, 'login_sheet', cleanUserId), {
         rowNumber: row.rowNumber,
         timestamp: row.timestamp,
         user: row.user,
@@ -492,6 +569,7 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
         CompanyID: row.CompanyID,
         CompanyPhone: row.CompanyPhone,
         room: row.room,
+        level: row.level || '',
         department: row.department,
         leader: row.leader,
         leaderPhone: row.leaderPhone,
@@ -499,117 +577,120 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
         delial: row.delial,
         syncedAt: startTimeISO
       });
-    } catch (e) {
-      // non-blocking
-    }
+    });
 
     if (isStudent) {
-      const code = userRaw.split('@')[0] || `std-${row.rowNumber}`;
-      const studentId = `std-${code}`;
-      const roomStr = (row.room || '').trim() || 'สอฟ.2/8';
-      const isTechDept = roomStr.includes('ทลฟ');
-      const level = isTechDept ? 'ปริญญาตรี' : roomStr.includes('1/') ? 'ปวส.1' : 'ปวส.2';
-      const studentDepartment = isTechDept ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
-
-      let lat = 16.4322;
-      let lng = 102.8236;
-      if (row.GPS && row.GPS.includes(',')) {
-        const parts = row.GPS.split(',');
-        const pLat = parseFloat(parts[0].trim());
-        const pLng = parseFloat(parts[1].trim());
-        if (!isNaN(pLat) && !isNaN(pLng)) {
-          lat = pLat;
-          lng = pLng;
-        }
+      const studentDoc = convertLoginRowToStudent(row);
+      const compName = (studentDoc.companyName || '').trim();
+      if (compName && compName.length > 2 && compName !== 'ยังไม่ระบุสถานประกอบการ') {
+        if (!detectedCompanies.has(compName)) detectedCompanies.set(compName, []);
+        detectedCompanies.get(compName)!.push(studentDoc);
       }
 
-      const studentDoc: Student = {
-        id: studentId,
-        studentCode: code,
-        name: name,
-        initials: name.slice(0, 2),
-        level: level,
-        department: studentDepartment,
-        room: roomStr,
-        email: userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`,
-        companyId: `comp-${code}`,
-        companyName: row.Company || 'ยังไม่ระบุสถานประกอบการ',
-        currentWeek: 8,
-        totalWeeks: 18,
-        actualWeeks: 8,
-        accumulatedHours: 320,
-        requiredHours: 720,
-        supervisorTeacher: 'นายทักษิณ โสภาปิยะ',
-        companyRegistration: {
-          registeredAt: row.timestamp || 'ซิงค์จากแผ่นงาน login',
-          department: row.department || (row.Company ? 'แผนกปฏิบัติการและบำรุงรักษา' : '-'),
-          mentorName: row.leader || '-',
-          mentorPhone: row.leaderPhone || '-',
-          emergencyPhone: row.CompanyPhone || row.phoneStudent || '-',
-          gpsCoordinates: row.GPS || '16.4322, 102.8236',
-          gpsLat: lat,
-          gpsLng: lng,
-          notes: row.delial || ''
-        }
-      };
-
-      try {
-        await setDoc(doc(db, 'students', studentId), studentDoc);
-        insertedStudents++;
-
-        await setDoc(doc(db, 'users', cleanUserId), {
-          email: userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`,
-          name: row.name,
+      insertOps.push((batch) => {
+        batch.set(doc(db, 'students', studentDoc.id), {
+          ...studentDoc,
+          syncedFromSheet: true,
+          sheetRowNumber: row.rowNumber,
+          lastSyncAt: startTimeISO
+        });
+        batch.set(doc(db, 'users', cleanUserId), {
+          email: userEmail,
+          name: name,
           role: 'student',
-          studentId: code,
+          studentId: studentDoc.studentCode,
           status: row.status || 'นักศึกษา',
-          room: row.room,
-          department: studentDepartment,
+          room: studentDoc.room,
+          level: studentDoc.level,
+          department: studentDoc.department,
           phone: row.phoneStudent,
           pass: row.pass,
-          companyName: row.Company,
+          companyName: studentDoc.companyName,
           updatedAt: startTimeISO
         });
-        insertedUsers++;
-      } catch (e) {
-        // non-blocking
-      }
-    } else if (isTeacher) {
-      const email = userRaw.includes('@') ? userRaw : `${userRaw}@kktech.ac.th`;
+      });
+      insertedStudents++;
+      insertedUsers++;
+    } else {
       const tchId = `tch-${cleanUserId}`;
-      try {
-        await setDoc(doc(db, 'teachers', tchId), {
-          id: tchId,
-          name: name,
-          user: userRaw,
-          email: email,
-          status: row.status || 'ครูนิเทศก์',
-          role: row.status.includes('admin') ? 'admin' : 'teacher',
-          phone: row.phoneStudent || '',
-          department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-          room: row.room || '',
-          updatedAt: startTimeISO
+      const mappedRole = mapStatusToRole(row.status || '');
+      const enriched = enrichedByEmail.get(userEmail.toLowerCase());
+      if (!seenTeachers.has(tchId)) {
+        seenTeachers.add(tchId);
+        insertOps.push((batch) => {
+          batch.set(doc(db, 'teachers', tchId), {
+            id: tchId,
+            name: name,
+            user: userRaw,
+            email: userEmail,
+            status: row.status || 'ครูนิเทศก์',
+            role: mappedRole === 'admin' ? 'admin' : 'teacher',
+            phone: row.phoneStudent || '',
+            department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+            room: row.room || '',
+            rooms: enriched?.rooms || [],
+            subjects: enriched?.subjects || [],
+            updatedAt: startTimeISO
+          });
         });
         insertedTeachers++;
+      }
 
-        await setDoc(doc(db, 'users', cleanUserId), {
-          email: email,
+      insertOps.push((batch) => {
+        batch.set(doc(db, 'users', cleanUserId), {
+          email: userEmail,
           name: name,
-          role: row.status.includes('admin') ? 'admin' : 'teacher',
+          role: mappedRole,
           status: row.status,
           department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
           phone: row.phoneStudent,
           pass: row.pass,
           updatedAt: startTimeISO
         });
-        insertedUsers++;
-      } catch (e) {
-        // non-blocking
-      }
+      });
+      insertedUsers++;
     }
   }
 
-  const message = `ลบข้อมูลเก่าสำเร็จ (${deletedCount} รายการ) และนำเข้าข้อมูลใหม่จาก Google Sheets เรียบร้อย (นักศึกษา ${insertedStudents} คน, ครูนิเทศก์ ${insertedTeachers} ท่าน)`;
+  // Insert derived companies
+  let compIdx = 1;
+  for (const [compName, compStudents] of detectedCompanies.entries()) {
+    const first = compStudents[0];
+    const compId = `comp-sheet-${compIdx++}`;
+    insertOps.push((batch) => {
+      batch.set(doc(db, 'companies', compId), {
+        id: compId,
+        name: compName,
+        shortName: compName.slice(0, 30),
+        address: first.companyRegistration?.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
+        zone: 'อ.เมืองขอนแก่น',
+        distanceKm: 5.5,
+        sector: 'high-voltage',
+        sectorLabel: 'ระบบไฟฟ้าและควบคุม',
+        contactPerson: first.companyRegistration?.mentorName || 'ผู้จัดการฝ่าย',
+        phone: first.companyRegistration?.emergencyPhone || first.companyRegistration?.mentorPhone || '-',
+        lat: first.companyRegistration?.gpsLat || 16.4322,
+        lng: first.companyRegistration?.gpsLng || 102.8236,
+        studentsCount: compStudents.length,
+        status: 'completed',
+        statusText: 'เชื่อมต่อแล้ว',
+        assignedTeacher: first.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
+        assignedStudents: compStudents.map(cs => ({
+          studentId: cs.id,
+          studentName: cs.name,
+          studentCode: cs.studentCode,
+          level: cs.level,
+          latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
+        })),
+        jobScope: first.companyRegistration?.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
+        lastSyncAt: startTimeISO
+      });
+    });
+  }
+
+  await commitBatchOperations(insertOps);
+
+  const message = `ลบผู้ใช้ในฐานข้อมูลเก่าออกทั้งหมด (${deletedCount} รายการ) และปรับปรุงข้อมูลปัจจุบันจาก Google Sheets เรียบร้อย (นักศึกษา ${insertedStudents} คน, ครู/แอดมิน ${insertedTeachers} ท่าน, บัญชีผู้ใช้ ${insertedUsers} บัญชี)`;
   return {
     success: true,
     deletedCount,

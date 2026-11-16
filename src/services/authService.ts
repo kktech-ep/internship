@@ -15,29 +15,11 @@ export const PRESET_KKTECH_ACCOUNTS: AuthUser[] = [
     provider: 'google'
   },
   {
-    email: 'thanakorn.s@kktech.ac.th',
-    name: 'นายธนากร สุริยะแสง',
-    role: 'student',
-    initials: 'ธส',
-    department: 'ปวส.2/1 แผนกช่างไฟฟ้ากำลัง',
-    studentId: 'std-1',
-    provider: 'google'
-  },
-  {
-    email: 'anurak.p@kktech.ac.th',
-    name: 'นายอนุรักษ์ โพธิ์แก้ว',
-    role: 'student',
-    initials: 'อร',
-    department: 'ปวส.2/2 แผนกช่างไฟฟ้ากำลัง',
-    studentId: 'std-5',
-    provider: 'google'
-  },
-  {
-    email: 'somchai.k@kktech.ac.th',
-    name: 'นายสมชาย ก้องเกียรติ',
+    email: 'ep_admin@kktech.ac.th',
+    name: 'Thaksin Sopapiya',
     role: 'admin',
-    initials: 'สม',
-    department: 'งานทวิภาคีและหลักสูตรวิชาการ วท.ขอนแก่น',
+    initials: 'TS',
+    department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
     provider: 'google'
   }
 ];
@@ -146,12 +128,15 @@ export async function signInWithGoogleWorkspace(): Promise<AuthUser> {
 
     // Check if preset profile matches
     const preset = PRESET_KKTECH_ACCOUNTS.find(a => a.email.toLowerCase() === email.toLowerCase());
+    const prefix = email.split('@')[0];
+    const isStudentEmail = /^s?\d{8,}$/i.test(prefix);
     const authUser: AuthUser = preset || {
       email,
-      name: res.user.displayName || email.split('@')[0],
-      role: email.startsWith('66') || email.startsWith('65') ? 'student' : 'teacher',
+      name: res.user.displayName || prefix,
+      role: isStudentEmail ? 'student' : 'teacher',
       initials: (res.user.displayName || email.slice(0, 2)).slice(0, 2).toUpperCase(),
       department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+      studentId: isStudentEmail ? prefix.replace(/^s(?=\d{8,})/i, '') : undefined,
       provider: 'google'
     };
 
@@ -181,7 +166,7 @@ export function signInWithKktechEmail(inputEmail: string, role?: 'student' | 'te
 
   // Generate appropriate profile for other @kktech.ac.th users
   const prefix = cleanEmail.split('@')[0];
-  const isStudentCode = /^\d+$/.test(prefix);
+  const isStudentCode = /^s?\d{8,}$/i.test(prefix);
   const detectedRole = role || (isStudentCode ? 'student' : 'teacher');
 
   const newUser: AuthUser = {
@@ -190,6 +175,7 @@ export function signInWithKktechEmail(inputEmail: string, role?: 'student' | 'te
     role: detectedRole,
     initials: prefix.slice(0, 2).toUpperCase(),
     department: 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+    studentId: detectedRole === 'student' && isStudentCode ? prefix.replace(/^s(?=\d{8,})/i, '') : undefined,
     provider: 'sso'
   };
 

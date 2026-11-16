@@ -28,6 +28,7 @@ import {
   convertLoginRowToStudent,
   fetchSheetLoginAccounts,
   mapStatusToRole,
+  extractStudentCode,
 } from './services/sheetAuthService';
 import {
   syncAllLoginSheetRowsToFirebase,
@@ -162,30 +163,57 @@ export default function App() {
     seedFirestoreIfEmpty(mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements);
 
     // 2. Synchronize all rows from Google Spreadsheet login tab into Firebase Firestore (internship2-2569)
+    //    and remove stale old users/students that no longer exist in Google Sheet
     syncAllLoginSheetRowsToFirebase().then((res) => {
       console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
+      const freshSheetStudents = getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
+      if (freshSheetStudents.length > 0) {
+        setStudents((prev) => {
+          const prevById = new Map(prev.map(s => [s.id, s]));
+          return freshSheetStudents.map((fs) => {
+            const existing = prevById.get(fs.id) as (Student & { lastSyncSource?: string }) | undefined;
+            const keepForm1 = existing?.lastSyncSource === 'web_portal_form1';
+            return normalizeStudentAcademicInfo({
+              ...fs,
+              ...(existing?.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
+              ...(typeof existing?.accumulatedHours === 'number' && existing.accumulatedHours !== 320
+                ? { accumulatedHours: existing.accumulatedHours }
+                : {}),
+              ...(typeof existing?.actualWeeks === 'number' && existing.actualWeeks !== 8
+                ? { actualWeeks: existing.actualWeeks }
+                : {}),
+              companyName: keepForm1 && existing ? existing.companyName : fs.companyName,
+              companyRegistration: keepForm1 && existing?.companyRegistration ? existing.companyRegistration : fs.companyRegistration,
+            });
+          });
+        });
+      }
     });
 
-    // 3. Real-time subscription to Students collection merged over full Google Sheet baseline
+    // 3. Real-time subscription to Students collection anchored strictly to current Google Sheet students
     const unsubStudents = subscribeStudents(
       (remoteStudents) => {
         if (remoteStudents && remoteStudents.length > 0) {
           const sheetBase = getAllLoginSheetStudents();
           const mergedMap = new Map<string, Student>();
-          sheetBase.forEach(s => mergedMap.set(s.id, s));
+          sheetBase.forEach(s => mergedMap.set(s.id, normalizeStudentAcademicInfo(s)));
           remoteStudents.forEach(rs => {
+            // Only merge Firestore records for students that currently exist in Google Sheet login tab
+            if (!mergedMap.has(rs.id)) return;
             const localCachedAvatar =
               (typeof localStorage !== 'undefined' &&
                 (localStorage.getItem(`kktech_avatar_${rs.id}`) ||
                   localStorage.getItem(`kktech_avatar_std-${rs.studentCode}`))) ||
               undefined;
-            const prev = mergedMap.get(rs.id);
+            const prev = mergedMap.get(rs.id)!;
             mergedMap.set(
               rs.id,
               normalizeStudentAcademicInfo({
                 ...prev,
                 ...rs,
-                avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
+                email: prev.email || rs.email,
+                studentCode: prev.studentCode || rs.studentCode,
+                avatarUrl: rs.avatarUrl || prev.avatarUrl || localCachedAvatar,
               })
             );
           });
@@ -551,33 +579,53 @@ export default function App() {
     }
   }, [currentUser, currentRole]);
 
-  // Verify restored user account role against live Google Sheet login tab on startup
+  // Verify restored user account against live Google Sheet login tab on startup
   useEffect(() => {
     const stored = getStoredAuthUser();
     if (!stored) return;
     let cancelled = false;
     fetchSheetLoginAccounts(true)
       .then((accounts) => {
-        if (cancelled) return;
+        if (cancelled || !accounts || accounts.length === 0) return;
         const cleanEmail = stored.email.trim().toLowerCase();
         const emailPrefix = cleanEmail.split('@')[0];
+        const emailDigits = extractStudentCode(emailPrefix).toLowerCase();
         const matched = accounts.find((acc) => {
           const accUser = acc.user.trim().toLowerCase();
           const accPrefix = accUser.split('@')[0];
-          return accUser === cleanEmail || accPrefix === emailPrefix;
+          const accDigits = extractStudentCode(accPrefix).toLowerCase();
+          return (
+            accUser === cleanEmail ||
+            accPrefix === emailPrefix ||
+            (emailDigits.length >= 8 && accDigits === emailDigits)
+          );
         });
-        if (matched && matched.status) {
-          const sheetRole = mapStatusToRole(matched.status);
-          if (sheetRole !== stored.role || (matched.name && matched.name !== stored.name)) {
-            const refreshedUser: AuthUser = {
-              ...stored,
-              role: sheetRole,
-              name: matched.name || stored.name,
-            };
-            saveAuthUser(refreshedUser);
-            setCurrentUser(refreshedUser);
-            setCurrentRole(sheetRole);
-          }
+        if (!matched) {
+          // Old user removed from Google Sheet -> force sign out so old users cannot remain logged in
+          saveAuthUser(null);
+          setCurrentUser(null);
+          setCurrentRole('student');
+          return;
+        }
+        const sheetRole = mapStatusToRole(matched.status);
+        const sheetEmail = matched.user.includes('@') ? matched.user.trim() : `${matched.user.trim()}@kktech.ac.th`;
+        const sheetStudentId = sheetRole === 'student' ? extractStudentCode(matched.user) : undefined;
+        if (
+          sheetRole !== stored.role ||
+          (matched.name && matched.name !== stored.name) ||
+          sheetEmail.toLowerCase() !== cleanEmail ||
+          sheetStudentId !== stored.studentId
+        ) {
+          const refreshedUser: AuthUser = {
+            ...stored,
+            email: sheetEmail,
+            role: sheetRole,
+            name: matched.name || stored.name,
+            studentId: sheetStudentId,
+          };
+          saveAuthUser(refreshedUser);
+          setCurrentUser(refreshedUser);
+          setCurrentRole(sheetRole);
         }
       })
       .catch(() => {

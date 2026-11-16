@@ -2,25 +2,30 @@ import { Student, WeeklySubmission } from '../types';
 
 export function getCandidateStudentKeys(student?: Pick<Student, 'id' | 'studentCode'> | string | null): string[] {
   if (!student) return [];
-  if (typeof student === 'string') {
-    const clean = student.trim();
+  const expandCodeVariants = (raw: string): string[] => {
+    const clean = (raw || '').trim();
     if (!clean) return [];
     const stripped = clean.replace(/^std-/, '');
-    return Array.from(new Set([clean, stripped, `std-${stripped}`].filter(Boolean)));
+    const noS = stripped.replace(/^s(?=\d{8,})/i, '');
+    const withS = /^\d{8,}$/.test(noS) ? `s${noS}` : '';
+    return [
+      clean,
+      stripped,
+      `std-${stripped}`,
+      noS,
+      noS ? `std-${noS}` : '',
+      withS,
+      withS ? `std-${withS}` : '',
+    ].filter(Boolean);
+  };
+  if (typeof student === 'string') {
+    return Array.from(new Set(expandCodeVariants(student)));
   }
-  const code = (student.studentCode || '').trim();
-  const id = (student.id || '').trim();
-  const strippedId = id.replace(/^std-/, '');
   return Array.from(
-    new Set(
-      [
-        id,
-        code,
-        code ? `std-${code}` : '',
-        strippedId,
-        strippedId ? `std-${strippedId}` : '',
-      ].filter(Boolean)
-    )
+    new Set([
+      ...expandCodeVariants(student.id || ''),
+      ...expandCodeVariants(student.studentCode || ''),
+    ])
   );
 }
 

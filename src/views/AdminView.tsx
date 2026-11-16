@@ -71,7 +71,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [supSearch, setSupSearch] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const [loginAccountsCount, setLoginAccountsCount] = useState<number>(() => Math.max(students.length, 152));
+  const [loginAccountsCount, setLoginAccountsCount] = useState<number>(() => Math.max(students.length, 184));
   const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
 
   useEffect(() => {
@@ -288,7 +288,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setSyncAlert({
         type: res.success ? 'success' : 'error',
         message: res.message,
-        details: `อัปเดตแล้ว ${res.totalSynced} รายการ (${res.studentsCount} นักศึกษา)`
+        details: `อัปเดตแล้ว ${res.totalSynced} รายการ (${res.studentsCount} นักศึกษา${res.deletedCount ? `, ลบผู้ใช้เก่าออก ${res.deletedCount} รายการ` : ''})`
       });
     } catch (err) {
       setSyncAlert({
@@ -301,7 +301,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   };
 
   const handleWipeAndReplace = async () => {
-    if (!window.confirm('คุณต้องการลบข้อมูล User ครูนิเทศ และ นักศึกษา ใน Firebase (internship2-2569) เดิมทั้งหมด แล้วนำเข้าจาก Google Sheets แผ่นงาน Login (152 บัญชี) ใช่หรือไม่?')) {
+    if (!window.confirm(`คุณต้องการลบข้อมูล User ครูนิเทศ และ นักศึกษา ในฐานข้อมูล Firebase (internship2-2569) เดิมทั้งหมด แล้วนำเข้าใหม่จาก Google Sheets แผ่นงาน Login (${loginAccountsCount} บัญชีปัจจุบัน) ใช่หรือไม่?`)) {
       return;
     }
     setIsWipingAndReplacing(true);
@@ -520,7 +520,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
               onClick={handleWipeAndReplace}
               disabled={isWipingAndReplacing || isSyncing}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-sm shadow-sm transition cursor-pointer disabled:opacity-50"
-              title="ลบฐานข้อมูลผู้ใช้เก่าทั้งหมดใน Firebase แล้วนำเข้าใหม่ 152 บัญชีจาก Google Sheets"
+              title={`ลบฐานข้อมูลผู้ใช้เก่าทั้งหมดใน Firebase แล้วนำเข้าใหม่ ${loginAccountsCount} บัญชีปัจจุบันจาก Google Sheets`}
             >
               <RefreshCw className={`w-4 h-4 ${isWipingAndReplacing ? 'animate-spin' : ''}`} />
               <span>{isWipingAndReplacing ? 'กำลังล้าง & อัปเดตข้อมูล...' : 'ลบข้อมูลเก่า & นำเข้าใหม่จาก Sheet'}</span>
