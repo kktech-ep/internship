@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Student, WeeklySubmission, Form3SupervisionRecord, AuthUser } from '../types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from '../data/weeksData';
+import { getStudentEvaluationSummary, getGradeFromScore } from '../utils/dataUnifier';
 
 interface GroupWeeklySummaryA4Props {
   students: Student[];
@@ -37,15 +38,6 @@ interface StudentWeekEvalSummary {
   evaluationScore: number | null;
   evaluationGrade: string | null;
   mentorRating: number | null;
-}
-
-function getGradeFromScore(score: number): string {
-  if (score >= 18) return 'A';
-  if (score >= 16) return 'B+';
-  if (score >= 14) return 'B';
-  if (score >= 12) return 'C+';
-  if (score >= 10) return 'C';
-  return 'D';
 }
 
 export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
@@ -71,45 +63,6 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
   const isTechElecGroup = selectedRoom !== 'all' && selectedRoom.includes('ทลฟ');
   const departmentLabel = isTechElecGroup ? 'ภาควิชาเทคโนโลยีไฟฟ้า' : 'แผนกวิชาช่างไฟฟ้ากำลัง';
 
-  // Index all submissions by student id / code for fast O(1) lookup
-  const submissionsByStudentKey = useMemo(() => {
-    const idx = new Map<string, WeeklySubmission[]>();
-    const pushSub = (key: string, sub: WeeklySubmission) => {
-      if (!key) return;
-      const list = idx.get(key) || [];
-      list.push(sub);
-      idx.set(key, list);
-    };
-
-    for (const [mapKey, subs] of Object.entries(mergedSubmissions)) {
-      if (!Array.isArray(subs)) continue;
-      for (const sub of subs) {
-        if (!sub) continue;
-        pushSub(mapKey, sub);
-        if (sub.studentId) {
-          pushSub(sub.studentId, sub);
-          pushSub(sub.studentId.replace(/^std-/, ''), sub);
-        }
-      }
-    }
-    return idx;
-  }, [mergedSubmissions]);
-
-  // Index Form 3 supervision records by studentCode / studentId / name
-  const form3ByStudent = useMemo(() => {
-    const byCode = new Map<string, Form3SupervisionRecord>();
-    const byId = new Map<string, Form3SupervisionRecord>();
-    const byName = new Map<string, Form3SupervisionRecord>();
-
-    // form3List is sorted newest-first, so keep the first encountered (latest)
-    for (const r of form3List) {
-      if (r.studentCode && !byCode.has(r.studentCode)) byCode.set(r.studentCode, r);
-      if (r.studentId && !byId.has(r.studentId)) byId.set(r.studentId, r);
-      if (r.studentName && !byName.has(r.studentName.trim())) byName.set(r.studentName.trim(), r);
-    }
-    return { byCode, byId, byName };
-  }, [form3List]);
-
   // Filter students belonging to the selected room (sorted by studentCode)
   const roomStudents = useMemo(() => {
     const list =
@@ -120,92 +73,27 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
     return [...list].sort((a, b) => (a.studentCode || '').localeCompare(b.studentCode || ''));
   }, [students, selectedRoom]);
 
-  // Build weekly submission matrix + evaluation summary per student
+  // Build weekly submission matrix + evaluation summary per student via single canonical helper
   const studentSummaries = useMemo<StudentWeekEvalSummary[]>(() => {
     return roomStudents.map((student) => {
-      const candidateKeys = Array.from(
-        new Set(
-          [
-            student.id,
-            student.studentCode,
-            `std-${student.studentCode}`,
-            student.id?.replace(/^std-/, '')
-          ].filter(Boolean) as string[]
-        )
-      );
-
+      const summary = getStudentEvaluationSummary(student, mergedSubmissions, form3List);
       const weekMap: Record<number, WeeklySubmission> = {};
-
-      for (const key of candidateKeys) {
-        const found = submissionsByStudentKey.get(key) || [];
-        for (const sub of found) {
-          const w = Number(sub.weekNumber);
-          if (w >= 1 && w <= 18) {
-            const existing = weekMap[w];
-            // Prefer 'graded' over 'pending'
-            if (!existing || (existing.status !== 'graded' && sub.status === 'graded')) {
-              weekMap[w] = sub;
-            }
-          }
+      summary.submissions.forEach((sub) => {
+        const w = Number(sub.weekNumber);
+        if (w >= 1 && w <= 18) {
+          weekMap[w] = sub;
         }
-      }
+      });
 
-      // Also check localStorage saved submissions for weeks 1..18
-      try {
-        for (let w = 1; w <= 18; w++) {
-          if (weekMap[w]) continue;
-          const k1 = `kktech_submission_${student.id}_w${w}`;
-          const k2 = `kktech_submission_${student.studentCode}_w${w}`;
-          const raw = localStorage.getItem(k1) || localStorage.getItem(k2);
-          if (raw) {
-            const parsed = JSON.parse(raw) as WeeklySubmission;
-            if (parsed && (parsed.dailyLogs || parsed.photos || parsed.taskTitle)) {
-              weekMap[w] = parsed;
-            }
-          }
-        }
-      } catch {
-        // Ignore storage read errors
-      }
-
-      const weekSubs = Object.values(weekMap);
-      const submittedWeeksCount = weekSubs.length;
+      const weekSubs = summary.submissions;
       const gradedSubs = weekSubs.filter((s) => s.status === 'graded');
-      const gradedWeeksCount = gradedSubs.length;
-      const pendingWeeksCount = weekSubs.filter((s) => s.status === 'pending').length;
-
-      const accumulatedHours = weekSubs.reduce((acc, s) => {
-        const hrs = Array.isArray(s.dailyLogs) && s.dailyLogs.length > 0
-          ? s.dailyLogs.reduce((dSum, d) => dSum + (Number(d.hours) || 0), 0)
-          : (Number(s.totalHours) || 40);
-        return acc + (hrs > 0 ? hrs : 40);
-      }, 0);
-
-      const latestForm3 =
-        (student.studentCode && form3ByStudent.byCode.get(student.studentCode)) ||
-        (student.id && form3ByStudent.byId.get(student.id)) ||
-        (student.name && form3ByStudent.byName.get(student.name.trim())) ||
-        undefined;
-
       const weeklyScores = gradedSubs
         .map((s) => Number(s.teacherScore))
         .filter((n) => !isNaN(n) && n > 0);
-
       const avgWeeklyScore =
         weeklyScores.length > 0
           ? Number((weeklyScores.reduce((a, b) => a + b, 0) / weeklyScores.length).toFixed(1))
           : null;
-
-      const form3Score =
-        latestForm3 && typeof latestForm3.score === 'number' && !isNaN(latestForm3.score)
-          ? Number(latestForm3.score.toFixed(1))
-          : null;
-
-      const evaluationScore = avgWeeklyScore ?? form3Score;
-      const evaluationGrade =
-        gradedSubs[0]?.teacherGrade ||
-        latestForm3?.grade ||
-        (evaluationScore !== null ? getGradeFromScore(evaluationScore) : null);
 
       const mentorRatings = weekSubs
         .map((s) => Number(s.mentorRating))
@@ -218,18 +106,18 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
       return {
         student,
         weekMap,
-        submittedWeeksCount,
-        gradedWeeksCount,
-        pendingWeeksCount,
-        accumulatedHours,
-        latestForm3,
+        submittedWeeksCount: summary.submittedWeeksCount,
+        gradedWeeksCount: summary.gradedWeeksCount,
+        pendingWeeksCount: summary.pendingWeeksCount,
+        accumulatedHours: summary.submittedWeeksCount > 0 ? summary.effectiveAccumulatedHours : 0,
+        latestForm3: summary.latestForm3,
         avgWeeklyScore,
-        evaluationScore,
-        evaluationGrade,
-        mentorRating
+        evaluationScore: summary.evaluationScore,
+        evaluationGrade: summary.evaluationGrade,
+        mentorRating,
       };
     });
-  }, [roomStudents, submissionsByStudentKey, form3ByStudent]);
+  }, [roomStudents, mergedSubmissions, form3List]);
 
   // Apply search + status filter
   const filteredSummaries = useMemo(() => {

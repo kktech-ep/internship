@@ -37,25 +37,29 @@ import {
   Trash2,
   List
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow } from '../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { getCoursesByRoom } from '../services/courseDataService';
-import { getAllLoginSheetStudents, getAllLoginSheetTeachers } from '../services/sheetAuthService';
-import { getLocalForm3Rows } from '../services/googleSheetsService';
-import { subscribeForm3Supervisions, subscribeSubmissions } from '../services/firestoreService';
+import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
 import { WorkplaceTeachingReportView } from './WorkplaceTeachingReportView';
 import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
 import {
-  mergeSubmissionsWithLocalCache,
-  readSubmissionFromLocalCache,
   computeSubmissionTotalHours,
 } from '../utils/submissionUtils';
+import {
+  buildUnifiedCompanies,
+  extractTeacherNames,
+  getStudentEvaluationSummary,
+  normalizeStudentAcademicInfo,
+} from '../utils/dataUnifier';
 
 interface A4ReportViewProps {
   students: Student[];
   submissions: Record<string, WeeklySubmission[]>;
   companies?: Company[];
+  form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
   initialStudentId?: string;
   initialWeek?: number;
   currentUser?: AuthUser | null;
@@ -89,18 +93,12 @@ export interface CompanySupervisionSummary {
   statusText: string;
 }
 
-function extractTeacherNames(raw?: string): string[] {
-  if (!raw) return [];
-  return raw
-    .split(/[,/]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && s !== '-');
-}
-
 export const A4ReportView: React.FC<A4ReportViewProps> = ({
   students: propStudents,
   submissions,
   companies: _propCompanies,
+  form3List = [],
+  courses: propCourses,
   initialStudentId,
   initialWeek,
   currentUser,
@@ -119,7 +117,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   const [a4SubView, setA4SubView] = useState<'individual' | 'group-summary'>('individual');
   const [selectedStudentId, setSelectedStudentId] = useState(initialStudentId || propStudents[0]?.id || 'std-68301040105');
   const [selectedWeek, setSelectedWeek] = useState(() => String(initialWeek || 8));
-  const [localSyncTick, setLocalSyncTick] = useState(0);
   
   // Table search & filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -129,12 +126,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   const [tableSubView, setTableSubView] = useState<'companies' | 'records'>('companies');
   const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<Form3Photo | null>(null);
-
-  // Real-time Form 3 supervision records from Firestore + Local Cache
-  const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
-  const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
-  // Real-time Weekly Submissions from Firestore (internship2-2569)
-  const [remoteSubmissions, setRemoteSubmissions] = useState<Record<string, WeeklySubmission[]>>({});
 
   useEffect(() => {
     if (initialWeek && initialWeek >= 1 && initialWeek <= 18) {
@@ -177,316 +168,34 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     }
   };
 
-  useEffect(() => {
-    const mergeAndSetForm3 = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      const merged = Array.from(map.values()).sort((a, b) => {
-        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return timeB - timeA;
-      });
-      setForm3List(merged);
-    };
-
-    const unsubSubs = subscribeSubmissions(
-      (items) => {
-        const map: Record<string, WeeklySubmission[]> = {};
-        for (const item of items || []) {
-          const sid = item.studentId;
-          if (!map[sid]) map[sid] = [];
-          map[sid].push(item);
-        }
-        setRemoteSubmissions(map);
-      },
-      (err) => console.warn('Submissions stream notice:', err)
-    );
-
-    const unsubForm3 = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const recs = remoteRecords || [];
-        remoteForm3Ref.current = recs;
-        mergeAndSetForm3(recs);
-      },
-      (err) => console.warn('Form 3 stream notice:', err)
-    );
-
-    const handleForm3LocalSync = () => mergeAndSetForm3();
-    const handleSubLocalSync = () => setLocalSyncTick((t) => t + 1);
-    window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
-    window.addEventListener('kktech_submissions_updated', handleSubLocalSync);
-    window.addEventListener('storage', handleForm3LocalSync);
-    window.addEventListener('storage', handleSubLocalSync);
-
-    return () => {
-      unsubSubs();
-      unsubForm3();
-      window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
-      window.removeEventListener('kktech_submissions_updated', handleSubLocalSync);
-      window.removeEventListener('storage', handleForm3LocalSync);
-      window.removeEventListener('storage', handleSubLocalSync);
-    };
-  }, []);
-
-  // Merge propStudents with all 123 students from Google Sheets "login" tab
+  // Use normalized students directly from authoritative App.tsx state
   const allSheetStudents = useMemo<Student[]>(() => {
-    const fromSheet = getAllLoginSheetStudents();
-    const map = new Map<string, Student>();
-    for (const s of fromSheet) {
-      if (s.studentCode) map.set(s.studentCode, s);
-    }
-    for (const s of propStudents) {
-      if (s.studentCode) {
-        const exist = map.get(s.studentCode);
-        map.set(s.studentCode, { ...exist, ...s });
-      }
-    }
-    return Array.from(map.values());
+    return propStudents.map(normalizeStudentAcademicInfo);
   }, [propStudents]);
 
-  // Aggregate all unique companies from Google Sheets "login" tab Company column
+  // Aggregate all unique companies via single canonical dataUnifier builder
   const companySummaries = useMemo<CompanySupervisionSummary[]>(() => {
-    const compMap = new Map<string, {
-      name: string;
-      department: string;
-      address: string;
-      zone: string;
-      phone: string;
-      mentorName: string;
-      mentorPhone: string;
-      students: Student[];
-    }>();
-
-    for (const std of allSheetStudents) {
-      const cName = (std.companyName || '').trim();
-      if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
-
-      if (!compMap.has(cName)) {
-        // Derive zone and address from student registration
-        let zone = 'อ.เมืองขอนแก่น';
-        const lower = cName.toLowerCase();
-        if (lower.includes('น้ำพอง') || lower.includes('มิตรผล')) zone = 'อ.น้ำพอง';
-        else if (lower.includes('บ้านไผ่')) zone = 'อ.บ้านไผ่';
-        else if (lower.includes('ชุมแพ')) zone = 'อ.ชุมแพ';
-        else if (lower.includes('ศิลา') || lower.includes('kkp')) zone = 'ต.ศิลา อ.เมือง';
-        else if (lower.includes('ท่าพระ') || lower.includes('กฟผ.')) zone = 'ต.ท่าพระ อ.เมือง';
-        else if (lower.includes('เชียงยืน')) zone = 'อ.เชียงยืน';
-        else if (lower.includes('หนองเรือ')) zone = 'อ.หนองเรือ';
-
-        compMap.set(cName, {
-          name: cName,
-          department: std.companyRegistration?.department || 'แผนกซ่อมบำรุงและระบบไฟฟ้า',
-          address: std.companyRegistration?.notes || `${zone} จ.ขอนแก่น`,
-          zone,
-          phone: std.companyRegistration?.emergencyPhone || std.companyRegistration?.mentorPhone || '-',
-          mentorName: std.companyRegistration?.mentorName || '-',
-          mentorPhone: std.companyRegistration?.mentorPhone || '-',
-          students: []
-        });
-      }
-
-      compMap.get(cName)!.students.push(std);
-    }
-
-    const summaries: CompanySupervisionSummary[] = [];
-    const matchedForm3Ids = new Set<string>();
-    let idx = 1;
-
-    const buildTeachersAndPhotos = (records: Form3SupervisionRecord[], fallbackTeacher?: string) => {
-      const teacherSet = new Set<string>();
-      records.forEach(r => {
-        extractTeacherNames(r.teacherName).forEach(t => teacherSet.add(t));
-      });
-      if (teacherSet.size === 0 && fallbackTeacher) {
-        extractTeacherNames(fallbackTeacher).forEach(t => teacherSet.add(t));
-      }
-      if (teacherSet.size === 0) {
-        teacherSet.add('นายทักษิณ โสภาปิยะ');
-      }
-      const supervisingTeachersList = Array.from(teacherSet);
-
-      const photoMap = new Map<string, Form3Photo & { teacherName?: string; visitDate?: string; studentName?: string }>();
-      records.forEach(r => {
-        (r.photos || []).forEach(p => {
-          if (p.url && !photoMap.has(p.url)) {
-            photoMap.set(p.url, {
-              ...p,
-              teacherName: r.teacherName,
-              visitDate: r.visitDate || r.timestamp,
-              studentName: r.studentName
-            });
-          }
-        });
-      });
-
-      return {
-        supervisingTeachersList,
-        supervisingTeacher: supervisingTeachersList.join(', '),
-        allPhotos: Array.from(photoMap.values())
-      };
-    };
-
-    for (const [cName, data] of compMap.entries()) {
-      const studentCodes = new Set(data.students.map(s => s.studentCode));
-
-      // Match Form 3 records for this company (by company name match OR student code match)
-      const matchingForm3 = form3List.filter(f => {
-        if (!f) return false;
-        const normFormComp = (f.companyName || '').toLowerCase().trim();
-        const normComp = cName.toLowerCase().trim();
-        const compMatches = normFormComp && (
-          normFormComp.includes(normComp) || 
-          normComp.includes(normFormComp) ||
-          (normComp.includes('pea') && normFormComp.includes('pea')) ||
-          (normComp.includes('มิตรผล') && normFormComp.includes('มิตรผล')) ||
-          (normComp.includes('โซล่าร์') && normFormComp.includes('โซล่าร์'))
-        );
-        const studentMatches = studentCodes.has(f.studentCode);
-        return compMatches || studentMatches;
-      });
-
-      matchingForm3.forEach(f => matchedForm3Ids.add(f.id));
-
-      // Sort Form 3 records by latest first
-      matchingForm3.sort((a, b) => {
-        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return timeB - timeA;
-      });
-
-      const latest = matchingForm3[0];
-      const isSupervised = matchingForm3.length > 0;
-      const { supervisingTeachersList, supervisingTeacher, allPhotos } = buildTeachersAndPhotos(
-        matchingForm3,
-        data.students[0]?.supervisorTeacher
-      );
-
-      summaries.push({
-        id: `comp-sum-${idx++}`,
-        name: cName,
-        department: latest?.companyDepartment || data.department,
-        address: latest?.companyAddress || data.address,
-        zone: data.zone,
-        phone: data.phone,
-        mentorName: latest?.mentorName || data.mentorName,
-        mentorPhone: data.mentorPhone,
-        students: data.students,
-        studentsCount: data.students.length,
-        form3Records: matchingForm3,
-        latestRecord: latest,
-        isSupervised,
-        score: latest?.score,
-        grade: latest?.grade,
-        supervisingTeacher,
-        supervisingTeachersList,
-        allPhotos,
-        statusText: isSupervised ? 'นิเทศแล้ว' : 'รอนิเทศ'
-      });
-    }
-
-    // Include any supervision records whose company is not yet listed in the Login sheet
-    const extraCompMap = new Map<string, Form3SupervisionRecord[]>();
-    for (const f of form3List) {
-      if (!f || matchedForm3Ids.has(f.id)) continue;
-      const key = (f.companyName || 'สถานประกอบการที่บันทึกการนิเทศ').trim();
-      if (!extraCompMap.has(key)) extraCompMap.set(key, []);
-      extraCompMap.get(key)!.push(f);
-    }
-
-    for (const [extraName, records] of extraCompMap.entries()) {
-      records.sort((a, b) => {
-        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return timeB - timeA;
-      });
-      const latest = records[0];
-      const { supervisingTeachersList, supervisingTeacher, allPhotos } = buildTeachersAndPhotos(records);
-
-      // Build student entries from sheet or supervision records
-      const stdMap = new Map<string, Student>();
-      records.forEach(r => {
-        const found = allSheetStudents.find(
-          s => (r.studentCode && s.studentCode === r.studentCode) || (r.studentId && s.id === r.studentId)
-        );
-        if (found) {
-          stdMap.set(found.id, found);
-        } else if (r.studentName) {
-          const sid = r.studentId || `std-${r.studentCode || r.id}`;
-          stdMap.set(sid, {
-            id: sid,
-            studentCode: r.studentCode || '-',
-            name: r.studentName,
-            initials: r.studentName.slice(0, 2),
-            level: r.levelDepartment || 'ปวส.2',
-            department: 'แผนกวิชาช่างไฟฟ้ากำลัง',
-            room: r.studentRoom || '-',
-            email: '',
-            companyId: `comp-extra-${idx}`,
-            companyName: extraName,
-            currentWeek: 8,
-            totalWeeks: 18,
-            actualWeeks: 8,
-            accumulatedHours: 320,
-            requiredHours: 720,
-            supervisorTeacher: supervisingTeacher,
-            companyRegistration: {
-              registeredAt: r.visitDate || r.timestamp,
-              department: r.companyDepartment || 'แผนกปฏิบัติการและบำรุงรักษา',
-              mentorName: r.mentorName || '-',
-              mentorPhone: '-',
-              emergencyPhone: '-',
-              gpsCoordinates: '16.4322, 102.8236',
-              gpsLat: 16.4322,
-              gpsLng: 102.8236,
-              notes: r.companyAddress || ''
-            }
-          });
-        }
-      });
-
-      const extraStudents = Array.from(stdMap.values());
-      const addrText = latest?.companyAddress || extraName;
-      let zone = 'จ.ขอนแก่น';
-      if (addrText.includes('น้ำพอง')) zone = 'อ.น้ำพอง';
-      else if (addrText.includes('บ้านไผ่')) zone = 'อ.บ้านไผ่';
-      else if (addrText.includes('ชุมแพ')) zone = 'อ.ชุมแพ';
-      else if (addrText.includes('เมือง')) zone = 'อ.เมืองขอนแก่น';
-
-      summaries.push({
-        id: `comp-sum-extra-${idx++}`,
-        name: extraName,
-        department: latest?.companyDepartment || 'แผนกซ่อมบำรุงและระบบไฟฟ้า',
-        address: latest?.companyAddress || 'บันทึกจากระบบนิเทศ',
-        zone,
-        phone: '-',
-        mentorName: latest?.mentorName || '-',
-        mentorPhone: '-',
-        students: extraStudents,
-        studentsCount: extraStudents.length,
-        form3Records: records,
-        latestRecord: latest,
-        isSupervised: true,
-        score: latest?.score,
-        grade: latest?.grade,
-        supervisingTeacher,
-        supervisingTeachersList,
-        allPhotos,
-        statusText: 'นิเทศแล้ว'
-      });
-    }
-
-    // Sort: supervised first, then by number of records / students descending
-    return summaries.sort((a, b) => {
-      if (a.isSupervised && !b.isSupervised) return -1;
-      if (!a.isSupervised && b.isSupervised) return 1;
-      if (b.form3Records.length !== a.form3Records.length) {
-        return b.form3Records.length - a.form3Records.length;
-      }
-      return b.studentsCount - a.studentsCount;
-    });
+    return buildUnifiedCompanies(allSheetStudents, form3List).map((u) => ({
+      id: u.id,
+      name: u.name,
+      department: u.department,
+      address: u.address,
+      zone: u.zone,
+      phone: u.phone,
+      mentorName: u.latestRecord?.mentorName || u.contactPerson,
+      mentorPhone: u.students[0]?.companyRegistration?.mentorPhone || '-',
+      students: u.students,
+      studentsCount: u.studentsCount,
+      form3Records: u.form3Records,
+      latestRecord: u.latestRecord,
+      isSupervised: u.isSupervised,
+      score: u.score,
+      grade: u.grade,
+      supervisingTeacher: u.supervisingTeacher,
+      supervisingTeachersList: u.supervisingTeachersList,
+      allPhotos: u.allPhotos,
+      statusText: u.statusText,
+    }));
   }, [allSheetStudents, form3List]);
 
   // Unique rooms list for filter
@@ -705,7 +414,17 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     allSheetStudents.find(
       s => s.id === selectedStudentId || s.studentCode === selectedStudentId || `std-${s.studentCode}` === selectedStudentId
     ) || allSheetStudents[0];
-  const studentCourses = currentStudent.courses || getCoursesByRoom(currentStudent.room);
+  const studentCourses = useMemo(() => {
+    if (currentStudent?.courses && currentStudent.courses.length > 0) {
+      return currentStudent.courses;
+    }
+    if (propCourses && propCourses.length > 0 && currentStudent?.room) {
+      const cleanRoom = currentStudent.room.trim().toLowerCase();
+      const matched = propCourses.filter((c) => (c.room || '').trim().toLowerCase() === cleanRoom);
+      if (matched.length > 0) return matched;
+    }
+    return getCoursesByRoom(currentStudent?.room || '');
+  }, [currentStudent, propCourses]);
   const [selectedCourseCode, setSelectedCourseCode] = useState<string>(() => {
     return studentCourses.find(c => c.subjectCode.startsWith('30000'))?.subjectCode || studentCourses[0]?.subjectCode || '30000-2005';
   });
@@ -717,71 +436,28 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
         studentCourses[0].subjectCode;
       setSelectedCourseCode(preferred);
     }
-  }, [currentStudent.id, studentCourses, selectedCourseCode]);
+  }, [currentStudent?.id, studentCourses, selectedCourseCode]);
 
   const matchedCourse = studentCourses.find(c => c.subjectCode === selectedCourseCode) || studentCourses[0];
 
-  // Merge submissions from props, Firestore real-time listener, and localStorage cache
-  const mergedSubmissions = useMemo(() => {
-    const combined: Record<string, WeeklySubmission[]> = { ...submissions };
-    for (const [key, subs] of Object.entries(remoteSubmissions)) {
-      if (!combined[key]) {
-        combined[key] = subs;
-      } else {
-        const byId = new Map<string, WeeklySubmission>();
-        combined[key].forEach(s => byId.set(s.id, s));
-        subs.forEach(s => byId.set(s.id, s));
-        combined[key] = Array.from(byId.values());
-      }
-    }
-    return mergeSubmissionsWithLocalCache(combined);
-  }, [submissions, remoteSubmissions, localSyncTick]);
+  // Submissions already reconciled in App.tsx (Firestore authoritative + offline pending writes)
+  const mergedSubmissions = submissions;
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === parseInt(selectedWeek)) || WEEKS_1_TO_18[7];
 
-  // Look for matching weekly submission for this student and week from database
+  const evalSummary = useMemo(
+    () => getStudentEvaluationSummary(currentStudent, mergedSubmissions, form3List),
+    [currentStudent, mergedSubmissions, form3List]
+  );
+
+  // Look for matching weekly submission for this student and week from unified state
   const foundSub = useMemo(() => {
     const targetWeek = parseInt(selectedWeek);
-    const candidateKeys = [
-      selectedStudentId,
-      currentStudent?.id,
-      currentStudent?.studentCode,
-      currentStudent?.id?.replace(/^std-/, ''),
-      `std-${currentStudent?.studentCode}`
-    ].filter(Boolean) as string[];
+    return evalSummary.submissions.find(s => Number(s.weekNumber) === targetWeek) || null;
+  }, [evalSummary, selectedWeek]);
 
-    // 1. Direct key search in merged submissions
-    for (const key of candidateKeys) {
-      const list = mergedSubmissions[key];
-      if (list && list.length > 0) {
-        const match = list.find(s => s.weekNumber === targetWeek);
-        if (match) return match;
-      }
-    }
-
-    // 2. Search all items across all arrays in mergedSubmissions
-    const allSubs = Object.values(mergedSubmissions).flat();
-    const candidateSet = new Set(candidateKeys);
-    const match = allSubs.find(s => 
-      candidateSet.has(s.studentId) && s.weekNumber === targetWeek
-    );
-    if (match) return match;
-
-    // 3. Check localStorage for any saved submission for this student and week
-    const localSub = readSubmissionFromLocalCache(currentStudent, targetWeek);
-    if (localSub) return localSub;
-
-    return null;
-  }, [mergedSubmissions, selectedStudentId, currentStudent, selectedWeek, localSyncTick]);
-
-  // Find matching Form 3 supervision record for this student/company in database
-  const studentForm3 = useMemo(() => {
-    return form3List.find(f => 
-      (f.studentCode && currentStudent?.studentCode && f.studentCode === currentStudent.studentCode) || 
-      (f.studentId && currentStudent?.id && f.studentId === currentStudent.id) || 
-      (f.companyName && currentStudent?.companyName && f.companyName.trim().toLowerCase() === currentStudent.companyName.trim().toLowerCase())
-    );
-  }, [form3List, currentStudent]);
+  // Latest Form 3 supervision record matched for this student
+  const studentForm3 = evalSummary.latestForm3;
 
   // Consolidate actual workplace on-site photos from database (Weekly submission + Form 3)
   const databasePhotos = useMemo(() => {
@@ -2423,6 +2099,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           students={allSheetStudents}
           form3List={form3List}
           submissions={mergedSubmissions}
+          courses={propCourses}
         />
       )}
     </div>

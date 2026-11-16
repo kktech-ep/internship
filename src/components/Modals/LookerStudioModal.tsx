@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { X, ExternalLink, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
 import { Student, Company, WeeklySubmission, Form3SupervisionRecord } from '../../types';
 import { getCurrentWeekInfo } from '../../data/weeksData';
+import { buildUnifiedCompanies, getStudentEvaluationSummary, matchesStudentRecord } from '../../utils/dataUnifier';
+import { getMergedStudentSubmissions } from '../../utils/submissionUtils';
 
 interface LookerStudioModalProps {
   isOpen: boolean;
@@ -22,44 +24,35 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({
 }) => {
   const analytics = useMemo(() => {
     const totalStudents = students.length;
-    const allSubs = Object.values(submissions).flat();
 
-    // Level breakdown
+    // Deduplicate all submissions across buckets
+    const uniqueSubMap = new Map<string, WeeklySubmission>();
+    Object.values(submissions)
+      .flat()
+      .forEach((sub) => {
+        if (sub && sub.id) uniqueSubMap.set(sub.id, sub);
+      });
+    const allSubs = Array.from(uniqueSubMap.values());
+
+    // Level breakdown (including ทลฟ. bachelor)
     const pvs2Count = students.filter(s => (s.level || '').includes('ปวส.2') || (s.room || '').includes('2/')).length;
     const pvs1Count = students.filter(s => (s.level || '').includes('ปวส.1') || (s.room || '').includes('1/')).length;
     const otherLevelCount = Math.max(0, totalStudents - pvs2Count - pvs1Count);
 
-    // Distinct active companies from students (fallback to companies collection)
-    const companyGroups = new Map<string, { studentsCount: number; sectorKey: 'pea' | 'factory' | 'solar' | 'building' }>();
-    students.forEach((s) => {
-      const cName = (s.companyName || '').trim();
-      if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') return;
-      if (!companyGroups.has(cName)) {
-        let sectorKey: 'pea' | 'factory' | 'solar' | 'building' = 'building';
-        if (cName.includes('การไฟฟ้า') || cName.includes('กฟภ') || cName.includes('กฟผ') || cName.includes('PEA') || cName.includes('EGAT')) {
-          sectorKey = 'pea';
-        } else if (cName.includes('โซล่าร์') || cName.includes('Solar') || cName.includes('พลังงาน')) {
-          sectorKey = 'solar';
-        } else if (cName.includes('อุตสาหกรรม') || cName.includes('ผลิต') || cName.includes('มิตซูบิชิ') || cName.includes('คูโบต้า') || cName.includes('น้ำตาล') || cName.includes('โรงงาน')) {
-          sectorKey = 'factory';
-        }
-        companyGroups.set(cName, { studentsCount: 0, sectorKey });
-      }
-      companyGroups.get(cName)!.studentsCount++;
-    });
-
-    const totalCompanies = companyGroups.size > 0 ? companyGroups.size : companies.length;
+    // Unified companies matching CompanyMapView & A4ReportView
+    const unifiedCompanies = buildUnifiedCompanies(students, form3List);
+    const totalCompanies = unifiedCompanies.length > 0 ? unifiedCompanies.length : companies.length;
 
     // Sector aggregation
     const sectors = {
       pea: { label: 'สถานีไฟฟ้าแรงสูง / PEA / EGAT', companies: 0, students: 0, color: 'bg-sky-600' },
       factory: { label: 'โรงงานอุตสาหกรรม / ตู้ MDB / PLC', companies: 0, students: 0, color: 'bg-indigo-600' },
       solar: { label: 'Solar Cell & พลังงานแสงอาทิตย์', companies: 0, students: 0, color: 'bg-amber-500' },
-      building: { label: 'งานติดตั้งระบบไฟฟ้าอาคาร & บริการ', companies: 0, students: 0, color: 'bg-emerald-600' },
+      service: { label: 'งานติดตั้งระบบไฟฟ้าอาคาร & บริการ', companies: 0, students: 0, color: 'bg-emerald-600' },
     };
-    companyGroups.forEach((info) => {
-      sectors[info.sectorKey].companies += 1;
-      sectors[info.sectorKey].students += info.studentsCount;
+    unifiedCompanies.forEach((comp) => {
+      sectors[comp.sector].companies += 1;
+      sectors[comp.sector].students += comp.studentsCount;
     });
 
     const sectorRows = Object.values(sectors).map((sec) => ({
@@ -67,31 +60,27 @@ export const LookerStudioModal: React.FC<LookerStudioModalProps> = ({
       percent: totalCompanies > 0 ? Math.round((sec.companies / totalCompanies) * 100) : 0,
     }));
 
-    // Supervised students & average competency score
-    const supervisedStudentKeys = new Set<string>();
-    form3List.forEach(r => {
-      if (r.studentId) supervisedStudentKeys.add(r.studentId);
-      if (r.studentCode) supervisedStudentKeys.add(r.studentCode);
-    });
-    const submittedStudentIds = new Set<string>();
-    allSubs.forEach(sub => {
-      if (sub.studentId) submittedStudentIds.add(sub.studentId);
-    });
-
+    // Engaged students across Form 3 & Form 2
     const engagedStudentsCount = students.filter(
-      s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode) || submittedStudentIds.has(s.id)
+      (s) =>
+        getMergedStudentSubmissions(s, submissions).length > 0 ||
+        form3List.some((r) => matchesStudentRecord(r, s))
     ).length;
 
     const activityRate = totalStudents > 0
       ? Math.round((engagedStudentsCount / totalStudents) * 1000) / 10
       : 0;
 
-    // Average score from Form 3 records + graded submissions
-    const allScores: number[] = [];
-    form3List.forEach(r => { if (typeof r.score === 'number' && r.score > 0) allScores.push(r.score); });
-    allSubs.forEach(sub => { if (sub.status === 'graded' && typeof sub.teacherScore === 'number' && sub.teacherScore > 0) allScores.push(sub.teacherScore); });
-    const avgScore = allScores.length > 0
-      ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
+    // Average score per evaluated student
+    const studentScores: number[] = [];
+    students.forEach((s) => {
+      const summary = getStudentEvaluationSummary(s, submissions, form3List);
+      if (summary.evaluationScore !== null) {
+        studentScores.push(summary.evaluationScore);
+      }
+    });
+    const avgScore = studentScores.length > 0
+      ? Math.round((studentScores.reduce((a, b) => a + b, 0) / studentScores.length) * 10) / 10
       : 0;
     const avgGrade = avgScore >= 18 ? 'ดีเยี่ยม (A)' : avgScore >= 16 ? 'ดีมาก (B+)' : avgScore >= 14 ? 'ดี (B)' : avgScore > 0 ? 'ผ่านเกณฑ์' : 'รอข้อมูลประเมิน';
 

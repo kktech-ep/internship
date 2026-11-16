@@ -36,61 +36,15 @@ export interface Form1RowData {
 
 const LOCAL_FORM1_STORAGE_KEY = 'kktech_form1_sheet_records_v1';
 
-// Initial preloaded data matching students in the system
-const DEFAULT_FORM1_ROWS: Form1RowData[] = [
-  {
-    timestamp: '15/05/2567 09:30:12',
-    studentCode: '65301040018',
-    studentName: 'นายธนากร สุริยะแสง',
-    level: 'ปวส.2/1 ช่างไฟฟ้ากำลัง',
-    companyName: 'การไฟฟ้าส่วนภูมิภาค สาขาขอนแก่น (PEA)',
-    department: 'แผนกก่อสร้างและปฏิบัติการระบบจำหน่าย',
-    mentorName: 'นายเอกชัย พลอยงาม (วิศวกรไฟฟ้า 6)',
-    mentorPhone: '081-987-6543',
-    emergencyPhone: '043-222-111 ต่อ 102',
-    gpsCoordinates: '16.4322, 102.8236',
-    notes: 'สถานีจ่ายไฟย่อย 22kV ถนนมิตรภาพ',
-    status: 'อนุมัติแล้ว',
-    syncedToGoogle: true
-  },
-  {
-    timestamp: '15/05/2567 10:15:40',
-    studentCode: '65301040024',
-    studentName: 'นายวรเมธ วิริยะเจริญ',
-    level: 'ปวส.2/1 ช่างไฟฟ้ากำลัง',
-    companyName: 'โรงน้ำตาลมิตรผล (โรงงานภูเขียว)',
-    department: 'ฝ่ายวิศวกรรมไฟฟ้าและระบบควบคุม Boiler',
-    mentorName: 'นายสมเกียรติ ยิ่งยืน',
-    mentorPhone: '089-765-4321',
-    emergencyPhone: '043-888-999',
-    gpsCoordinates: '16.3789, 102.7845',
-    notes: 'ต้องสวมหมวกและแว่นตานิรภัยตลอดเวลา',
-    status: 'อนุมัติแล้ว',
-    syncedToGoogle: true
-  },
-  {
-    timestamp: '16/05/2567 08:45:00',
-    studentCode: '66301040003',
-    studentName: 'นางสาวกัญญาณัฐ ทับทิมแก้ว',
-    level: 'ปวส.1/1 ช่างไฟฟ้ากำลัง',
-    companyName: 'บริษัท ขอนแก่น ซอฟต์แวร์ แอนด์ ออโตเมชั่น จำกัด',
-    department: 'แผนกออกแบบตู้สวิตช์บอร์ด & PLC Control',
-    mentorName: 'วิศวกรประจักษ์ นิลสว่าง',
-    mentorPhone: '082-345-6789',
-    emergencyPhone: '043-333-444',
-    gpsCoordinates: '16.4450, 102.8350',
-    notes: 'อาคารวิจัยนวัตกรรม ชั้น 2',
-    status: 'อนุมัติแล้ว',
-    syncedToGoogle: true
-  }
-];
+// Empty default so no phantom/deleted mock students leak before real sync
+const DEFAULT_FORM1_ROWS: Form1RowData[] = [];
 
 export function getLocalForm1Rows(): Form1RowData[] {
   try {
     const raw = localStorage.getItem(LOCAL_FORM1_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -249,116 +203,37 @@ export async function fetchGoogleSheetForm1Rows(accessToken: string): Promise<{ 
 
 const LOCAL_FORM3_STORAGE_KEY = 'kktech_form3_sheet_records_v1';
 
-export const DEFAULT_FORM3_ROWS: Form3SupervisionRecord[] = [
-  {
-    id: 'f3-seed-1',
-    timestamp: '21/10/2569 13:45:00',
-    visitDate: '21 ต.ค. 2569 (13:30 น.)',
-    visitTime: '13:30',
-    studentId: 'std-68301040105',
-    studentCode: '68301040105',
-    studentName: 'นายเดชฎากรณ์ พลเรือง',
-    studentRoom: 'สอฟ.2/8',
-    levelDepartment: 'ปวส.2 แผนกวิชาช่างไฟฟ้า',
-    companyName: 'บจก. เคเคพี โซล่าร์ เอ็นเนอร์ยี (ขอนแก่น)',
-    companyDepartment: 'ฝ่ายซ่อมบำรุงและติดตั้ง Solar Rooftop',
-    companyAddress: 'ต.ศิลา อ.เมือง จ.ขอนแก่น',
-    teacherName: 'นายทักษิณ โสภาปิยะ',
-    teacherEmail: 'thaksinso@kktech.ac.th',
-    mentorName: 'วิศวกรธีรเดช เจริญสุข',
-    mentorFeedback: 'นักศึกษาเรียนรู้งานได้เร็วมาก มีความปลอดภัยในการปฏิบัติงานติดตั้ง Inverter',
-    safetyPassed: true,
-    score: 19.5,
-    grade: 'ดีเยี่ยม (A)',
-    teacherComment: 'ตรวจหลักฐานการปฏิบัติงานจริงและประเมินทักษะช่างไฟฟ้า ได้มาตรฐานวิชาชีพ สอศ.',
-    photos: [
-      {
-        id: 'p1',
-        title: 'ตรวจการเดินสายราง Wireway และตู้คอนโทรล',
-        caption: 'ตรวจสอบความเรียบร้อยของการเข้าหัวสายและการต่อลงดินระบบไฟฟ้า',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '21/10/2569 13:35'
-      },
-      {
-        id: 'p2',
-        title: 'ถ่ายภาพร่วมกับนักศึกษาและพี่เลี้ยงสถานประกอบการ',
-        caption: 'ประชุมสรุปแผนงานฝึกอาชีพร่วมกับวิศวกรควบคุมงาน',
-        url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '21/10/2569 13:40'
-      },
-      {
-        id: 'p3',
-        title: 'ตรวจสอบอุปกรณ์ความปลอดภัย PPE',
-        caption: 'หมวกนิรภัย แว่นตา และรองเท้านิรภัย ESD ผ่านเกณฑ์ความปลอดภัย 100%',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '21/10/2569 13:42'
-      },
-      {
-        id: 'p4',
-        title: 'ตรวจสมุดบันทึกการฝึกงาน ทว.04',
-        caption: 'บันทึกงานรายวันครบถ้วน พี่เลี้ยงลงนามกำกับทุกสัปดาห์',
-        url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '21/10/2569 13:45'
-      }
-    ],
-    status: 'บันทึกสำเร็จ',
-    syncedToGoogleSheet: true
-  },
-  {
-    id: 'f3-seed-2',
-    timestamp: '20/10/2569 10:15:00',
-    visitDate: '20 ต.ค. 2569 (10:00 น.)',
-    visitTime: '10:00',
-    studentId: 'std-68301040165',
-    studentCode: '68301040165',
-    studentName: 'นายสุรชัย ไชยคำ',
-    studentRoom: 'สอฟ.2/8',
-    levelDepartment: 'ปวส.2 แผนกวิชาช่างไฟฟ้า',
-    companyName: 'การไฟฟ้าส่วนภูมิภาค สาขาขอนแก่น (PEA)',
-    companyDepartment: 'แผนกหม้อแปลงและระบบสายส่งแรงดันสูง',
-    companyAddress: 'ถ.มิตรภาพ อ.เมือง จ.ขอนแก่น',
-    teacherName: 'นายทักษิณ โสภาปิยะ',
-    teacherEmail: 'thaksinso@kktech.ac.th',
-    mentorName: 'นายเอกชัย พลอยงาม',
-    mentorFeedback: 'นักศึกษามีวินัยดีมาก ตรงต่อเวลา และสวมใส่อุปกรณ์นิรภัยครบถ้วน',
-    safetyPassed: true,
-    score: 19.0,
-    grade: 'ดีเยี่ยม (A)',
-    teacherComment: 'นิเทศก์งานเข้าหัวสายเคเบิลใต้ดินและการบำรุงรักษาหม้อแปลง ผลงานถูกต้องตามคู่มือมาตรฐาน',
-    photos: [
-      {
-        id: 'p1',
-        title: 'ตรวจสอบหน้างานระบบจำหน่ายไฟฟ้า',
-        caption: 'งานตรวจเช็คสภาพภายนอกของหม้อแปลงไฟฟ้าแรงสูง 22kV',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '20/10/2569 10:05'
-      },
-      {
-        id: 'p2',
-        title: 'ถ่ายภาพร่วมกับพี่เลี้ยง PEA',
-        caption: 'ถ่ายภาพร่วมกับหัวหน้าหมวดซ่อมบำรุงระบบจำหน่าย',
-        url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '20/10/2569 10:10'
-      },
-      {
-        id: 'p3',
-        title: 'ตรวจการใช้ถุงมือกันไฟฟ้าแรงสูง',
-        caption: 'ตรวจสอบการทดสอบ Air leak test ถุงมือยางกันไฟฟ้าก่อนปฏิบัติงาน',
-        url: 'https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '20/10/2569 10:12'
-      },
-      {
-        id: 'p4',
-        title: 'ตรวจบันทึกเวลาและการเขียนสรุปผลงาน',
-        caption: 'นักศึกษาลงเวลาทำงานครบถ้วน สม่ำเสมอ',
-        url: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&auto=format&fit=crop&q=80',
-        uploadedAt: '20/10/2569 10:15'
-      }
-    ],
-    status: 'บันทึกสำเร็จ',
-    syncedToGoogleSheet: true
+const PENDING_FORM3_IDS_KEY = 'kktech_pending_form3_ids_v1';
+
+// Clean empty default so phantom/mock supervision records cannot resurrect
+export const DEFAULT_FORM3_ROWS: Form3SupervisionRecord[] = [];
+
+function readPendingForm3Ids(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(PENDING_FORM3_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((x) => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
   }
-];
+}
+
+function writePendingForm3Ids(ids: Set<string>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(PENDING_FORM3_IDS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore
+  }
+}
+
+export function markForm3PendingIds(ids: string[]): void {
+  const cur = readPendingForm3Ids();
+  ids.forEach((id) => { if (id) cur.add(id); });
+  writePendingForm3Ids(cur);
+}
 
 export function getLocalForm3Rows(): Form3SupervisionRecord[] {
   try {
@@ -366,7 +241,8 @@ export function getLocalForm3Rows(): Form3SupervisionRecord[] {
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        // Strip legacy hardcoded seed IDs if they lingered in storage
+        return parsed.filter((r) => r && r.id && r.id !== 'f3-seed-1' && r.id !== 'f3-seed-2');
       }
     }
   } catch (e) {
@@ -388,6 +264,8 @@ export function saveLocalForm3Rows(rows: Form3SupervisionRecord[]): void {
 
 export function deleteLocalForm3Row(id: string): void {
   try {
+    const pending = readPendingForm3Ids();
+    if (pending.delete(id)) writePendingForm3Ids(pending);
     const rows = getLocalForm3Rows();
     const filtered = rows.filter(r => r.id !== id);
     localStorage.setItem(LOCAL_FORM3_STORAGE_KEY, JSON.stringify(filtered));
@@ -400,6 +278,54 @@ export function deleteLocalForm3Row(id: string): void {
 }
 
 /**
+ * Reconcile authoritative Firestore Form 3 records with localStorage cache:
+ * - Always keeps live Firestore records
+ * - Preserves only pending unsynced optimistic records not yet reflected in Firestore
+ * - Purges deleted records so Admin deletions stay deleted across all tabs/browsers
+ */
+export function reconcileForm3WithCloud(cloudRecords: Form3SupervisionRecord[]): Form3SupervisionRecord[] {
+  const map = new Map<string, Form3SupervisionRecord>();
+  const cloudIds = new Set<string>();
+
+  for (const r of cloudRecords) {
+    if (r && r.id && r.id !== 'f3-seed-1' && r.id !== 'f3-seed-2') {
+      cloudIds.add(r.id);
+      map.set(r.id, r);
+    }
+  }
+
+  const pending = readPendingForm3Ids();
+  const stillPending = new Set<string>();
+  const local = getLocalForm3Rows();
+
+  for (const lr of local) {
+    if (!lr || !lr.id) continue;
+    if (cloudIds.has(lr.id)) {
+      continue;
+    }
+    if (pending.has(lr.id)) {
+      stillPending.add(lr.id);
+      map.set(lr.id, lr);
+    }
+  }
+
+  writePendingForm3Ids(stillPending);
+  const reconciled = Array.from(map.values()).sort((a, b) => {
+    const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
+    const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  try {
+    localStorage.setItem(LOCAL_FORM3_STORAGE_KEY, JSON.stringify(reconciled));
+  } catch {
+    // ignore storage errors
+  }
+
+  return reconciled;
+}
+
+/**
  * Append or update a Form_3 supervision record to Google Sheet file 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28
  * Tab: Form_3
  */
@@ -408,6 +334,7 @@ export async function appendForm3ToGoogleSheet(
   accessToken?: string | null
 ): Promise<{ success: boolean; message: string; syncedLive: boolean }> {
   // 1. Update local storage cache
+  markForm3PendingIds([record.id]);
   const currentRows = getLocalForm3Rows();
   const existingIdx = currentRows.findIndex(r => r.id === record.id || (r.studentCode === record.studentCode && r.visitDate === record.visitDate));
   let updatedRows: Form3SupervisionRecord[];
@@ -515,6 +442,7 @@ export async function appendBatchForm3ToGoogleSheet(
   }
 
   // 1. Update local storage cache
+  markForm3PendingIds(records.map(r => r.id));
   const currentRows = getLocalForm3Rows();
   let updatedRows = [...currentRows];
 

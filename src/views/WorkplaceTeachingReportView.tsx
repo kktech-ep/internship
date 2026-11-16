@@ -29,7 +29,7 @@ import {
   UserCheck,
   RotateCcw
 } from 'lucide-react';
-import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow } from '../types';
+import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow, SheetTeacher } from '../types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo, getWeekDates } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { 
@@ -46,6 +46,8 @@ interface WorkplaceTeachingReportViewProps {
   students: Student[];
   form3List: Form3SupervisionRecord[];
   submissions: Record<string, WeeklySubmission[]>;
+  courses?: CourseDataRow[];
+  teachers?: SheetTeacher[];
 }
 
 export interface TeachingCourseItem {
@@ -114,12 +116,14 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   currentUser,
   students,
   form3List,
-  submissions
+  submissions,
+  courses: propCourses,
+  teachers: propTeachers,
 }) => {
-  // 1. Teacher selection (all teachers from login sheet, course data, and Form 3 supervision records)
+  // 1. Teacher selection (all teachers from login sheet, Firestore, course data, and Form 3 supervision records)
   const allTeachers = useMemo(() => {
-    const list = getAllLoginSheetTeachers();
-    const sheetTeacherNames = getAllTeachersFromData();
+    const list = propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers();
+    const sheetTeacherNames = getAllTeachersFromData(propCourses && propCourses.length > 0 ? propCourses : undefined);
     const map = new Map<string, string>();
     const addName = (raw?: string) => {
       if (!raw) return;
@@ -138,7 +142,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       map.set('นายทักษิณ โสภาปิยะ', 'นายทักษิณ โสภาปิยะ');
     }
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'th'));
-  }, [form3List]);
+  }, [form3List, propTeachers, propCourses]);
 
   const defaultTeacher = useMemo(() => {
     if (currentUser?.name && !currentUser.name.includes('นักศึกษา')) {
@@ -191,7 +195,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Reload teacher courses whenever selected teacher changes
   useEffect(() => {
-    const rawCourses = getCoursesByTeacher(reporterName);
+    const rawCourses = getCoursesByTeacher(
+      reporterName,
+      propCourses && propCourses.length > 0 ? propCourses : undefined
+    );
     const defaultDate = new Date().toISOString().slice(0, 10);
     
     if (rawCourses && rawCourses.length > 0) {
@@ -241,7 +248,15 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncMsg, setCourseSyncMsg] = useState<string | null>(null);
   const [isCoursePickerOpen, setIsCoursePickerOpen] = useState(false);
-  const [courseCatalog, setCourseCatalog] = useState<CourseDataRow[]>(() => getCachedCourses());
+  const [courseCatalog, setCourseCatalog] = useState<CourseDataRow[]>(() =>
+    propCourses && propCourses.length > 0 ? propCourses : getCachedCourses()
+  );
+
+  useEffect(() => {
+    if (propCourses && propCourses.length > 0) {
+      setCourseCatalog(propCourses);
+    }
+  }, [propCourses]);
   const [coursePickerSearch, setCoursePickerSearch] = useState('');
   const [coursePickerRoomFilter, setCoursePickerRoomFilter] = useState<string>('all');
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);

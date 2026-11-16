@@ -16,17 +16,16 @@ import {
 import { Student } from '../../types';
 import { 
   findStudentInLoginSheet, 
-  saveCompanyDataToLoginSheet,
   LoginSheetFullRow 
 } from '../../services/sheetAuthService';
-import { saveAndSyncStudentBothWays } from '../../services/sheetFirebaseSyncService';
-import { getCachedAccessToken } from '../../services/authService';
 
 interface Form1CompanyModalProps {
   isOpen: boolean;
   onClose: () => void;
   student: Student;
-  onSave: (updatedData: Partial<Student['companyRegistration']> & { companyName?: string }) => void;
+  onSave: (
+    updatedData: Partial<Student['companyRegistration']> & { companyName?: string; room?: string }
+  ) => Promise<{ success: boolean; sheetResult: string; firestoreResult: string } | void> | void;
 }
 
 export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
@@ -97,41 +96,16 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
     setShowConfirmModal(true);
   };
 
-  // Perform confirmed save & Google Sheets update in sheet tab 'login'
+  // Perform confirmed save & Google Sheets update via single App.tsx atomic pipeline
   const handleConfirmSubmit = async () => {
     setShowConfirmModal(false);
     setIsSubmitting(true);
 
     const nowTh = new Date().toLocaleString('th-TH');
-    const token = getCachedAccessToken();
 
-    // 1. Save and synchronize bidirectionally to Firebase Firestore (internship2-2569) & Google Sheets (login tab)
-    const syncRes = await saveAndSyncStudentBothWays(
-      {
-        ...student,
-        companyName: formData.companyName,
-        room: room,
-        companyRegistration: {
-          ...student.companyRegistration,
-          department: formData.department,
-          mentorName: formData.mentorName,
-          mentorPhone: formData.mentorPhone,
-          emergencyPhone: formData.emergencyPhone,
-          gpsCoordinates: formData.gpsCoordinates,
-          notes: formData.notes,
-          registeredAt: nowTh
-        }
-      },
-      token
-    );
-
-    setSyncResultMsg(
-      `${syncRes.sheetResult} และเชื่อมต่อซิงค์กับ Firebase Firestore: internship2-2569 เรียบร้อยแล้ว`
-    );
-
-    // 2. Persist to student state in React
-    onSave({
+    const syncRes = await onSave({
       companyName: formData.companyName,
+      room: room,
       department: formData.department,
       mentorName: formData.mentorName,
       mentorPhone: formData.mentorPhone,
@@ -140,6 +114,14 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
       notes: formData.notes,
       registeredAt: nowTh + ' (ซิงค์ Sheets ⇋ Firebase)',
     });
+
+    if (syncRes && typeof syncRes === 'object' && 'sheetResult' in syncRes) {
+      setSyncResultMsg(
+        `${syncRes.sheetResult} และเชื่อมต่อซิงค์กับ Firebase Firestore: internship2-2569 เรียบร้อยแล้ว`
+      );
+    } else {
+      setSyncResultMsg('บันทึกข้อมูลและเชื่อมต่อซิงค์กับ Google Sheets ⇋ Firebase Firestore: internship2-2569 เรียบร้อยแล้ว');
+    }
 
     setIsSubmitting(false);
     setIsSaved(true);

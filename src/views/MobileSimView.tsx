@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Zap, 
   CheckCircle2, 
@@ -49,21 +49,22 @@ import {
 } from 'lucide-react';
 import { Student, Company, WeeklySubmission, Form3SupervisionRecord, Form3Photo, AuthUser, CourseDataRow, SheetTeacher } from '../types';
 import { StudentAvatar } from '../components/StudentAvatar';
-import { subscribeForm3Supervisions } from '../services/firestoreService';
-import { getLocalForm3Rows } from '../services/googleSheetsService';
 import {
-  getAllLoginSheetStudents,
   getAllLoginSheetTeachers,
   normalizeTeacherKey,
   getInitialsFromName
 } from '../services/sheetAuthService';
 import {
-  fetchDataSheetCourses,
   getCachedCourses,
   getCoursesByTeacher,
   getRoomsByTeacher
 } from '../services/courseDataService';
 import { getCurrentWeekInfo } from '../data/weeksData';
+import {
+  buildUnifiedCompanies,
+  getStudentEvaluationSummary,
+  normalizeStudentAcademicInfo,
+} from '../utils/dataUnifier';
 
 interface MobileSimViewProps {
   currentRole: 'student' | 'teacher';
@@ -73,6 +74,9 @@ interface MobileSimViewProps {
   students?: Student[];
   companies: Company[];
   submissions: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
+  teachers?: SheetTeacher[];
   onOpenForm1: () => void;
   onOpenForm2: () => void;
   onOpenForm3: (studentId?: string) => void;
@@ -176,8 +180,11 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
   currentUser,
   student,
   students = [],
-  companies,
+  companies: _companies,
   submissions,
+  form3List = [],
+  courses: propCourses,
+  teachers: propTeachers,
   onOpenForm1,
   onOpenForm2,
   onOpenForm3,
@@ -190,8 +197,11 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
   const [teacherSubTab, setTeacherSubTab] = useState<'map' | 'companies' | 'schedule'>('schedule');
   const [selectedSubmission, setSelectedSubmission] = useState<WeeklySubmission | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Form3Photo | null>(null);
-  const [supervisions, setSupervisions] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
-  const [courseRows, setCourseRows] = useState<CourseDataRow[]>(() => getCachedCourses());
+  const supervisions = form3List;
+  const courseRows = useMemo(
+    () => (propCourses && propCourses.length > 0 ? propCourses : getCachedCourses()),
+    [propCourses]
+  );
   
   // Teacher-specific state
   const [teacherScope, setTeacherScope] = useState<'mine' | 'all'>('mine');
@@ -202,286 +212,50 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
   const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null);
   const [mapFilter, setMapFilter] = useState<'all' | 'supervised' | 'pending'>('all');
 
-  const remoteSupervisionsRef = useRef<Form3SupervisionRecord[]>([]);
-
-  // Fetch course sheet rows ("data" tab) so teacher rooms/subjects stay up to date
-  useEffect(() => {
-    fetchDataSheetCourses().then(rows => {
-      if (rows && rows.length > 0) setCourseRows(rows);
-    });
-  }, []);
-
-  // Subscribe to real-time supervision records + local updates
-  useEffect(() => {
-    const mergeAndSet = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteSupervisionsRef.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      const merged = Array.from(map.values()).sort((a, b) => {
-        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return tB - tA;
-      });
-      setSupervisions(merged);
-    };
-
-    mergeAndSet();
-
-    const unsub = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const recs = remoteRecords || [];
-        remoteSupervisionsRef.current = recs;
-        mergeAndSet(recs);
-      },
-      (err) => console.warn('Form3 supervision stream in MobileSimView notice:', err)
-    );
-
-    const handleLocalUpdate = () => mergeAndSet();
-    window.addEventListener('kktech_form3_updated', handleLocalUpdate);
-    window.addEventListener('storage', handleLocalUpdate);
-
-    return () => {
-      unsub();
-      window.removeEventListener('kktech_form3_updated', handleLocalUpdate);
-      window.removeEventListener('storage', handleLocalUpdate);
-    };
-  }, []);
-
-  // Merge propStudents with all 123 students from Google Sheets "login" tab
+  // Normalized students directly from App.tsx authoritative state
   const allSheetStudents = useMemo<Student[]>(() => {
-    const fromSheet = getAllLoginSheetStudents();
-    const map = new Map<string, Student>();
-    for (const s of fromSheet) {
-      if (s.studentCode) map.set(s.studentCode, s);
-    }
-    if (students && students.length > 0) {
-      for (const s of students) {
-        if (s.studentCode) {
-          const exist = map.get(s.studentCode);
-          map.set(s.studentCode, { ...exist, ...s });
-        }
-      }
-    }
-    return Array.from(map.values());
-  }, [students]);
+    const base = students && students.length > 0 ? students : [student];
+    return base.map(normalizeStudentAcademicInfo);
+  }, [students, student]);
 
-  // Build complete list of distinct companies referencing Google Sheets "login" tab
+  // Build complete list of distinct companies via single canonical dataUnifier builder
   const sheetCompanies = useMemo<MobileCompanyItem[]>(() => {
-    const compGroups = new Map<string, {
-      name: string;
-      students: Student[];
-      firstStudent: Student;
-    }>();
-
-    for (const std of allSheetStudents) {
-      const cName = (std.companyName || '').trim();
-      if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
-
-      if (!compGroups.has(cName)) {
-        compGroups.set(cName, {
-          name: cName,
-          students: [],
-          firstStudent: std
-        });
-      }
-      compGroups.get(cName)!.students.push(std);
-    }
-
-    const items: MobileCompanyItem[] = [];
-    const matchedForm3Ids = new Set<string>();
-    let idx = 1;
-
-    const extractTeachersAndPhotos = (records: Form3SupervisionRecord[], fallbackTeacher?: string) => {
-      const tSet = new Set<string>();
-      records.forEach(r => {
-        (r.teacherName || '').split(/[,/]+/).forEach(t => {
-          const clean = t.trim();
-          if (clean && clean !== '-') tSet.add(clean);
-        });
-      });
-      if (tSet.size === 0 && fallbackTeacher) {
-        tSet.add(fallbackTeacher);
-      }
-      const pMap = new Map<string, Form3Photo>();
-      records.forEach(r => {
-        (r.photos || []).forEach(p => {
-          if (p.url && !pMap.has(p.url)) pMap.set(p.url, p);
-        });
-      });
+    return buildUnifiedCompanies(allSheetStudents, supervisions).map((u, idx) => {
+      const coords = getSvgCoordinates(u.name, idx + 1);
+      const firstReg = u.students[0]?.companyRegistration;
+      const lat = firstReg?.gpsLat || coords.lat;
+      const lng = firstReg?.gpsLng || coords.lng;
       return {
-        supervisingTeachers: Array.from(tSet),
-        allPhotos: Array.from(pMap.values())
+        id: u.id,
+        name: u.name,
+        address: u.address,
+        zone: coords.zone || u.zone,
+        distanceKm: Math.round(((lat - 16.4322) ** 2 + (lng - 102.8236) ** 2) * 5000) / 10 + 3.5,
+        sector: u.sector,
+        sectorLabel: u.sectorLabel,
+        contactPerson: u.latestRecord?.mentorName || u.contactPerson,
+        phone: u.phone !== '-' ? u.phone : '043-221-xxx',
+        lat,
+        lng,
+        mapX: coords.x,
+        mapY: coords.y,
+        students: u.students,
+        studentsCount: u.studentsCount,
+        form3Records: u.form3Records,
+        latestRecord: u.latestRecord,
+        supervisingTeachers: u.supervisingTeachersList,
+        allPhotos: u.allPhotos,
+        isSupervised: u.isSupervised,
+        statusText: u.statusText,
+        jobScope: u.jobScope,
       };
-    };
-
-    for (const [name, group] of compGroups.entries()) {
-      const compId = `comp-${idx++}`;
-      const firstStd = group.firstStudent;
-      const reg = firstStd.companyRegistration;
-      const coords = getSvgCoordinates(name, idx);
-
-      let sector: 'pea' | 'solar' | 'factory' | 'service' = 'service';
-      let sectorLabel = 'ระบบไฟฟ้าและบริการทั่วไป';
-      if (name.includes('การไฟฟ้า') || name.includes('กฟภ') || name.includes('กฟผ') || name.includes('PEA') || name.includes('EGAT')) {
-        sector = 'pea';
-        sectorLabel = 'สถานีไฟฟ้า & สายส่ง PEA';
-      } else if (name.includes('โซล่าร์') || name.includes('Solar') || name.includes('พลังงาน')) {
-        sector = 'solar';
-        sectorLabel = 'ระบบ Solar Rooftop';
-      } else if (name.includes('อุตสาหกรรม') || name.includes('ผลิต') || name.includes('มิตซูบิชิ') || name.includes('คูโบต้า') || name.includes('ไทยเพาเวอร์') || name.includes('PLC')) {
-        sector = 'factory';
-        sectorLabel = 'โรงงานอุตสาหกรรม & ตู้ MDB';
-      }
-
-      // Match Form 3 supervision records for this company or its students
-      const matchedForm3 = supervisions.filter(f => {
-        if (!f) return false;
-        const matchName = f.companyName && (
-          f.companyName.toLowerCase().includes(name.toLowerCase()) || 
-          name.toLowerCase().includes(f.companyName.toLowerCase()) ||
-          (name.includes('การไฟฟ้าส่วนภูมิภาค') && f.companyName.includes('การไฟฟ้าส่วนภูมิภาค'))
-        );
-        const matchStudent = group.students.some(s => 
-          (s.studentCode && f.studentCode && s.studentCode === f.studentCode) || 
-          s.id === f.studentId || 
-          (s.name && f.studentName && s.name === f.studentName)
-        );
-        return matchName || matchStudent;
-      });
-
-      matchedForm3.forEach(f => matchedForm3Ids.add(f.id));
-      matchedForm3.sort((a, b) => {
-        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return tB - tA;
-      });
-
-      const isSupervised = matchedForm3.length > 0;
-      const latestRecord = matchedForm3.length > 0 ? matchedForm3[0] : undefined;
-      const { supervisingTeachers, allPhotos } = extractTeachersAndPhotos(matchedForm3, firstStd.supervisorTeacher);
-
-      items.push({
-        id: compId,
-        name,
-        address: `${coords.zone} จ.ขอนแก่น`,
-        zone: coords.zone,
-        distanceKm: Math.round(((coords.lat - 16.4322) ** 2 + (coords.lng - 102.8236) ** 2) * 5000) / 10 + 3.5,
-        sector,
-        sectorLabel,
-        contactPerson: latestRecord?.mentorName || reg?.mentorName || 'วิศวกรผู้ควบคุมงาน / พี่เลี้ยงสถานประกอบการ',
-        phone: reg?.emergencyPhone || reg?.mentorPhone || '043-221-xxx',
-        lat: reg?.gpsLat || coords.lat,
-        lng: reg?.gpsLng || coords.lng,
-        mapX: coords.x,
-        mapY: coords.y,
-        students: group.students,
-        studentsCount: group.students.length,
-        form3Records: matchedForm3,
-        latestRecord,
-        supervisingTeachers,
-        allPhotos,
-        isSupervised,
-        statusText: isSupervised ? 'นิเทศแล้ว' : 'รอนิเทศ',
-        jobScope: latestRecord?.companyDepartment || reg?.department || 'งานติดตั้ง บำรุงรักษา และควบคุมระบบไฟฟ้ากำลัง'
-      });
-    }
-
-    // Append any supervised workplaces recorded in Form 3 that are not yet listed in Login sheet
-    const extraGroups = new Map<string, Form3SupervisionRecord[]>();
-    supervisions.forEach(f => {
-      if (!f || matchedForm3Ids.has(f.id)) return;
-      const key = (f.companyName || 'สถานประกอบการ (บันทึกการนิเทศ)').trim();
-      if (!extraGroups.has(key)) extraGroups.set(key, []);
-      extraGroups.get(key)!.push(f);
-    });
-
-    for (const [extraName, recs] of extraGroups.entries()) {
-      recs.sort((a, b) => {
-        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return tB - tA;
-      });
-      const latest = recs[0];
-      const coords = getSvgCoordinates(extraName, idx++);
-      const { supervisingTeachers, allPhotos } = extractTeachersAndPhotos(recs);
-      const extraStudents: Student[] = recs.map((r, rIdx) => {
-        const found = allSheetStudents.find(
-          s => (r.studentCode && s.studentCode === r.studentCode) || (r.studentId && s.id === r.studentId)
-        );
-        if (found) return found;
-        return {
-          id: r.studentId || `std-extra-${rIdx}`,
-          studentCode: r.studentCode || '-',
-          name: r.studentName || 'นักศึกษาฝึกงาน',
-          initials: (r.studentName || 'นศ').slice(0, 2),
-          level: r.levelDepartment || 'ปวส.2',
-          department: 'แผนกวิชาช่างไฟฟ้ากำลัง',
-          room: r.studentRoom || '-',
-          email: '',
-          companyId: `comp-extra-${idx}`,
-          companyName: extraName,
-          currentWeek: 8,
-          totalWeeks: 18,
-          actualWeeks: 8,
-          accumulatedHours: 320,
-          requiredHours: 720,
-          supervisorTeacher: supervisingTeachers.join(', ') || 'ครูนิเทศก์',
-          companyRegistration: {
-            registeredAt: r.visitDate || r.timestamp,
-            department: r.companyDepartment || '-',
-            mentorName: r.mentorName || '-',
-            mentorPhone: '-',
-            emergencyPhone: '-',
-            gpsCoordinates: '16.4322, 102.8236',
-            gpsLat: 16.4322,
-            gpsLng: 102.8236,
-            notes: r.companyAddress || ''
-          }
-        };
-      });
-
-      items.push({
-        id: `comp-extra-${idx}`,
-        name: extraName,
-        address: latest?.companyAddress || `${coords.zone} จ.ขอนแก่น`,
-        zone: coords.zone,
-        distanceKm: Math.round(((coords.lat - 16.4322) ** 2 + (coords.lng - 102.8236) ** 2) * 5000) / 10 + 3.5,
-        sector: 'service',
-        sectorLabel: 'ระบบไฟฟ้าและบริการทั่วไป',
-        contactPerson: latest?.mentorName || 'พี่เลี้ยงสถานประกอบการ',
-        phone: '-',
-        lat: coords.lat,
-        lng: coords.lng,
-        mapX: coords.x,
-        mapY: coords.y,
-        students: extraStudents,
-        studentsCount: extraStudents.length,
-        form3Records: recs,
-        latestRecord: latest,
-        supervisingTeachers,
-        allPhotos,
-        isSupervised: true,
-        statusText: 'นิเทศแล้ว',
-        jobScope: latest?.companyDepartment || 'งานติดตั้ง บำรุงรักษา และควบคุมระบบไฟฟ้ากำลัง'
-      });
-    }
-
-    // Default sort: supervised first or by students count
-    return items.sort((a, b) => {
-      if (a.isSupervised && !b.isSupervised) return -1;
-      if (!a.isSupervised && b.isSupervised) return 1;
-      if (b.form3Records.length !== a.form3Records.length) {
-        return b.form3Records.length - a.form3Records.length;
-      }
-      return b.studentsCount - a.studentsCount;
     });
   }, [allSheetStudents, supervisions]);
 
   // Resolve active teacher profile strictly from logged-in user (or student's assigned supervisor when simulating)
   const activeTeacherProfile = useMemo(() => {
-    const allTeachers: SheetTeacher[] = getAllLoginSheetTeachers();
+    const allTeachers: SheetTeacher[] =
+      propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers();
 
     const findMatchedTeacher = (targetName?: string, targetEmail?: string): SheetTeacher | undefined => {
       const cleanEmail = (targetEmail || '').trim().toLowerCase();
@@ -535,6 +309,7 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
       : (matched?.subjects || []);
 
     return {
+      id: matched?.id,
       name,
       email,
       initials,
@@ -544,13 +319,18 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
       rooms,
       courses: teacherCourses,
       subjects,
+      avatarUrl: matched?.avatarUrl,
       isSimulatedFromStudent: !isStaffUser
     };
-  }, [currentUser, student.supervisorTeacher, courseRows]);
+  }, [currentUser, student.supervisorTeacher, courseRows, propTeachers]);
 
-  // Sync teacher avatar from localStorage using the logged-in teacher's email
+  // Sync teacher avatar from Firestore teachers prop or localStorage fallback
   useEffect(() => {
     const loadAvatar = () => {
+      if (activeTeacherProfile.avatarUrl) {
+        setTeacherAvatarUrl(activeTeacherProfile.avatarUrl);
+        return;
+      }
       if (typeof localStorage === 'undefined' || !activeTeacherProfile.email) {
         setTeacherAvatarUrl(null);
         return;
@@ -561,7 +341,7 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
     loadAvatar();
     window.addEventListener('storage', loadAvatar);
     return () => window.removeEventListener('storage', loadAvatar);
-  }, [activeTeacherProfile.email]);
+  }, [activeTeacherProfile.email, activeTeacherProfile.avatarUrl]);
 
   // Reset scope and selection when switching logged-in teacher account
   useEffect(() => {
@@ -690,38 +470,14 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
     return [...pending, ...supervised].slice(0, 3);
   }, [scopedCompanies]);
 
-  const studentSubs = useMemo(() => {
-    const candidateKeys = Array.from(
-      new Set([student.id, student.studentCode, `std-${student.studentCode}`, student.id?.replace(/^std-/, '')].filter(Boolean) as string[])
-    );
-    const byWeek = new Map<number, WeeklySubmission>();
-    candidateKeys.forEach((k) => {
-      (submissions[k] || []).forEach((s) => {
-        const existing = byWeek.get(s.weekNumber);
-        if (!existing || (existing.status !== 'graded' && s.status === 'graded')) {
-          byWeek.set(s.weekNumber, s);
-        }
-      });
-    });
-    return Array.from(byWeek.values());
-  }, [submissions, student.id, student.studentCode]);
+  const studentEval = useMemo(
+    () => getStudentEvaluationSummary(student, submissions, supervisions),
+    [student, submissions, supervisions]
+  );
 
-  const sortedStudentSubs = useMemo(() => {
-    return [...studentSubs].sort((a, b) => b.weekNumber - a.weekNumber);
-  }, [studentSubs]);
-
-  // Match supervision records for the active student
-  const matchingSupervisions = useMemo(() => {
-    return supervisions.filter(r => {
-      if (!r) return false;
-      const sIdMatch = r.studentId === student.id;
-      const sCodeMatch = Boolean(r.studentCode && student.studentCode && r.studentCode.trim() === student.studentCode.trim());
-      const compMatch = Boolean(r.companyName && student.companyName && r.companyName.trim().toLowerCase().includes(student.companyName.trim().toLowerCase()));
-      return sIdMatch || sCodeMatch || compMatch;
-    });
-  }, [supervisions, student]);
-
-  const latestSupervision = matchingSupervisions.length > 0 ? matchingSupervisions[0] : null;
+  const studentSubs = studentEval.submissions;
+  const sortedStudentSubs = studentEval.submissions;
+  const latestSupervision = studentEval.latestForm3 || null;
 
   return (
     <div className="flex flex-col items-center justify-center p-2 sm:p-6 print:hidden">
@@ -857,12 +613,12 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
                           </div>
                           <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
                             <div className="text-[10px] text-slate-400">ชั่วโมงสะสม</div>
-                            <div className="text-sm font-bold text-emerald-700 font-mono">{student.accumulatedHours} ชม.</div>
+                            <div className="text-sm font-bold text-emerald-700 font-mono">{studentEval.effectiveAccumulatedHours} ชม.</div>
                           </div>
                           <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
                             <div className="text-[10px] text-slate-400">เกรดเฉลี่ย</div>
                             <div className="text-sm font-bold text-amber-700 font-mono">
-                              {studentSubs.length > 0 ? (studentSubs[0].teacherGrade || 'A') : '-'}
+                              {studentEval.evaluationGrade || '-'}
                             </div>
                           </div>
                         </div>
@@ -1156,19 +912,19 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
                             <Clock className="w-3 h-3 text-sky-600" /> สะสมชั่วโมงฝึกงานวิชาชีพ
                           </span>
                           <span className="font-bold text-slate-900 font-mono">
-                            {student.accumulatedHours} / {student.requiredHours} ชม.
+                            {studentEval.effectiveAccumulatedHours} / {student.requiredHours} ชม.
                           </span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2">
                           <div
                             className="bg-emerald-500 h-2 rounded-full"
-                            style={{ width: `${Math.min(100, (student.accumulatedHours / student.requiredHours) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (studentEval.effectiveAccumulatedHours / (student.requiredHours || 720)) * 100)}%` }}
                           ></div>
                         </div>
                         <div className="flex justify-between text-[10px] text-slate-500">
-                          <span>ผ่านไปแล้ว {student.actualWeeks || 8} จาก {student.totalWeeks || 18} สัปดาห์</span>
+                          <span>ผ่านไปแล้ว {studentEval.effectiveActualWeeks} จาก {student.totalWeeks || 18} สัปดาห์</span>
                           <span className="text-emerald-700 font-semibold">
-                            สำเร็จ {Math.min(100, Math.round(((student.accumulatedHours || 0) / (student.requiredHours || 720)) * 100))}% (ตามเกณฑ์)
+                            สำเร็จ {Math.min(100, Math.round((studentEval.effectiveAccumulatedHours / (student.requiredHours || 720)) * 100))}% (ตามเกณฑ์)
                           </span>
                         </div>
                       </div>

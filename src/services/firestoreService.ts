@@ -9,8 +9,9 @@ import {
   limit
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
-import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow } from '../types';
+import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow, SheetTeacher } from '../types';
 import { getAllLoginSheetStudents } from './sheetAuthService';
+import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
 
 export const COLLECTIONS = {
   STUDENTS: 'students',
@@ -179,6 +180,53 @@ export function subscribeCourses(
 }
 
 /**
+ * Listen for real-time changes to the Teachers collection
+ */
+export function subscribeTeachers(
+  onData: (teachers: SheetTeacher[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.TEACHERS;
+  return onSnapshot(
+    collection(db, colPath),
+    (snapshot) => {
+      const items: SheetTeacher[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as SheetTeacher);
+      });
+      onData(items);
+    },
+    (error) => {
+      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
+      if (onError) onError(error as Error);
+    }
+  );
+}
+
+/**
+ * Save or update a teacher's avatar URL in Firestore /teachers
+ */
+export async function saveTeacherAvatarToFirestore(
+  teacher: Partial<SheetTeacher> & { id: string },
+  avatarUrl: string
+): Promise<void> {
+  const path = `${COLLECTIONS.TEACHERS}/${teacher.id}`;
+  try {
+    await setDoc(
+      doc(db, COLLECTIONS.TEACHERS, teacher.id),
+      {
+        ...teacher,
+        avatarUrl,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
  * Seed initial data if the Firestore collection is empty
  * Strictly seeds directly from Google Sheets "login" tab students & real derived companies
  */
@@ -199,46 +247,11 @@ export async function seedFirestoreIfEmpty(
         await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), student);
       }
 
-      // Derive and seed real companies from real students (fallback to mockCompanies only if none)
-      const companyMap = new Map<string, Student[]>();
-      for (const s of realStudents) {
-        const cName = (s.companyName || '').trim();
-        if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
-        if (!companyMap.has(cName)) companyMap.set(cName, []);
-        companyMap.get(cName)!.push(s);
-      }
-
-      if (companyMap.size > 0) {
-        let compIdx = 1;
-        for (const [cName, compStudents] of companyMap.entries()) {
-          const first = compStudents[0];
-          const compId = `comp-sheet-${compIdx++}`;
-          await setDoc(doc(db, COLLECTIONS.COMPANIES, compId), {
-            id: compId,
-            name: cName,
-            shortName: cName.slice(0, 30),
-            address: first.companyRegistration?.notes || 'จังหวัดขอนแก่น',
-            zone: 'อ.เมืองขอนแก่น',
-            distanceKm: 5.5,
-            sector: 'high-voltage',
-            sectorLabel: 'ระบบไฟฟ้าและควบคุม',
-            contactPerson: first.companyRegistration?.mentorName || 'ผู้จัดการฝ่าย',
-            phone: first.companyRegistration?.emergencyPhone || first.companyRegistration?.mentorPhone || '-',
-            lat: first.companyRegistration?.gpsLat || 16.4322,
-            lng: first.companyRegistration?.gpsLng || 102.8236,
-            studentsCount: compStudents.length,
-            status: 'completed',
-            statusText: 'เชื่อมต่อแล้ว',
-            assignedTeacher: first.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
-            assignedStudents: compStudents.map(cs => ({
-              studentId: cs.id,
-              studentName: cs.name,
-              studentCode: cs.studentCode,
-              level: cs.level,
-              latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
-            })),
-            jobScope: first.companyRegistration?.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า'
-          });
+      // Derive and seed real companies using unified builder (fallback to mockCompanies only if none)
+      const unifiedCompanies = toFirestoreCompanies(buildUnifiedCompanies(realStudents, []));
+      if (unifiedCompanies.length > 0) {
+        for (const company of unifiedCompanies) {
+          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company);
         }
       } else {
         for (const company of mockCompanies) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShieldCheck, 
   Database, 
@@ -23,23 +23,25 @@ import {
   Search,
   Filter
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, Form3SupervisionRecord } from '../types';
+import { Student, Company, WeeklySubmission, Form3SupervisionRecord, CourseDataRow, SheetTeacher } from '../types';
 import { getCurrentWeekInfo } from '../data/weeksData';
 import { 
   wipeAndReplaceFirebaseWithSheetData, 
   syncAllLoginSheetRowsToFirebase,
-  getLastSyncInfo
 } from '../services/sheetFirebaseSyncService';
 import { downloadAllWebZip } from '../services/webZipService';
-import { subscribeForm3Supervisions } from '../services/firestoreService';
-import { getLocalForm3Rows } from '../services/googleSheetsService';
 import { getAllLoginSheetTeachers, fetchSheetLoginAccounts } from '../services/sheetAuthService';
 import { getCachedCourses, getRoomsByTeacher } from '../services/courseDataService';
+import { matchesStudentRecord, extractTeacherNames } from '../utils/dataUnifier';
+import { getMergedStudentSubmissions } from '../utils/submissionUtils';
 
 interface AdminViewProps {
   students: Student[];
   companies: Company[];
   submissions?: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
+  teachers?: SheetTeacher[];
   onDeleteSubmission?: (submissionId: string, studentId: string) => Promise<boolean>;
   onDeleteSupervision?: (recordId: string) => Promise<boolean>;
   onOpenSheetsModal: () => void;
@@ -50,6 +52,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   students,
   companies,
   submissions = {},
+  form3List = [],
+  courses: propCourses,
+  teachers: propTeachers,
   onDeleteSubmission,
   onDeleteSupervision,
   onOpenSheetsModal,
@@ -63,8 +68,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [syncAlert, setSyncAlert] = useState<{ type: 'success' | 'error'; message: string; details?: string } | null>(null);
   const currentWeekInfo = getCurrentWeekInfo();
 
-  // Data management state for Admin
-  const [supervisions, setSupervisions] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
+  // Data management state for Admin (form3List flows directly from App.tsx authoritative state)
+  const supervisions = form3List;
   const [dataManageTab, setDataManageTab] = useState<'submissions' | 'supervisions'>('submissions');
   const [subSearch, setSubSearch] = useState('');
   const [subWeekFilter, setSubWeekFilter] = useState('all');
@@ -72,7 +77,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const [loginAccountsCount, setLoginAccountsCount] = useState<number>(() => Math.max(students.length, 184));
-  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
 
   useEffect(() => {
     fetchSheetLoginAccounts()
@@ -80,36 +84,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
         if (accs && accs.length > 0) setLoginAccountsCount(accs.length);
       })
       .catch(() => {});
-
-    const mergeAndSet = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      setSupervisions(Array.from(map.values()));
-    };
-
-    mergeAndSet([]);
-
-    const unsub = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const recs = remoteRecords || [];
-        remoteForm3Ref.current = recs;
-        mergeAndSet(recs);
-      },
-      (err) => console.warn('Form3 supervision stream notice in AdminView:', err)
-    );
-
-    const handleSync = () => mergeAndSet();
-    window.addEventListener('kktech_form3_updated', handleSync);
-    window.addEventListener('storage', handleSync);
-
-    return () => {
-      unsub();
-      window.removeEventListener('kktech_form3_updated', handleSync);
-      window.removeEventListener('storage', handleSync);
-    };
   }, [students.length]);
 
   // Map student details across id, studentCode, and std-prefixed keys
@@ -151,16 +125,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
     return Array.from(byId.values()).sort((a, b) => b.weekNumber - a.weekNumber);
   }, [submissions, studentMap]);
 
-  const sheetTeachers = useMemo(() => getAllLoginSheetTeachers(), []);
-  const sheetCoursesCount = useMemo(() => getCachedCourses().length, []);
+  const sheetTeachers = useMemo(
+    () => (propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers()),
+    [propTeachers]
+  );
+  const activeCourses = useMemo(
+    () => (propCourses && propCourses.length > 0 ? propCourses : getCachedCourses()),
+    [propCourses]
+  );
 
   const liveMetrics = useMemo(() => {
     const totalStudents = students.length;
     const totalTeachers = sheetTeachers.length;
-    const totalRecords = totalStudents + companies.length + allSubmissionsList.length + supervisions.length + sheetCoursesCount;
-    const supervisedStudentIds = new Set(supervisions.map(r => r.studentCode || r.studentName).filter(Boolean));
-    const gradedStudentIds = new Set(allSubmissionsList.filter(s => s.status === 'graded').map(s => s.studentId));
-    const coveredCount = new Set([...supervisedStudentIds, ...gradedStudentIds]).size;
+    const totalRecords = totalStudents + companies.length + allSubmissionsList.length + supervisions.length + activeCourses.length;
+    const coveredCount = students.filter((s) => {
+      const hasForm3 = supervisions.some((r) => matchesStudentRecord(r, s));
+      const hasGradedSub = getMergedStudentSubmissions(s, submissions).some((sub) => sub.status === 'graded');
+      return hasForm3 || hasGradedSub;
+    }).length;
     const passRate = totalStudents > 0 ? Math.min(100, Math.round((coveredCount / totalStudents) * 1000) / 10) : 0;
 
     return {
@@ -169,27 +151,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
       totalRecords,
       passRate
     };
-  }, [students.length, sheetTeachers.length, companies.length, allSubmissionsList, supervisions, sheetCoursesCount]);
+  }, [students, sheetTeachers.length, companies.length, allSubmissionsList.length, supervisions, activeCourses.length, submissions]);
 
   const teacherAssignments = useMemo(() => {
-    const courses = getCachedCourses();
     return sheetTeachers.slice(0, 6).map((t) => {
-      const assignedRooms = Array.from(new Set([...(t.rooms || []), ...getRoomsByTeacher(t.name, courses)]));
+      const assignedRooms = Array.from(new Set([...(t.rooms || []), ...getRoomsByTeacher(t.name, activeCourses)]));
       const cleanTName = t.name.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim();
       const assignedStudents = students.filter(s =>
         (s.room && assignedRooms.includes(s.room)) ||
         (cleanTName && s.supervisorTeacher && s.supervisorTeacher.includes(cleanTName))
       );
       const uniqueCompanies = new Set(
-        assignedStudents.map(s => (s.companyName || '').trim()).filter(n => n && !n.includes('รออัปเดต'))
+        assignedStudents.map(s => (s.companyName || '').trim()).filter(n => n && !n.includes('รออัปเดต') && n !== 'ยังไม่ระบุสถานประกอบการ' && n !== '-')
       );
-      const supervisedSet = new Set(
-        supervisions
-          .filter(r => r.teacherName?.includes(cleanTName) || assignedStudents.some(s => s.studentCode === r.studentCode))
-          .map(r => r.studentCode || r.studentName)
-      );
+      const supervisedStudentsCount = assignedStudents.filter((s) =>
+        supervisions.some((r) => matchesStudentRecord(r, s) && (!cleanTName || extractTeacherNames(r.teacherName).some((tn) => tn.includes(cleanTName)) || assignedStudents.some((as) => matchesStudentRecord(r, as))))
+      ).length;
       const pct = assignedStudents.length > 0
-        ? Math.min(100, Math.round((supervisedSet.size / assignedStudents.length) * 100))
+        ? Math.min(100, Math.round((supervisedStudentsCount / assignedStudents.length) * 100))
         : 0;
       return {
         id: t.id,
@@ -201,7 +180,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
         supervisedPct: pct
       };
     });
-  }, [sheetTeachers, students, supervisions]);
+  }, [sheetTeachers, activeCourses, students, supervisions]);
 
   const filteredSubmissions = useMemo(() => {
     return allSubmissionsList.filter(s => {
@@ -246,7 +225,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
     if (window.confirm(`⚠️ คำเตือน Admin: คุณแน่ใจหรือไม่ที่จะลบรายงานการนิเทศของ ${studentName} ณ ${companyName}?\n\nการลบนี้จะลบข้อมูลออกจาก Firestore และฐานข้อมูลระบบอย่างถาวร`)) {
       try {
         await onDeleteSupervision(recId);
-        setSupervisions(prev => prev.filter(r => r.id !== recId));
         setActionNotice(`ลบรายงานการนิเทศของ ${studentName} ณ ${companyName} สำเร็จแล้ว`);
         setTimeout(() => setActionNotice(null), 4000);
       } catch (e: any) {

@@ -25,8 +25,9 @@ import {
   mapStatusToRole,
   LOGIN_SHEET_CONFIG
 } from './sheetAuthService';
-import { Student } from '../types';
+import { Student, Form3SupervisionRecord, SheetTeacher } from '../types';
 import { fetchDataSheetCourses } from './courseDataService';
+import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
 
 export interface SyncSummary {
   success: boolean;
@@ -110,6 +111,21 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
     }
 
+    // Load existing Firestore /teachers to preserve uploaded avatars
+    const existingTeachersAvatarMap = new Map<string, string>();
+    try {
+      const existingTeachersSnap = await getDocs(collection(db, 'teachers'));
+      existingTeachersSnap.forEach((docSnap) => {
+        const data = docSnap.data() as SheetTeacher;
+        if (data.avatarUrl) {
+          existingTeachersAvatarMap.set(docSnap.id, data.avatarUrl);
+          if (data.email) existingTeachersAvatarMap.set(data.email.toLowerCase(), data.avatarUrl);
+        }
+      });
+    } catch (readErr) {
+      console.warn('[SyncEngine] Notice reading existing Firestore teachers:', readErr);
+    }
+
     let syncedCount = 0;
     let studentRows = 0;
     const validLoginSheetIds = new Set<string>();
@@ -119,16 +135,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     const validCompanyIds = new Set<string>();
 
     const batchOps: Array<(batch: WriteBatch) => void> = [];
-
-    const detectedCompanies = new Map<string, {
-      name: string;
-      phone?: string;
-      leader?: string;
-      gps?: string;
-      notes?: string;
-      department?: string;
-      students: Student[];
-    }>();
+    const syncedStudentsForCompanies: Student[] = [];
 
     // 2. Process all live rows from Google Sheet login tab
     for (const row of sheetRows) {
@@ -201,7 +208,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         };
 
         effectiveStudent = mergedStudent as Student;
-        effectiveCompanyName = (effectiveStudent.companyName || '').trim();
+        syncedStudentsForCompanies.push(effectiveStudent);
 
         validStudentIds.add(student.id);
         validUserIds.add(cleanUserId);
@@ -219,7 +226,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             department: student.department,
             phone: row.phoneStudent || '',
             pass: row.pass || '',
-            companyName: effectiveCompanyName,
+            companyName: (mergedStudent.companyName || '').trim(),
             updatedAt: startTime.toISOString()
           });
         });
@@ -227,6 +234,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       } else {
         const mappedRole = mapStatusToRole(row.status || '');
         const tchId = `tch-${cleanUserId}`;
+        const preservedAvatar = existingTeachersAvatarMap.get(tchId) || existingTeachersAvatarMap.get(userEmail.toLowerCase());
         validTeacherIds.add(tchId);
         validUserIds.add(cleanUserId);
 
@@ -241,6 +249,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             phone: row.phoneStudent || '',
             department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
             room: row.room || '',
+            ...(preservedAvatar ? { avatarUrl: preservedAvatar } : {}),
             updatedAt: startTime.toISOString()
           });
           batch.set(doc(db, 'users', cleanUserId), {
@@ -256,75 +265,23 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         });
       }
 
-      // Gather company info
-      if (effectiveCompanyName && effectiveCompanyName.length > 2 && effectiveCompanyName !== 'ยังไม่ระบุสถานประกอบการ') {
-        if (!detectedCompanies.has(effectiveCompanyName)) {
-          detectedCompanies.set(effectiveCompanyName, {
-            name: effectiveCompanyName,
-            phone: effectiveStudent?.companyRegistration?.emergencyPhone || row.CompanyPhone || row.leaderPhone,
-            leader: effectiveStudent?.companyRegistration?.mentorName || row.leader,
-            gps: effectiveStudent?.companyRegistration?.gpsCoordinates || row.GPS,
-            notes: effectiveStudent?.companyRegistration?.notes || row.delial,
-            department: effectiveStudent?.companyRegistration?.department || row.department,
-            students: []
-          });
-        }
-        if (effectiveStudent) {
-          detectedCompanies.get(effectiveCompanyName)!.students.push(effectiveStudent);
-        }
-      }
-
       syncedCount++;
     }
 
-    // 2.4 Synchronize distinct companies to Firestore /companies
-    let compIndex = 1;
-    for (const [compName, compInfo] of detectedCompanies.entries()) {
-      const compId = `comp-sheet-${compIndex++}`;
-      validCompanyIds.add(compId);
-
-      let lat = 16.4322;
-      let lng = 102.8236;
-      if (compInfo.gps && compInfo.gps.includes(',')) {
-        const parts = compInfo.gps.split(',');
-        const pLat = parseFloat(parts[0].trim());
-        const pLng = parseFloat(parts[1].trim());
-        if (!isNaN(pLat) && !isNaN(pLng)) {
-          lat = pLat;
-          lng = pLng;
-        }
-      }
-
-      const firstStudent = compInfo.students[0];
-      const assignedTeacher = firstStudent?.supervisorTeacher || 'นายทักษิณ โสภาปิยะ';
-      const studentCount = Math.max(1, compInfo.students.length);
-
+    // 2.4 Synchronize distinct companies to Firestore /companies using unified builder
+    let existingForm3: Form3SupervisionRecord[] = [];
+    try {
+      const f3Snap = await getDocs(collection(db, 'form3_supervisions'));
+      f3Snap.forEach((d) => existingForm3.push(d.data() as Form3SupervisionRecord));
+    } catch {
+      // ignore if empty or offline
+    }
+    const derivedCompanies = toFirestoreCompanies(buildUnifiedCompanies(syncedStudentsForCompanies, existingForm3));
+    for (const comp of derivedCompanies) {
+      validCompanyIds.add(comp.id);
       batchOps.push((batch) => {
-        batch.set(doc(db, 'companies', compId), {
-          id: compId,
-          name: compName,
-          shortName: compName.slice(0, 30),
-          address: compInfo.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
-          zone: 'อ.เมืองขอนแก่น',
-          distanceKm: 5.5,
-          sector: 'high-voltage',
-          sectorLabel: 'ระบบไฟฟ้าและควบคุม',
-          contactPerson: (compInfo.leader && compInfo.leader !== '-') ? compInfo.leader : 'ผู้จัดการฝ่าย',
-          phone: (compInfo.phone && compInfo.phone !== '-') ? compInfo.phone : '-',
-          lat,
-          lng,
-          studentsCount: studentCount,
-          status: 'completed',
-          statusText: 'เชื่อมต่อแล้ว',
-          assignedTeacher,
-          assignedStudents: compInfo.students.map(cs => ({
-            studentId: cs.id,
-            studentName: cs.name,
-            studentCode: cs.studentCode,
-            level: cs.level,
-            latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
-          })),
-          jobScope: compInfo.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
+        batch.set(doc(db, 'companies', comp.id), {
+          ...comp,
           lastSyncAt: startTime.toISOString()
         });
       });
@@ -652,37 +609,13 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
     }
   }
 
-  // Insert derived companies
-  let compIdx = 1;
-  for (const [compName, compStudents] of detectedCompanies.entries()) {
-    const first = compStudents[0];
-    const compId = `comp-sheet-${compIdx++}`;
+  // Insert derived companies using unified builder
+  const wipeStudentsList: Student[] = Array.from(detectedCompanies.values()).flat();
+  const unifiedWipeCompanies = toFirestoreCompanies(buildUnifiedCompanies(wipeStudentsList, []));
+  for (const comp of unifiedWipeCompanies) {
     insertOps.push((batch) => {
-      batch.set(doc(db, 'companies', compId), {
-        id: compId,
-        name: compName,
-        shortName: compName.slice(0, 30),
-        address: first.companyRegistration?.notes || 'จังหวัดขอนแก่น (เชื่อมต่อจากแผ่นงาน login)',
-        zone: 'อ.เมืองขอนแก่น',
-        distanceKm: 5.5,
-        sector: 'high-voltage',
-        sectorLabel: 'ระบบไฟฟ้าและควบคุม',
-        contactPerson: first.companyRegistration?.mentorName || 'ผู้จัดการฝ่าย',
-        phone: first.companyRegistration?.emergencyPhone || first.companyRegistration?.mentorPhone || '-',
-        lat: first.companyRegistration?.gpsLat || 16.4322,
-        lng: first.companyRegistration?.gpsLng || 102.8236,
-        studentsCount: compStudents.length,
-        status: 'completed',
-        statusText: 'เชื่อมต่อแล้ว',
-        assignedTeacher: first.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
-        assignedStudents: compStudents.map(cs => ({
-          studentId: cs.id,
-          studentName: cs.name,
-          studentCode: cs.studentCode,
-          level: cs.level,
-          latestWeekStatus: `สัปดาห์ที่ ${cs.currentWeek}`
-        })),
-        jobScope: first.companyRegistration?.department || 'งานติดตั้งและบำรุงรักษาระบบไฟฟ้า',
+      batch.set(doc(db, 'companies', comp.id), {
+        ...comp,
         lastSyncAt: startTimeISO
       });
     });
@@ -699,4 +632,38 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
     insertedUsers,
     message
   };
+}
+
+/**
+ * Recompute and synchronize derived /companies documents in Firestore after Form 1 or Form 3 updates
+ */
+export async function syncDerivedCompaniesToFirestore(
+  studentsList: Student[],
+  form3List: Form3SupervisionRecord[]
+): Promise<void> {
+  try {
+    const derived = toFirestoreCompanies(buildUnifiedCompanies(studentsList, form3List));
+    const validIds = new Set(derived.map((c) => c.id));
+    const ops: Array<(batch: WriteBatch) => void> = [];
+    const nowIso = new Date().toISOString();
+
+    for (const comp of derived) {
+      ops.push((batch) => {
+        batch.set(doc(db, 'companies', comp.id), { ...comp, lastSyncAt: nowIso }, { merge: true });
+      });
+    }
+
+    const existingSnap = await getDocs(collection(db, 'companies'));
+    existingSnap.forEach((d) => {
+      if (!validIds.has(d.id)) {
+        ops.push((batch) => batch.delete(d.ref));
+      }
+    });
+
+    if (ops.length > 0) {
+      await commitBatchOperations(ops);
+    }
+  } catch (err) {
+    console.warn('[SyncEngine] Derived company sync notice:', err);
+  }
 }

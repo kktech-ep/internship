@@ -22,11 +22,13 @@ import {
   Download,
   BookOpen
 } from 'lucide-react';
-import { Announcement, Student, AuthUser, Company, WeeklySubmission, Form3SupervisionRecord } from '../types';
+import { Announcement, Student, AuthUser, Company, WeeklySubmission, Form3SupervisionRecord, CourseDataRow } from '../types';
 import { getCurrentWeekInfo } from '../data/weeksData';
 import { StudentAvatar } from '../components/StudentAvatar';
 import { downloadAllWebZip } from '../services/webZipService';
 import { getCachedCourses } from '../services/courseDataService';
+import { getMergedStudentSubmissions } from '../utils/submissionUtils';
+import { matchesStudentRecord } from '../utils/dataUnifier';
 
 interface HubViewProps {
   onNavigate: (view: string) => void;
@@ -41,6 +43,7 @@ interface HubViewProps {
   companies?: Company[];
   submissions?: Record<string, WeeklySubmission[]>;
   form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
   currentUser?: AuthUser | null;
   onOpenAuthModal?: () => void;
   onUpdateAvatar?: (dataUrl: string) => void;
@@ -58,31 +61,28 @@ export const HubView: React.FC<HubViewProps> = ({
   students = [],
   submissions = {},
   form3List = [],
+  courses,
   currentUser,
   onOpenAuthModal,
   onUpdateAvatar,
 }) => {
   const currentWeekInfo = getCurrentWeekInfo();
   const totalStudentsCount = students.length > 0 ? students.length : 1;
-  const allSubsCount = Object.values(submissions).flat().length;
-  const supervisedStudentKeys = new Set<string>();
-  form3List.forEach(r => {
-    if (r.studentId) supervisedStudentKeys.add(r.studentId);
-    if (r.studentCode) supervisedStudentKeys.add(r.studentCode);
-  });
-  Object.values(submissions).flat().forEach(s => {
-    if (s.studentId) {
-      supervisedStudentKeys.add(s.studentId);
-      const stripped = s.studentId.replace(/^std-/, '');
-      supervisedStudentKeys.add(stripped);
-      supervisedStudentKeys.add(`std-${stripped}`);
-    }
-  });
+  const uniqueSubs = new Map<string, WeeklySubmission>();
+  Object.values(submissions)
+    .flat()
+    .forEach((s) => {
+      if (s && s.id) uniqueSubs.set(s.id, s);
+    });
+  const allSubsCount = uniqueSubs.size;
   const activeOrSubmittedStudentsCount = students.filter(
-    s => supervisedStudentKeys.has(s.id) || supervisedStudentKeys.has(s.studentCode) || supervisedStudentKeys.has(`std-${s.studentCode}`)
+    (s) =>
+      getMergedStudentSubmissions(s, submissions).length > 0 ||
+      form3List.some((r) => matchesStudentRecord(r, s))
   ).length;
   const remainingStudentsCount = Math.max(0, totalStudentsCount - activeOrSubmittedStudentsCount);
-  const totalLinkedRows = students.length + allSubsCount + form3List.length + getCachedCourses().length;
+  const coursesCount = courses && courses.length > 0 ? courses.length : getCachedCourses().length;
+  const totalLinkedRows = students.length + allSubsCount + form3List.length + coursesCount;
 
   return (
     <div className="space-y-6 pb-12">

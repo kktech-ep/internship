@@ -18,21 +18,39 @@ import { AuthModal } from './components/Modals/AuthModal';
 import { LoginGatewayView } from './views/LoginGatewayView';
 import { StudentGuideView } from './views/StudentGuideView';
 import { mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements } from './data/mockData';
-import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Announcement } from './types';
+import {
+  Student,
+  Company,
+  WeeklySubmission,
+  AuthUser,
+  Form3SupervisionRecord,
+  Announcement,
+  CourseDataRow,
+  SheetTeacher,
+} from './types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
 import { getStoredAuthUser, saveAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
-import { appendForm1ToGoogleSheet, deleteLocalForm3Row, getLocalForm3Rows } from './services/googleSheetsService';
-import { 
+import {
+  appendForm1ToGoogleSheet,
+  deleteLocalForm3Row,
+  getLocalForm3Rows,
+  reconcileForm3WithCloud,
+  saveLocalForm3Rows,
+} from './services/googleSheetsService';
+import {
   getAllLoginSheetStudents,
+  getAllLoginSheetTeachers,
   findStudentInLoginSheet,
   convertLoginRowToStudent,
   fetchSheetLoginAccounts,
   mapStatusToRole,
   extractStudentCode,
 } from './services/sheetAuthService';
+import { fetchDataSheetCourses, getCachedCourses } from './services/courseDataService';
 import {
   syncAllLoginSheetRowsToFirebase,
-  saveAndSyncStudentBothWays
+  saveAndSyncStudentBothWays,
+  syncDerivedCompaniesToFirestore,
 } from './services/sheetFirebaseSyncService';
 import {
   seedFirestoreIfEmpty,
@@ -41,10 +59,12 @@ import {
   subscribeSubmissions,
   subscribeAnnouncements,
   subscribeForm3Supervisions,
+  subscribeCourses,
+  subscribeTeachers,
   saveStudentToFirestore,
   saveSubmissionToFirestore,
   deleteSubmissionFromFirestore,
-  deleteForm3SupervisionFromFirestore
+  deleteForm3SupervisionFromFirestore,
 } from './services/firestoreService';
 import {
   getCandidateStudentKeys,
@@ -52,19 +72,15 @@ import {
   writeSubmissionToLocalCache,
   removeSubmissionFromLocalCache,
   mergeSubmissionsWithLocalCache,
+  reconcileSubmissionsWithCloud,
   computeSubmissionTotalHours,
 } from './utils/submissionUtils';
-
-function normalizeStudentAcademicInfo(student: Student): Student {
-  if ((student.room || '').includes('ทลฟ')) {
-    return {
-      ...student,
-      level: 'ปริญญาตรี',
-      department: 'ภาควิชาเทคโนโลยีไฟฟ้า',
-    };
-  }
-  return student;
-}
+import {
+  normalizeStudentAcademicInfo,
+  getStudentEvaluationSummary,
+  buildUnifiedCompanies,
+  toFirestoreCompanies,
+} from './utils/dataUnifier';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
@@ -76,17 +92,24 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState<'student' | 'teacher' | 'admin'>(
     () => getStoredAuthUser()?.role || 'student'
   );
-  
-  // App data state: initialized directly with all students from Google Sheet login tab (1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28)
+
+  // Authoritative unified state anchored to Google Sheet + Firebase Firestore
   const [students, setStudents] = useState<Student[]>(() => {
     const sheetStudents = getAllLoginSheetStudents();
     const base = sheetStudents.length > 0 ? sheetStudents : mockStudents;
     return base.map(normalizeStudentAcademicInfo);
   });
   const [companies, setCompanies] = useState<Company[]>(mockCompanies);
-  const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>({});
+  const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>(
+    () => mergeSubmissionsWithLocalCache({}, false)
+  );
   const [announcements, setAnnouncements] = useState<Announcement[]>(mockAnnouncements);
   const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
+  const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
+  const [teachers, setTeachers] = useState<SheetTeacher[]>(() => getAllLoginSheetTeachers());
+
+  const hasCloudSubsRef = React.useRef<boolean>(false);
+  const hasCloudForm3Ref = React.useRef<boolean>(false);
   const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
 
   // Initial active student id based on logged in user or first student from login sheet
@@ -115,7 +138,11 @@ export default function App() {
     if (currentUser && currentUser.role === 'student') {
       const code = currentUser.studentId || currentUser.email.split('@')[0];
       target = students.find(
-        s => s.studentCode === code || s.id === `std-${code}` || s.email.toLowerCase() === currentUser.email.toLowerCase() || s.name === currentUser.name
+        (s) =>
+          s.studentCode === code ||
+          s.id === `std-${code}` ||
+          s.email.toLowerCase() === currentUser.email.toLowerCase() ||
+          s.name === currentUser.name
       );
     }
     if (!target) {
@@ -123,6 +150,12 @@ export default function App() {
     }
     return target ? normalizeStudentAcademicInfo(target) : students[0];
   }, [students, activeStudentId, currentUser]);
+
+  // Derived live companies synced identically across Map, A4, Teacher, Admin, Looker, Mobile
+  const effectiveCompanies = useMemo(() => {
+    const derived = toFirestoreCompanies(buildUnifiedCompanies(students, form3List));
+    return derived.length > 0 ? derived : companies;
+  }, [students, form3List, companies]);
 
   // Keep student section in sync with logged-in user from Google Spreadsheet login tab
   useEffect(() => {
@@ -133,20 +166,26 @@ export default function App() {
 
       findStudentInLoginSheet(code, currentUser.name).then((row) => {
         if (row) {
-          const freshStudent = convertLoginRowToStudent(row);
+          const freshStudent = normalizeStudentAcademicInfo(convertLoginRowToStudent(row));
           setStudents((prev) => {
-            const idx = prev.findIndex(s => s.studentCode === code || s.id === studentId || s.name === row.name);
+            const idx = prev.findIndex(
+              (s) => s.studentCode === code || s.id === studentId || s.name === row.name
+            );
             if (idx >= 0) {
               const existing = prev[idx] as Student & { lastSyncSource?: string };
               const keepExistingForm1 = existing.lastSyncSource === 'web_portal_form1';
               const updated = [...prev];
-              updated[idx] = {
+              updated[idx] = normalizeStudentAcademicInfo({
                 ...freshStudent,
                 ...existing,
-                companyName: keepExistingForm1 ? existing.companyName : (freshStudent.companyName || existing.companyName),
-                companyRegistration: keepExistingForm1 ? existing.companyRegistration : (freshStudent.companyRegistration || existing.companyRegistration),
+                companyName: keepExistingForm1
+                  ? existing.companyName
+                  : freshStudent.companyName || existing.companyName,
+                companyRegistration: keepExistingForm1
+                  ? existing.companyRegistration
+                  : freshStudent.companyRegistration || existing.companyRegistration,
                 avatarUrl: existing.avatarUrl || freshStudent.avatarUrl,
-              };
+              });
               return updated;
             } else {
               return [freshStudent, ...prev];
@@ -157,19 +196,25 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Initialize and synchronize with Firebase Firestore (project: internship2-2569) & Google Sheets (login tab)
+  // Initialize and synchronize with Firebase Firestore (project: internship2-2569) & Google Sheets
   useEffect(() => {
     // 1. Seed initial data if Firestore collections are empty
     seedFirestoreIfEmpty(mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements);
 
-    // 2. Synchronize all rows from Google Spreadsheet login tab into Firebase Firestore (internship2-2569)
-    //    and remove stale old users/students that no longer exist in Google Sheet
+    // 2. Refresh courses catalog from Google Sheet 'data' tab
+    fetchDataSheetCourses()
+      .then((crs) => {
+        if (crs && crs.length > 0) setCourses(crs);
+      })
+      .catch(() => {});
+
+    // 3. Synchronize all rows from Google Spreadsheet login tab into Firebase Firestore (internship2-2569)
     syncAllLoginSheetRowsToFirebase().then((res) => {
       console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
       const freshSheetStudents = getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
       if (freshSheetStudents.length > 0) {
         setStudents((prev) => {
-          const prevById = new Map(prev.map(s => [s.id, s]));
+          const prevById = new Map(prev.map((s) => [s.id, s]));
           return freshSheetStudents.map((fs) => {
             const existing = prevById.get(fs.id) as (Student & { lastSyncSource?: string }) | undefined;
             const keepForm1 = existing?.lastSyncSource === 'web_portal_form1';
@@ -183,22 +228,32 @@ export default function App() {
                 ? { actualWeeks: existing.actualWeeks }
                 : {}),
               companyName: keepForm1 && existing ? existing.companyName : fs.companyName,
-              companyRegistration: keepForm1 && existing?.companyRegistration ? existing.companyRegistration : fs.companyRegistration,
+              companyRegistration:
+                keepForm1 && existing?.companyRegistration ? existing.companyRegistration : fs.companyRegistration,
             });
           });
         });
       }
+      const freshTeachers = getAllLoginSheetTeachers();
+      if (freshTeachers.length > 0) {
+        setTeachers((prev) => {
+          const prevByEmail = new Map(prev.map((t) => [t.email.toLowerCase(), t]));
+          return freshTeachers.map((ft) => ({
+            ...ft,
+            avatarUrl: prevByEmail.get(ft.email.toLowerCase())?.avatarUrl || ft.avatarUrl,
+          }));
+        });
+      }
     });
 
-    // 3. Real-time subscription to Students collection anchored strictly to current Google Sheet students
+    // 4. Real-time subscription to Students collection anchored strictly to current Google Sheet students
     const unsubStudents = subscribeStudents(
       (remoteStudents) => {
         if (remoteStudents && remoteStudents.length > 0) {
           const sheetBase = getAllLoginSheetStudents();
           const mergedMap = new Map<string, Student>();
-          sheetBase.forEach(s => mergedMap.set(s.id, normalizeStudentAcademicInfo(s)));
-          remoteStudents.forEach(rs => {
-            // Only merge Firestore records for students that currently exist in Google Sheet login tab
+          sheetBase.forEach((s) => mergedMap.set(s.id, normalizeStudentAcademicInfo(s)));
+          remoteStudents.forEach((rs) => {
             if (!mergedMap.has(rs.id)) return;
             const localCachedAvatar =
               (typeof localStorage !== 'undefined' &&
@@ -223,7 +278,7 @@ export default function App() {
       (err) => console.warn('Students firestore stream note:', err)
     );
 
-    // 4. Real-time subscription to Companies collection
+    // 5. Real-time subscription to Companies collection
     const unsubCompanies = subscribeCompanies(
       (remoteCompanies) => {
         if (remoteCompanies && remoteCompanies.length > 0) {
@@ -233,22 +288,57 @@ export default function App() {
       (err) => console.warn('Companies firestore stream note:', err)
     );
 
-    // 5. Real-time subscription to Weekly Submissions collection merged with local cache
+    // 6. Real-time subscription to Courses collection
+    const unsubCourses = subscribeCourses(
+      (remoteCourses) => {
+        if (remoteCourses && remoteCourses.length > 0) {
+          setCourses(remoteCourses);
+        }
+      },
+      (err) => console.warn('Courses firestore stream note:', err)
+    );
+
+    // 7. Real-time subscription to Teachers collection (preserves uploaded avatars across devices)
+    const unsubTeachers = subscribeTeachers(
+      (remoteTeachers) => {
+        const sheetTeachers = getAllLoginSheetTeachers();
+        if (remoteTeachers && remoteTeachers.length > 0) {
+          const remoteByEmail = new Map(
+            remoteTeachers.map((rt) => [(rt.email || '').toLowerCase(), rt])
+          );
+          const remoteById = new Map(remoteTeachers.map((rt) => [rt.id, rt]));
+          const merged = sheetTeachers.map((st) => {
+            const rt = remoteById.get(st.id) || remoteByEmail.get(st.email.toLowerCase());
+            return rt
+              ? {
+                  ...st,
+                  ...rt,
+                  rooms: st.rooms?.length ? st.rooms : rt.rooms,
+                  subjects: st.subjects?.length ? st.subjects : rt.subjects,
+                }
+              : st;
+          });
+          setTeachers(merged);
+        }
+      },
+      (err) => console.warn('Teachers firestore stream note:', err)
+    );
+
+    // 8. Real-time authoritative subscription to Weekly Submissions collection
     const unsubSubmissions = subscribeSubmissions(
       (remoteSubs) => {
-        const grouped: Record<string, WeeklySubmission[]> = {};
-        remoteSubs.forEach((sub) => {
-          if (!grouped[sub.studentId]) {
-            grouped[sub.studentId] = [];
-          }
-          grouped[sub.studentId].push(sub);
-        });
-        setSubmissions(mergeSubmissionsWithLocalCache(grouped));
+        hasCloudSubsRef.current = true;
+        setSubmissions(reconcileSubmissionsWithCloud(remoteSubs || []));
       },
       (err) => console.warn('Submissions firestore stream note:', err)
     );
 
-    // 6. Real-time subscription to Announcements collection
+    const handleSubLocalUpdate = () => {
+      setSubmissions((prev) => mergeSubmissionsWithLocalCache(prev, hasCloudSubsRef.current));
+    };
+    window.addEventListener('kktech_submissions_updated', handleSubLocalUpdate);
+
+    // 9. Real-time subscription to Announcements collection
     const unsubAnnouncements = subscribeAnnouncements(
       (remoteAnnouncements) => {
         if (remoteAnnouncements && remoteAnnouncements.length > 0) {
@@ -258,87 +348,116 @@ export default function App() {
       (err) => console.warn('Announcements firestore stream note:', err)
     );
 
-    // 7. Real-time subscription to Form 3 Supervisions + local cache events
-    const mergeAndSetForm3 = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      const merged = Array.from(map.values()).sort((a, b) => {
-        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return timeB - timeA;
-      });
-      setForm3List(merged);
-    };
-
+    // 10. Real-time authoritative subscription to Form 3 Supervisions
     const unsubForm3 = subscribeForm3Supervisions(
       (remoteRecords) => {
+        hasCloudForm3Ref.current = true;
         const recs = remoteRecords || [];
         remoteForm3Ref.current = recs;
-        mergeAndSetForm3(recs);
+        setForm3List(reconcileForm3WithCloud(recs));
       },
       (err) => console.warn('Form 3 supervision stream note:', err)
     );
 
-    const handleForm3LocalSync = () => mergeAndSetForm3();
+    const handleForm3LocalSync = () => {
+      if (hasCloudForm3Ref.current) {
+        setForm3List(reconcileForm3WithCloud(remoteForm3Ref.current));
+      } else {
+        setForm3List(getLocalForm3Rows());
+      }
+    };
     window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
-    window.addEventListener('storage', handleForm3LocalSync);
 
     return () => {
       unsubStudents();
       unsubCompanies();
+      unsubCourses();
+      unsubTeachers();
       unsubSubmissions();
       unsubAnnouncements();
       unsubForm3();
+      window.removeEventListener('kktech_submissions_updated', handleSubLocalUpdate);
       window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
-      window.removeEventListener('storage', handleForm3LocalSync);
     };
   }, []);
 
-  // Callback to update student company registration from Form #1
-  const handleSaveCompanyInfo = async (updatedInfo: Partial<Student['companyRegistration']> & { companyName?: string }) => {
-    const updatedStudent = {
+  // Helper: sync a student's actualWeeks & accumulatedHours from authoritative submissions + Form 3
+  const syncStudentLiveStats = (targetStudent: Student, nextSubsMap: Record<string, WeeklySubmission[]>) => {
+    const summary = getStudentEvaluationSummary(targetStudent, nextSubsMap, form3List);
+    if (
+      summary.effectiveActualWeeks !== targetStudent.actualWeeks ||
+      summary.effectiveAccumulatedHours !== targetStudent.accumulatedHours
+    ) {
+      const updatedStudent: Student = {
+        ...targetStudent,
+        actualWeeks: summary.effectiveActualWeeks,
+        accumulatedHours: summary.effectiveAccumulatedHours,
+      };
+      setStudents((prev) => prev.map((s) => (s.id === targetStudent.id ? updatedStudent : s)));
+      saveStudentToFirestore(updatedStudent).catch((e) =>
+        console.warn('Firestore student stats sync note:', e)
+      );
+    }
+  };
+
+  // Single authoritative Form #1 save handler (writes once to Firestore, Sheet, and derived /companies)
+  const handleSaveCompanyInfo = async (
+    updatedInfo: Partial<Student['companyRegistration']> & { companyName?: string; room?: string }
+  ): Promise<{ success: boolean; sheetResult: string; firestoreResult: string }> => {
+    const { room: newRoom, companyName: newCompanyName, ...regUpdates } = updatedInfo;
+    const updatedStudent = normalizeStudentAcademicInfo({
       ...currentStudent,
-      companyName: updatedInfo.companyName || currentStudent.companyName,
+      room: newRoom || currentStudent.room,
+      companyName: newCompanyName || currentStudent.companyName,
       lastSyncSource: 'web_portal_form1',
       companyRegistration: {
         ...currentStudent.companyRegistration,
-        ...updatedInfo
-      }
-    } as Student;
+        ...regUpdates,
+      },
+    } as Student);
 
-    setStudents(prev => prev.map(s => s.id === currentStudent.id ? updatedStudent : s));
-    
-    // Persist and synchronize bidirectionally to Firebase Firestore (internship2-2569) & Google Sheets (login tab)
+    const nextStudents = students.map((s) => (s.id === currentStudent.id ? updatedStudent : s));
+    setStudents(nextStudents);
+
+    let syncResult = {
+      success: true,
+      sheetResult: 'บันทึกข้อมูลสถานประกอบการสำเร็จ',
+      firestoreResult: 'บันทึกลง Firebase Firestore (internship2-2569) สำเร็จ',
+    };
+
     try {
       const token = getCachedAccessToken();
-      await saveAndSyncStudentBothWays(updatedStudent, token);
+      syncResult = await saveAndSyncStudentBothWays(updatedStudent, token);
 
-      // Also append to Form_1 history tab
-      await appendForm1ToGoogleSheet({
-        timestamp: new Date().toLocaleString('th-TH'),
-        studentCode: updatedStudent.studentCode,
-        studentName: updatedStudent.name,
-        level: `${updatedStudent.level} ${updatedStudent.department}`,
-        companyName: updatedStudent.companyName,
-        department: updatedStudent.companyRegistration.department,
-        mentorName: updatedStudent.companyRegistration.mentorName,
-        mentorPhone: updatedStudent.companyRegistration.mentorPhone,
-        emergencyPhone: updatedStudent.companyRegistration.emergencyPhone,
-        gpsCoordinates: updatedStudent.companyRegistration.gpsCoordinates,
-        notes: updatedStudent.companyRegistration.notes || '',
-        status: 'บันทึกสำเร็จ'
-      }, token);
+      await appendForm1ToGoogleSheet(
+        {
+          timestamp: new Date().toLocaleString('th-TH'),
+          studentCode: updatedStudent.studentCode,
+          studentName: updatedStudent.name,
+          level: `${updatedStudent.level} ${updatedStudent.department}`,
+          companyName: updatedStudent.companyName,
+          department: updatedStudent.companyRegistration.department,
+          mentorName: updatedStudent.companyRegistration.mentorName,
+          mentorPhone: updatedStudent.companyRegistration.mentorPhone,
+          emergencyPhone: updatedStudent.companyRegistration.emergencyPhone,
+          gpsCoordinates: updatedStudent.companyRegistration.gpsCoordinates,
+          notes: updatedStudent.companyRegistration.notes || '',
+          status: 'บันทึกสำเร็จ',
+        },
+        token
+      );
+
+      syncDerivedCompaniesToFirestore(nextStudents, form3List).catch(() => {});
     } catch (sheetErr) {
       console.warn('Unified database sync note:', sheetErr);
     }
+
+    return syncResult;
   };
 
   // Callback to update student avatar photo
   const handleUpdateStudentAvatar = async (dataUrl: string) => {
-    setStudents(prev => prev.map(s => s.id === currentStudent.id ? { ...s, avatarUrl: dataUrl } : s));
+    setStudents((prev) => prev.map((s) => (s.id === currentStudent.id ? { ...s, avatarUrl: dataUrl } : s)));
 
     try {
       localStorage.setItem(`kktech_avatar_${currentStudent.id}`, dataUrl);
@@ -350,7 +469,7 @@ export default function App() {
     try {
       await saveStudentToFirestore({
         ...currentStudent,
-        avatarUrl: dataUrl
+        avatarUrl: dataUrl,
       });
     } catch (err) {
       console.warn('Firestore avatar save note:', err);
@@ -360,9 +479,9 @@ export default function App() {
   // Callback to submit Form #2 weekly report (unified deterministic doc ID matching WeeklyLogReportView)
   const handleSubmitWeeklyReport = async (submissionData: Partial<WeeklySubmission>) => {
     const weekNum = submissionData.weekNumber || 8;
-    const weekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum);
+    const weekMeta = WEEKS_1_TO_18.find((w) => w.weekNumber === weekNum);
     const existingForWeek = getMergedStudentSubmissions(currentStudent, submissions).find(
-      s => s.weekNumber === weekNum
+      (s) => s.weekNumber === weekNum
     );
     const isAlreadyGraded = existingForWeek?.status === 'graded';
     const computedHours = computeSubmissionTotalHours(submissionData);
@@ -382,29 +501,40 @@ export default function App() {
       mentorComment: existingForWeek?.mentorComment || 'นักศึกษาตั้งใจทำงาน ปฏิบัติตามมาตรฐานวิศวกรรมไฟฟ้า',
       mentorName: currentStudent.companyRegistration.mentorName,
       mentorPosition: 'วิศวกรไฟฟ้า / พี่เลี้ยง',
-      teacherScore: isAlreadyGraded ? (existingForWeek?.teacherScore ?? 0) : 0,
-      teacherGrade: isAlreadyGraded ? (existingForWeek?.teacherGrade ?? '') : '',
+      teacherScore: isAlreadyGraded ? existingForWeek?.teacherScore ?? 0 : 0,
+      teacherGrade: isAlreadyGraded ? existingForWeek?.teacherGrade ?? '' : '',
       teacherComment: isAlreadyGraded ? existingForWeek?.teacherComment : undefined,
       teacherName: currentStudent.supervisorTeacher,
       studentSignature: currentStudent.name.replace(/^(นาย|นางสาว)\s*/, ''),
-      mentorSignature: (currentStudent.companyRegistration.mentorName || 'ชาญชัย มงคลศรี').replace(/^(นาย|นางสาว|นาง|ช่าง)\s*/, ''),
-      teacherSignature: (currentStudent.supervisorTeacher || 'ทักษิณ โสภาปิยะ').replace(/^(นาย|นางสาว|นาง|อาจารย์|ว่าที่ร้อยตรี|ดร\.)\s*/, ''),
+      mentorSignature: (currentStudent.companyRegistration.mentorName || 'ชาญชัย มงคลศรี').replace(
+        /^(นาย|นางสาว|นาง|ช่าง)\s*/,
+        ''
+      ),
+      teacherSignature: (currentStudent.supervisorTeacher || 'ทักษิณ โสภาปิยะ').replace(
+        /^(นาย|นางสาว|นาง|อาจารย์|ว่าที่ร้อยตรี|ดร\.)\s*/,
+        ''
+      ),
       verifiedHash: `7B8C${currentStudent.studentCode}-KKTECH-2569-W${String(weekNum).padStart(2, '0')}-OK`,
       safetyChecklist: submissionData.safetyChecklist || {
         hardHat: true,
         highVoltageGloves: true,
         safetyShoes: true,
-        lotoProcedure: true
-      }
+        lotoProcedure: true,
+      },
     };
 
     setSelectedLogWeek(weekNum);
     writeSubmissionToLocalCache(newSub, currentStudent);
 
-    setSubmissions(prev => ({
-      ...prev,
-      [currentStudent.id]: [newSub, ...(prev[currentStudent.id] || []).filter(s => s.weekNumber !== newSub.weekNumber)]
-    }));
+    const nextSubsMap: Record<string, WeeklySubmission[]> = {
+      ...submissions,
+      [currentStudent.id]: [
+        newSub,
+        ...(submissions[currentStudent.id] || []).filter((s) => s.weekNumber !== newSub.weekNumber),
+      ],
+    };
+    setSubmissions(nextSubsMap);
+    syncStudentLiveStats(currentStudent, nextSubsMap);
 
     // Persist submission to Firebase Firestore (internship2-2569)
     try {
@@ -427,42 +557,81 @@ export default function App() {
     record?: Form3SupervisionRecord;
     records?: Form3SupervisionRecord[];
   }) => {
-    const idsToUpdate = evalData.studentIds && evalData.studentIds.length > 0 
-      ? evalData.studentIds 
-      : (evalData.studentId ? [evalData.studentId] : []);
-    
+    const incomingRecords: Form3SupervisionRecord[] =
+      evalData.records && evalData.records.length > 0
+        ? evalData.records
+        : evalData.record
+        ? [evalData.record]
+        : [];
+
+    let nextForm3List = form3List;
+    if (incomingRecords.length > 0) {
+      const mergedMap = new Map<string, Form3SupervisionRecord>();
+      form3List.forEach((r) => {
+        if (r && r.id) mergedMap.set(r.id, r);
+      });
+      incomingRecords.forEach((r) => {
+        if (r && r.id) mergedMap.set(r.id, r);
+      });
+      nextForm3List = Array.from(mergedMap.values()).sort((a, b) => {
+        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
+        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
+        return tB - tA;
+      });
+      setForm3List(nextForm3List);
+      saveLocalForm3Rows(nextForm3List);
+      syncDerivedCompaniesToFirestore(students, nextForm3List).catch(() => {});
+    }
+
+    const idsToUpdate =
+      evalData.studentIds && evalData.studentIds.length > 0
+        ? evalData.studentIds
+        : evalData.studentId
+        ? [evalData.studentId]
+        : [];
+
     if (idsToUpdate.length === 0) return;
 
     const modifiedSubs: WeeklySubmission[] = [];
 
-    setSubmissions(prev => {
+    setSubmissions((prev) => {
       const next = { ...prev };
       for (const sId of idsToUpdate) {
-        const keys = getCandidateStudentKeys(sId);
-        let updatedAnyBucket = false;
+        const matchedStudent =
+          students.find((s) => s.id === sId || s.studentCode === sId || getCandidateStudentKeys(s).includes(sId)) ||
+          ({ id: sId, studentCode: sId.replace(/^std-/, '') } as Pick<Student, 'id' | 'studentCode'>);
+
+        const mergedSubs = getMergedStudentSubmissions(matchedStudent, next);
+        if (mergedSubs.length === 0) continue;
+
+        const latestWeek = Math.max(...mergedSubs.map((s) => Number(s.weekNumber) || 0));
+        const targetSub = mergedSubs.find((s) => s.weekNumber === latestWeek);
+        if (!targetSub) continue;
+
+        const modSub: WeeklySubmission = {
+          ...targetSub,
+          status: 'graded' as const,
+          teacherScore: evalData.score,
+          teacherGrade: evalData.grade,
+          teacherComment: evalData.comment,
+          mentorComment: evalData.mentorFeedback,
+        };
+        modifiedSubs.push(modSub);
+        writeSubmissionToLocalCache(modSub, matchedStudent);
+
+        const keys = getCandidateStudentKeys(matchedStudent);
+        let placed = false;
         for (const k of keys) {
-          const studentSubs = next[k] || [];
-          if (studentSubs.length > 0) {
-            const latestWeek = Math.max(...studentSubs.map(s => Number(s.weekNumber) || 0));
-            next[k] = studentSubs.map((sub) => {
-              if (sub.weekNumber === latestWeek) {
-                const modSub: WeeklySubmission = {
-                  ...sub,
-                  status: 'graded' as const,
-                  teacherScore: evalData.score,
-                  teacherGrade: evalData.grade,
-                  teacherComment: evalData.comment,
-                  mentorComment: evalData.mentorFeedback
-                };
-                modifiedSubs.push(modSub);
-                writeSubmissionToLocalCache(modSub);
-                updatedAnyBucket = true;
-                return modSub;
-              }
-              return sub;
-            });
-            if (updatedAnyBucket) break;
+          if (next[k]) {
+            next[k] = next[k].map((sub) =>
+              sub.id === modSub.id || sub.weekNumber === latestWeek ? modSub : sub
+            );
+            placed = true;
           }
+        }
+        if (!placed) {
+          const primaryKey = 'id' in matchedStudent && matchedStudent.id ? matchedStudent.id : sId;
+          next[primaryKey] = [modSub];
         }
       }
       return next;
@@ -478,29 +647,37 @@ export default function App() {
     }
   };
 
-  // Callback for Admin to delete a student's weekly submission
+  // Callback for Admin/Student to delete a student's weekly submission
   const handleDeleteSubmission = async (submissionId: string, studentId: string): Promise<boolean> => {
     try {
       await deleteSubmissionFromFirestore(submissionId);
       const keys = new Set(getCandidateStudentKeys(studentId));
       let targetWeek: number | undefined;
-      Object.values(submissions).flat().forEach((s) => {
-        if (s.id === submissionId) targetWeek = s.weekNumber;
-      });
-      if (targetWeek !== undefined) {
-        removeSubmissionFromLocalCache(studentId, targetWeek);
-      }
-      setSubmissions(prev => {
-        const next: Record<string, WeeklySubmission[]> = {};
-        for (const [k, arr] of Object.entries(prev)) {
-          if (keys.has(k) || arr.some(s => s.id === submissionId)) {
-            next[k] = arr.filter(s => s.id !== submissionId);
-          } else {
-            next[k] = arr;
-          }
+      Object.values(submissions)
+        .flat()
+        .forEach((s) => {
+          if (s.id === submissionId) targetWeek = s.weekNumber;
+        });
+
+      removeSubmissionFromLocalCache(studentId, targetWeek ?? -1, submissionId);
+
+      const next: Record<string, WeeklySubmission[]> = {};
+      for (const [k, arr] of Object.entries(submissions)) {
+        if (keys.has(k) || arr.some((s) => s.id === submissionId)) {
+          next[k] = arr.filter((s) => s.id !== submissionId);
+        } else {
+          next[k] = arr;
         }
-        return next;
-      });
+      }
+      setSubmissions(next);
+
+      const targetStudent = students.find(
+        (s) => s.id === studentId || getCandidateStudentKeys(s).includes(studentId)
+      );
+      if (targetStudent) {
+        syncStudentLiveStats(targetStudent, next);
+      }
+
       return true;
     } catch (err) {
       console.error('Error deleting submission from Firestore:', err);
@@ -513,7 +690,9 @@ export default function App() {
     try {
       await deleteForm3SupervisionFromFirestore(recordId);
       deleteLocalForm3Row(recordId);
-      setForm3List(prev => prev.filter(r => r.id !== recordId));
+      const nextForm3List = form3List.filter((r) => r.id !== recordId);
+      setForm3List(nextForm3List);
+      syncDerivedCompaniesToFirestore(students, nextForm3List).catch(() => {});
       return true;
     } catch (err) {
       console.error('Error deleting supervision from Firestore:', err);
@@ -522,37 +701,40 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (user: AuthUser) => {
-    // If user clicked the teacher gateway, ensure their effective role is teacher
-    const effectiveRole = (gatewayRole === 'teacher' && user.role === 'admin') ? 'teacher' : user.role;
+    const effectiveRole = gatewayRole === 'teacher' && user.role === 'admin' ? 'teacher' : user.role;
     const effectiveUser = { ...user, role: effectiveRole };
     saveAuthUser(effectiveUser);
     setCurrentUser(effectiveUser);
     setCurrentRole(effectiveUser.role);
 
-    // If logging in as student from Google Sheet login tab, map directly to their row in the login sheet
     if (effectiveUser.role === 'student') {
       const code = effectiveUser.studentId || effectiveUser.email.split('@')[0];
       const newStudentId = `std-${code}`;
       setActiveStudentId(newStudentId);
 
-      // Fetch row directly from Google Sheet login tab without clobbering existing Firestore Form 1 edits or avatars
       try {
         const row = await findStudentInLoginSheet(code, effectiveUser.name);
         if (row) {
-          const studentFromSheet = convertLoginRowToStudent(row);
-          setStudents(prev => {
-            const idx = prev.findIndex(s => s.studentCode === code || s.id === newStudentId || s.name === effectiveUser.name);
+          const studentFromSheet = normalizeStudentAcademicInfo(convertLoginRowToStudent(row));
+          setStudents((prev) => {
+            const idx = prev.findIndex(
+              (s) => s.studentCode === code || s.id === newStudentId || s.name === effectiveUser.name
+            );
             if (idx >= 0) {
               const existing = prev[idx] as Student & { lastSyncSource?: string };
               const keepExistingForm1 = existing.lastSyncSource === 'web_portal_form1';
               const updated = [...prev];
-              updated[idx] = {
+              updated[idx] = normalizeStudentAcademicInfo({
                 ...studentFromSheet,
                 ...existing,
-                companyName: keepExistingForm1 ? existing.companyName : (studentFromSheet.companyName || existing.companyName),
-                companyRegistration: keepExistingForm1 ? existing.companyRegistration : (studentFromSheet.companyRegistration || existing.companyRegistration),
+                companyName: keepExistingForm1
+                  ? existing.companyName
+                  : studentFromSheet.companyName || existing.companyName,
+                companyRegistration: keepExistingForm1
+                  ? existing.companyRegistration
+                  : studentFromSheet.companyRegistration || existing.companyRegistration,
                 avatarUrl: existing.avatarUrl || studentFromSheet.avatarUrl,
-              };
+              });
               return updated;
             }
             return [studentFromSheet, ...prev];
@@ -571,7 +753,7 @@ export default function App() {
     setIsAuthModalOpen(false);
   };
 
-  // Keep currentRole aligned with currentUser account role (non-admin cannot drift)
+  // Keep currentRole aligned with currentUser account role
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role !== 'admin' && currentRole !== currentUser.role) {
@@ -601,7 +783,6 @@ export default function App() {
           );
         });
         if (!matched) {
-          // Old user removed from Google Sheet -> force sign out so old users cannot remain logged in
           saveAuthUser(null);
           setCurrentUser(null);
           setCurrentRole('student');
@@ -628,9 +809,7 @@ export default function App() {
           setCurrentRole(sheetRole);
         }
       })
-      .catch(() => {
-        // Keep stored user if offline
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -653,10 +832,9 @@ export default function App() {
     }
   }, [currentUser, currentView]);
 
-  const effectiveSubmissionsMap = useMemo(() => mergeSubmissionsWithLocalCache(submissions), [submissions]);
   const currentStudentSubmissions = useMemo(
-    () => getMergedStudentSubmissions(currentStudent, effectiveSubmissionsMap),
-    [currentStudent, effectiveSubmissionsMap]
+    () => getMergedStudentSubmissions(currentStudent, submissions),
+    [currentStudent, submissions]
   );
 
   const handleSignOut = () => {
@@ -665,7 +843,6 @@ export default function App() {
     setCurrentRole('student');
   };
 
-  // If user is not logged in and wants to read student guide
   if (!currentUser && showGuidePreLogin) {
     return (
       <div className="min-h-screen bg-[#edf2f7] p-4 sm:p-6 lg:p-8 print:min-h-0 print:p-0 print:bg-white">
@@ -683,7 +860,6 @@ export default function App() {
     );
   }
 
-  // If user is not logged in, show the role selection gateway landing page
   if (!currentUser) {
     return (
       <>
@@ -710,7 +886,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-['Prompt',sans-serif] text-slate-800 antialiased selection:bg-sky-500 selection:text-white print:block print:min-h-0 print:bg-white">
-      {/* Top Application Header */}
       <Header
         currentView={currentView}
         onNavigate={(view) => {
@@ -728,10 +903,8 @@ export default function App() {
         onSignOut={handleSignOut}
       />
 
-      {/* Main View Container */}
       <div className="flex-1 flex flex-col">
         {isMobileMode ? (
-          /* Mobile Frame Simulator View (Screenshot 5 & 6) */
           <div className="max-w-7xl mx-auto w-full px-4 py-6">
             <MobileSimView
               currentRole={currentRole === 'student' ? 'student' : 'teacher'}
@@ -739,8 +912,11 @@ export default function App() {
               currentUser={currentUser}
               student={currentStudent}
               students={students}
-              companies={companies}
-              submissions={effectiveSubmissionsMap}
+              companies={effectiveCompanies}
+              submissions={submissions}
+              form3List={form3List}
+              courses={courses}
+              teachers={teachers}
               onOpenForm1={() => setIsForm1Open(true)}
               onOpenForm2={() => setIsForm2Open(true)}
               onOpenForm3={(stdId) => {
@@ -761,7 +937,6 @@ export default function App() {
             />
           </div>
         ) : currentView === 'hub' ? (
-          /* SCREENSHOT 1: Hub View Full Width */
           <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
             <HubView
               onNavigate={(view) => setCurrentView(view)}
@@ -776,140 +951,147 @@ export default function App() {
               announcements={announcements}
               student={currentStudent}
               students={students}
-              companies={companies}
-              submissions={effectiveSubmissionsMap}
+              companies={effectiveCompanies}
+              submissions={submissions}
               form3List={form3List}
+              courses={courses}
               currentUser={currentUser}
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onUpdateAvatar={handleUpdateStudentAvatar}
             />
           </main>
         ) : (
-          /* Top-bar only full-width content layout */
           <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 print:max-w-none print:p-0">
-              {currentView === 'student' && (
-                <StudentView
-                  student={currentStudent}
-                  submissions={currentStudentSubmissions}
-                  onOpenForm1={() => setIsForm1Open(true)}
-                  onOpenForm2={() => setIsForm2Open(true)}
-                  onNavigateA4={(weekNum) => {
-                    if (typeof weekNum === 'number') setSelectedLogWeek(weekNum);
-                    setCurrentView('a4');
-                  }}
-                  onNavigateWeeklyLog={(w) => {
-                    if (w) setSelectedLogWeek(w);
-                    setCurrentView('weekly-log');
-                  }}
-                  onNavigateGuide={() => setCurrentView('guide')}
-                  onUpdateAvatar={handleUpdateStudentAvatar}
-                />
-              )}
+            {currentView === 'student' && (
+              <StudentView
+                student={currentStudent}
+                submissions={currentStudentSubmissions}
+                form3List={form3List}
+                onOpenForm1={() => setIsForm1Open(true)}
+                onOpenForm2={() => setIsForm2Open(true)}
+                onNavigateA4={(weekNum) => {
+                  if (typeof weekNum === 'number') setSelectedLogWeek(weekNum);
+                  setCurrentView('a4');
+                }}
+                onNavigateWeeklyLog={(w) => {
+                  if (w) setSelectedLogWeek(w);
+                  setCurrentView('weekly-log');
+                }}
+                onNavigateGuide={() => setCurrentView('guide')}
+                onUpdateAvatar={handleUpdateStudentAvatar}
+              />
+            )}
 
-              {currentView === 'weekly-log' && (
-                <WeeklyLogReportView
-                  student={currentStudent}
-                  submissions={currentStudentSubmissions}
-                  initialWeek={selectedLogWeek}
-                  currentUser={currentUser}
-                  onNavigateA4={(weekNum) => {
-                    if (weekNum) setSelectedLogWeek(weekNum);
-                    setCurrentView('a4');
-                  }}
-                  onSubmissionUpdated={(newSub) => {
-                    setSelectedLogWeek(newSub.weekNumber);
-                    writeSubmissionToLocalCache(newSub, currentStudent);
-                    setSubmissions(prev => ({
-                      ...prev,
-                      [currentStudent.id]: [
-                        newSub,
-                        ...(prev[currentStudent.id] || []).filter(s => s.weekNumber !== newSub.weekNumber)
-                      ]
-                    }));
-                  }}
-                  onDeleteSubmission={(subId) => handleDeleteSubmission(subId, currentStudent.id)}
-                />
-              )}
+            {currentView === 'weekly-log' && (
+              <WeeklyLogReportView
+                student={currentStudent}
+                submissions={currentStudentSubmissions}
+                initialWeek={selectedLogWeek}
+                currentUser={currentUser}
+                onNavigateA4={(weekNum) => {
+                  if (weekNum) setSelectedLogWeek(weekNum);
+                  setCurrentView('a4');
+                }}
+                onSubmissionUpdated={(newSub) => {
+                  setSelectedLogWeek(newSub.weekNumber);
+                  writeSubmissionToLocalCache(newSub, currentStudent);
+                  const nextSubsMap: Record<string, WeeklySubmission[]> = {
+                    ...submissions,
+                    [currentStudent.id]: [
+                      newSub,
+                      ...(submissions[currentStudent.id] || []).filter((s) => s.weekNumber !== newSub.weekNumber),
+                    ],
+                  };
+                  setSubmissions(nextSubsMap);
+                  syncStudentLiveStats(currentStudent, nextSubsMap);
+                }}
+                onDeleteSubmission={(subId) => handleDeleteSubmission(subId, currentStudent.id)}
+              />
+            )}
 
-              {currentView === 'teacher' && (
-                <TeacherView
-                  students={students}
-                  companies={companies}
-                  submissions={effectiveSubmissionsMap}
-                  currentUser={currentUser}
-                  onOpenForm3={(stdId) => {
-                    setTargetStudentForForm3(stdId);
-                    setIsForm3Open(true);
-                  }}
-                  onNavigateA4={(stdId) => {
-                    if (stdId) setActiveStudentId(stdId);
-                    setCurrentView('a4');
-                  }}
-                  onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-                  onOpenLookerModal={() => setIsLookerModalOpen(true)}
-                />
-              )}
+            {currentView === 'teacher' && (
+              <TeacherView
+                students={students}
+                companies={effectiveCompanies}
+                submissions={submissions}
+                form3List={form3List}
+                courses={courses}
+                teachers={teachers}
+                currentUser={currentUser}
+                onOpenForm3={(stdId) => {
+                  setTargetStudentForForm3(stdId);
+                  setIsForm3Open(true);
+                }}
+                onNavigateA4={(stdId) => {
+                  if (stdId) setActiveStudentId(stdId);
+                  setCurrentView('a4');
+                }}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+                onOpenLookerModal={() => setIsLookerModalOpen(true)}
+              />
+            )}
 
-              {currentView === 'map' && (
-                <CompanyMapView
-                  companies={companies}
-                  students={students}
-                  onOpenForm1={() => setIsForm1Open(true)}
-                  onOpenForm3={(stdId) => {
-                    setTargetStudentForForm3(stdId);
-                    setIsForm3Open(true);
-                  }}
-                />
-              )}
+            {currentView === 'map' && (
+              <CompanyMapView
+                companies={effectiveCompanies}
+                students={students}
+                form3List={form3List}
+                onOpenForm1={() => setIsForm1Open(true)}
+                onOpenForm3={(stdId) => {
+                  setTargetStudentForForm3(stdId);
+                  setIsForm3Open(true);
+                }}
+              />
+            )}
 
-              {currentView === 'a4' && (
-                <A4ReportView
-                  students={students}
-                  submissions={effectiveSubmissionsMap}
-                  companies={companies}
-                  initialStudentId={activeStudentId}
-                  initialWeek={selectedLogWeek}
-                  currentUser={currentUser}
-                  onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-                  onOpenLookerModal={() => setIsLookerModalOpen(true)}
-                  onOpenForm3={(stdId) => {
-                    setTargetStudentForForm3(stdId);
-                    setIsForm3Open(true);
-                  }}
-                  onSelectStudent={(stdId) => {
-                    setActiveStudentId(stdId);
-                  }}
-                  onDeleteSubmission={handleDeleteSubmission}
-                  onDeleteSupervision={handleDeleteSupervision}
-                />
-              )}
+            {currentView === 'a4' && (
+              <A4ReportView
+                students={students}
+                submissions={submissions}
+                companies={effectiveCompanies}
+                form3List={form3List}
+                courses={courses}
+                initialStudentId={activeStudentId}
+                initialWeek={selectedLogWeek}
+                currentUser={currentUser}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+                onOpenLookerModal={() => setIsLookerModalOpen(true)}
+                onOpenForm3={(stdId) => {
+                  setTargetStudentForForm3(stdId);
+                  setIsForm3Open(true);
+                }}
+                onSelectStudent={(stdId) => {
+                  setActiveStudentId(stdId);
+                }}
+                onDeleteSubmission={handleDeleteSubmission}
+                onDeleteSupervision={handleDeleteSupervision}
+              />
+            )}
 
-              {currentView === 'admin' && (
-                <AdminView
-                  students={students}
-                  companies={companies}
-                  submissions={effectiveSubmissionsMap}
-                  onDeleteSubmission={handleDeleteSubmission}
-                  onDeleteSupervision={handleDeleteSupervision}
-                  onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-                  onOpenLookerModal={() => setIsLookerModalOpen(true)}
-                />
-              )}
+            {currentView === 'admin' && (
+              <AdminView
+                students={students}
+                companies={effectiveCompanies}
+                submissions={submissions}
+                form3List={form3List}
+                courses={courses}
+                teachers={teachers}
+                onDeleteSubmission={handleDeleteSubmission}
+                onDeleteSupervision={handleDeleteSupervision}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+                onOpenLookerModal={() => setIsLookerModalOpen(true)}
+              />
+            )}
 
-              {currentView === 'guide' && (
-                <StudentGuideView
-                  onNavigate={(view) => setCurrentView(view)}
-                  currentUser={currentUser}
-                />
-              )}
-            </main>
+            {currentView === 'guide' && (
+              <StudentGuideView onNavigate={(view) => setCurrentView(view)} currentUser={currentUser} />
+            )}
+          </main>
         )}
       </div>
 
-      {/* Global Footer */}
       <Footer />
 
-      {/* Interactive Modal Dialogs */}
       <Form1CompanyModal
         isOpen={isForm1Open}
         onClose={() => setIsForm1Open(false)}
@@ -922,6 +1104,7 @@ export default function App() {
         onClose={() => setIsForm2Open(false)}
         student={currentStudent}
         currentWeek={currentStudent.currentWeek}
+        submissions={currentStudentSubmissions}
         onSubmit={handleSubmitWeeklyReport}
         onNavigateA4={(weekNum) => {
           setSelectedLogWeek(weekNum);
@@ -934,7 +1117,8 @@ export default function App() {
         isOpen={isForm3Open}
         onClose={() => setIsForm3Open(false)}
         students={students}
-        companies={companies}
+        companies={effectiveCompanies}
+        teachers={teachers}
         selectedStudentId={targetStudentForForm3}
         teacherName={currentUser?.name}
         teacherEmail={currentUser?.email}
@@ -946,8 +1130,8 @@ export default function App() {
         isOpen={isLookerModalOpen}
         onClose={() => setIsLookerModalOpen(false)}
         students={students}
-        companies={companies}
-        submissions={effectiveSubmissionsMap}
+        companies={effectiveCompanies}
+        submissions={submissions}
         form3List={form3List}
       />
 
@@ -955,8 +1139,9 @@ export default function App() {
         isOpen={isSheetsModalOpen}
         onClose={() => setIsSheetsModalOpen(false)}
         students={students}
-        submissions={effectiveSubmissionsMap}
+        submissions={submissions}
         form3List={form3List}
+        courses={courses}
       />
 
       <AuthModal
@@ -969,3 +1154,4 @@ export default function App() {
     </div>
   );
 }
+

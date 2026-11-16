@@ -21,13 +21,15 @@ import {
   FileSpreadsheet,
   BookOpen
 } from 'lucide-react';
-import { Student, WeeklySubmission } from '../types';
+import { Student, WeeklySubmission, Form3SupervisionRecord } from '../types';
 import { StudentAvatar } from '../components/StudentAvatar';
 import { WEEKS_1_TO_18 } from '../data/weeksData';
+import { getStudentEvaluationSummary } from '../utils/dataUnifier';
 
 interface StudentViewProps {
   student: Student;
   submissions: WeeklySubmission[];
+  form3List?: Form3SupervisionRecord[];
   onOpenForm1: () => void;
   onOpenForm2: () => void;
   onNavigateA4: (weekNum?: number) => void;
@@ -40,6 +42,7 @@ interface StudentViewProps {
 export const StudentView: React.FC<StudentViewProps> = ({
   student,
   submissions,
+  form3List = [],
   onOpenForm1,
   onOpenForm2,
   onNavigateA4,
@@ -50,9 +53,10 @@ export const StudentView: React.FC<StudentViewProps> = ({
 }) => {
   const sortedSubmissions = [...submissions].sort((a, b) => b.weekNumber - a.weekNumber);
   const currentSubmission = sortedSubmissions.find(s => s.weekNumber === student.currentWeek);
-  const submittedHoursSum = sortedSubmissions.reduce((sum, s) => sum + (Number(s.totalHours) || 40), 0);
-  const effectiveActualWeeks = sortedSubmissions.length > 0 ? sortedSubmissions.length : student.actualWeeks;
-  const effectiveAccumulatedHours = sortedSubmissions.length > 0 ? submittedHoursSum : student.accumulatedHours;
+  const evalSummary = getStudentEvaluationSummary(student, { [student.id]: submissions }, form3List);
+  const effectiveActualWeeks = evalSummary.effectiveActualWeeks;
+  const effectiveAccumulatedHours = evalSummary.effectiveAccumulatedHours;
+  const latestForm3 = evalSummary.latestForm3;
   const requiredHours = student.requiredHours || 720;
   const totalWeeks = student.totalWeeks || 18;
   const progressPercent = Math.min(100, Math.round((effectiveAccumulatedHours / requiredHours) * 100));
@@ -402,6 +406,67 @@ export const StudentView: React.FC<StudentViewProps> = ({
         </div>
       </div>
 
+      {/* Teacher Supervision Evaluation Card (Linked directly from Form #3) */}
+      {latestForm3 && (
+        <div className="bg-white rounded-2xl border border-emerald-200 p-6 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 pb-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">
+                  ผลการตรวจนิเทศก์สถานประกอบการจากครูนิเทศก์ (Form #3)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  นิเทศเมื่อ {latestForm3.visitDate || latestForm3.timestamp} • โดย {latestForm3.teacherName}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-xl bg-emerald-600 text-white font-bold text-sm shadow-2xs">
+                {latestForm3.score.toFixed(1)} / 20 ({latestForm3.grade})
+              </span>
+              <span className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${
+                latestForm3.safetyPassed
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                {latestForm3.safetyPassed ? 'ผ่านเกณฑ์ PPE 100%' : 'ควรปรับปรุง PPE'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+              <div className="text-xs font-bold text-slate-500">ความเห็นของครูนิเทศก์ ({latestForm3.teacherName}):</div>
+              <div className="text-slate-800 leading-relaxed">{latestForm3.teacherComment || '-'}</div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-200/80 space-y-1">
+              <div className="text-xs font-bold text-sky-800">ความเห็นของพี่เลี้ยงสถานประกอบการ ({latestForm3.mentorName}):</div>
+              <div className="text-slate-800 leading-relaxed">{latestForm3.mentorFeedback || '-'}</div>
+            </div>
+          </div>
+
+          {latestForm3.photos && latestForm3.photos.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-sky-600" />
+                <span>ภาพถ่ายการออกตรวจนิเทศก์ ({latestForm3.photos.length} รูป)</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {latestForm3.photos.map((photo, pIdx) => (
+                  <div key={photo.id || pIdx} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                    <img src={photo.url} alt={photo.title} className="w-full h-24 object-cover" />
+                    <div className="p-2 text-[11px] text-slate-700 font-medium truncate bg-white">
+                      {photo.title || `ภาพนิเทศก์ที่ ${pIdx + 1}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Submission History Table (ประวัติการส่งรายงานและผลการตรวจนิเทศก์) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -410,7 +475,8 @@ export const StudentView: React.FC<StudentViewProps> = ({
             <h3 className="font-bold text-slate-900 text-base">ประวัติการส่งรายงานและผลการตรวจนิเทศก์</h3>
           </div>
           <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            สถานะ: ตรวจผ่าน {submissions.filter(s => s.status === 'graded').length} / {submissions.length} รายการ
+            สถานะ: ตรวจผ่าน {evalSummary.gradedWeeksCount} / {submissions.length} รายการ
+            {latestForm3 ? ` • นิเทศแล้ว (${evalSummary.scoreText})` : ''}
           </span>
         </div>
 

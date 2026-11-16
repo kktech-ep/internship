@@ -180,6 +180,7 @@ export interface SheetTeacher {
   role: 'teacher' | 'admin';
   phone?: string;
   department?: string;
+  avatarUrl?: string;
   rooms?: string[];
   subjects?: string[];
 }

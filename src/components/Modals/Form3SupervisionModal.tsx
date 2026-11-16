@@ -43,12 +43,14 @@ import {
 } from '../../services/googleSheetsService';
 import { saveForm3SupervisionToFirestore } from '../../services/firestoreService';
 import { getCachedAccessToken } from '../../services/authService';
+import { normalizeStudentAcademicInfo } from '../../utils/dataUnifier';
 
 interface Form3SupervisionModalProps {
   isOpen: boolean;
   onClose: () => void;
   students: Student[];
   companies: Company[];
+  teachers?: SheetTeacher[];
   selectedStudentId?: string;
   teacherName?: string;
   teacherEmail?: string;
@@ -117,20 +119,18 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
   onClose,
   students,
   companies,
+  teachers: propTeachers,
   selectedStudentId,
   teacherName = 'นายทักษิณ โสภาปิยะ',
   teacherEmail = 'thaksinso@kktech.ac.th',
   onSaveEvaluation,
   onOpenSheetsModal
 }) => {
-  // Combine props students with complete records from Google Sheets "login" tab
+  // Combine props students with normalized fallback records from Google Sheets "login" tab if needed
   const allStudents = useMemo(() => {
-    const list = [...students];
-    const sheetStudents = getAllLoginSheetStudents();
-    for (const std of sheetStudents) {
-      if (!list.some(s => s.studentCode === std.studentCode || s.id === std.id)) {
-        list.push(std);
-      }
+    const list = students.map(normalizeStudentAcademicInfo);
+    if (list.length === 0) {
+      return getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
     }
     return list;
   }, [students]);
@@ -246,10 +246,11 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
     }
   }, [activeCompanyName, companyGroups, primaryStudent]);
 
-  // Teachers from Google Sheets "login" tab & "data" tab
+  // Teachers from Firestore / Google Sheets "login" tab & "data" tab
   const teachersFromSheet = useMemo(() => {
+    if (propTeachers && propTeachers.length > 0) return propTeachers;
     return getAllLoginSheetTeachers();
-  }, []);
+  }, [propTeachers]);
 
   // Supervision Multi-Teacher Selection State: Array of selected teacher IDs
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>(() => {

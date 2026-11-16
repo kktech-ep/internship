@@ -21,6 +21,7 @@ interface Form2WeeklyReportModalProps {
   onClose: () => void;
   student: Student;
   currentWeek: number;
+  submissions?: WeeklySubmission[];
   onSubmit: (submission: Partial<WeeklySubmission>) => void;
   onNavigateA4?: (weekNum: number) => void;
 }
@@ -30,6 +31,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   onClose,
   student,
   currentWeek = 8,
+  submissions = [],
   onSubmit,
   onNavigateA4,
 }) => {
@@ -51,7 +53,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
 
   const loadWeekState = (weekNum: number) => {
     const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
-    const saved = readSubmissionFromLocalCache(student, weekNum);
+    const saved = submissions.find(s => s.weekNumber === weekNum) || readSubmissionFromLocalCache(student, weekNum);
     if (saved) {
       setTaskTitle(saved.taskTitle || meta.defaultTask);
       setDailyTasks(saved.dailyLogs && saved.dailyLogs.length > 0 ? saved.dailyLogs : getDefaultDailyLogsForWeek(weekNum));
@@ -80,7 +82,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
       setIsSuccess(false);
       loadWeekState(targetW);
     }
-  }, [isOpen, currentWeek, student.id]);
+  }, [isOpen, currentWeek, student.id, submissions]);
 
   // When user switches week dropdown inside modal
   const handleSelectWeek = (weekNum: number) => {

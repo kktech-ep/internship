@@ -32,8 +32,8 @@ import {
   getCachedCourses,
 } from '../../services/courseDataService';
 import { syncAllLoginSheetRowsToFirebase } from '../../services/sheetFirebaseSyncService';
-import { subscribeForm3Supervisions } from '../../services/firestoreService';
 import { getCachedAccessToken, requestGoogleSheetsAccessToken } from '../../services/authService';
+import { getCandidateStudentKeys } from '../../utils/submissionUtils';
 
 interface GoogleSheetModalProps {
   isOpen: boolean;
@@ -41,6 +41,7 @@ interface GoogleSheetModalProps {
   students: Student[];
   submissions?: Record<string, WeeklySubmission[]>;
   form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
 }
 
 export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
@@ -48,19 +49,53 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   onClose,
   students,
   submissions = {},
-  form3List: propForm3List,
+  form3List: propForm3List = [],
+  courses: propCourses,
 }) => {
   const [activeTab, setActiveTab] = useState<'form1' | 'form2' | 'login' | 'data' | 'form3'>('login');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterWeek, setFilterWeek] = useState('all');
   const [form1Rows, setForm1Rows] = useState<Form1RowData[]>([]);
   const [loginAccounts, setLoginAccounts] = useState<SheetLoginAccount[]>([]);
-  const [dataCourses, setDataCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
-  const [form3Rows, setForm3Rows] = useState<Form3SupervisionRecord[]>(() => propForm3List || getLocalForm3Rows());
+  const [dataCourses, setDataCourses] = useState<CourseDataRow[]>(() => propCourses || getCachedCourses());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
   const [firebaseSyncNotice, setFirebaseSyncNotice] = useState<string | null>(null);
+
+  const form3Rows = propForm3List && propForm3List.length > 0 ? propForm3List : getLocalForm3Rows();
+
+  useEffect(() => {
+    if (propCourses && propCourses.length > 0) {
+      setDataCourses(propCourses);
+    }
+  }, [propCourses]);
+
+  const buildDerivedForm1Rows = (): Form1RowData[] => {
+    const local = getLocalForm1Rows();
+    const map = new Map<string, Form1RowData>();
+    students.forEach((s) => {
+      if (!s.companyName || s.companyName === 'ยังไม่ระบุสถานประกอบการ') return;
+      map.set(s.studentCode, {
+        timestamp: s.companyRegistration?.registeredAt || '-',
+        studentCode: s.studentCode,
+        studentName: s.name,
+        level: `${s.level} ${s.department}`,
+        companyName: s.companyName,
+        department: s.companyRegistration?.department || '-',
+        mentorName: s.companyRegistration?.mentorName || '-',
+        mentorPhone: s.companyRegistration?.mentorPhone || '-',
+        emergencyPhone: s.companyRegistration?.emergencyPhone || '-',
+        gpsCoordinates: s.companyRegistration?.gpsCoordinates || '-',
+        notes: s.companyRegistration?.notes || '',
+        status: 'เชื่อมต่อแล้ว',
+      });
+    });
+    local.forEach((lr) => {
+      if (lr.studentCode) map.set(lr.studentCode, lr);
+    });
+    return Array.from(map.values());
+  };
 
   const handleSyncWithFirebase = async () => {
     setIsSyncingFirebase(true);
@@ -79,45 +114,32 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setForm1Rows(getLocalForm1Rows());
-    if (propForm3List && propForm3List.length > 0) {
-      setForm3Rows(propForm3List);
-    } else {
-      setForm3Rows(getLocalForm3Rows());
-    }
+    setForm1Rows(buildDerivedForm1Rows());
     fetchSheetLoginAccounts().then(accs => setLoginAccounts(accs));
-    fetchDataSheetCourses().then(c => setDataCourses(c));
-
-    const unsubForm3 = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const local = getLocalForm3Rows();
-        const map = new Map<string, Form3SupervisionRecord>();
-        local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-        (remoteRecords || []).forEach(r => { if (r && r.id) map.set(r.id, r); });
-        setForm3Rows(Array.from(map.values()));
-      },
-      () => {}
-    );
-    return () => unsubForm3();
-  }, [isOpen, propForm3List]);
+    if (!propCourses || propCourses.length === 0) {
+      fetchDataSheetCourses().then(c => setDataCourses(c));
+    }
+  }, [isOpen, students]);
 
   if (!isOpen) return null;
 
-  // Build live Form #2 rows directly from Firestore/App submissions joined with student roster
+  // Build live Form #2 rows directly from authoritative App/Firestore submissions joined with student roster
   const studentByKey = new Map<string, Student>();
   students.forEach(s => {
-    if (s.id) studentByKey.set(s.id, s);
-    if (s.studentCode) studentByKey.set(s.studentCode, s);
+    getCandidateStudentKeys(s).forEach(k => studentByKey.set(k, s));
   });
 
+  const seenSubIds = new Set<string>();
   const liveForm2Rows = Object.entries(submissions)
     .flatMap(([studentKey, subs]) =>
-      (subs || []).map(sub => {
+      (subs || []).flatMap(sub => {
+        if (!sub || (sub.id && seenSubIds.has(sub.id))) return [];
+        if (sub.id) seenSubIds.add(sub.id);
         const std =
           studentByKey.get(sub.studentId) ||
           studentByKey.get(studentKey) ||
           studentByKey.get(sub.studentId.replace(/^std-/, ''));
-        return {
+        return [{
           timestamp: sub.submittedAt || '-',
           studentCode: std?.studentCode || sub.studentId.replace(/^std-/, ''),
           studentName: std?.name || sub.studentSignature || sub.studentId,
@@ -139,7 +161,7 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
           grade: sub.teacherGrade || '-',
           inspector: sub.teacherName || std?.supervisorTeacher || '-',
           status: sub.status === 'graded' ? 'ประเมินแล้ว' : 'รอตรวจประเมิน'
-        };
+        }];
       })
     )
     .sort((a, b) => b.weekNumber - a.weekNumber);
@@ -149,7 +171,6 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
     setIsRefreshing(true);
     setStatusNotice(null);
 
-    // Refresh login accounts and data courses
     const accs = await fetchSheetLoginAccounts(true);
     setLoginAccounts(accs);
     const crs = await fetchDataSheetCourses(true);
@@ -166,10 +187,10 @@ export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
 
     if (token) {
       const res = await fetchGoogleSheetForm1Rows(token);
-      setForm1Rows(res.rows);
+      setForm1Rows(res.rows.length > 0 ? res.rows : buildDerivedForm1Rows());
       setStatusNotice('ซิงค์ข้อมูลล่าสุดจาก Google Sheets (login, data, Form_1) สำเร็จ!');
     } else {
-      setForm1Rows(getLocalForm1Rows());
+      setForm1Rows(buildDerivedForm1Rows());
       setStatusNotice(`ซิงค์ข้อมูลตาราง login (${accs.length} บัญชี) และ data (${crs.length} วิชา) สำเร็จ`);
     }
     setIsRefreshing(false);

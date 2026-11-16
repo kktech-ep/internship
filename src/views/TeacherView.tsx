@@ -27,24 +27,26 @@ import {
   ChevronUp,
   FileSpreadsheet
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow, Form3SupervisionRecord } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow, Form3SupervisionRecord, SheetTeacher } from '../types';
 import { LOGIN_SHEET_CONFIG } from '../services/sheetAuthService';
 import { 
   DATA_SHEET_CONFIG,
-  fetchDataSheetCourses,
   getCachedCourses,
   getAllTeachersFromData,
   getAllSubjectsFromData,
   getAllRoomsFromData,
   getCoursesByRoom
 } from '../services/courseDataService';
-import { subscribeForm3Supervisions, subscribeCourses } from '../services/firestoreService';
-import { getLocalForm3Rows } from '../services/googleSheetsService';
+import { saveTeacherAvatarToFirestore } from '../services/firestoreService';
+import { getStudentEvaluationSummary } from '../utils/dataUnifier';
 
 interface TeacherViewProps {
   students: Student[];
   companies: Company[];
   submissions: Record<string, WeeklySubmission[]>;
+  form3List?: Form3SupervisionRecord[];
+  courses?: CourseDataRow[];
+  teachers?: SheetTeacher[];
   currentUser?: AuthUser | null;
   onOpenForm3: (studentId?: string) => void;
   onNavigateA4: (studentId?: string) => void;
@@ -56,15 +58,15 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   students,
   companies: _companies,
   submissions,
+  form3List = [],
+  courses: propCourses,
+  teachers: propTeachers = [],
   currentUser,
   onOpenForm3,
   onNavigateA4,
   onOpenLookerModal,
 }) => {
-  // Course data state from Google Sheet "data" tab & Firestore /courses
-  const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
-  const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
-  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
+  const courses = propCourses && propCourses.length > 0 ? propCourses : getCachedCourses();
   const [activeTab, setActiveTab] = useState<'students' | 'coursesMatrix'>('students');
 
   // Filters connected to BOTH login sheet and data sheet
@@ -81,73 +83,38 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Teacher avatar handling
+  // Teacher avatar handling (persisted to Firestore /teachers + localStorage)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const teacherEmail = currentUser?.email || 'thaksinso@kktech.ac.th';
   const teacherStorageKey = `kktech_teacher_avatar_${teacherEmail}`;
+  const matchedTeacherDoc = useMemo(
+    () =>
+      propTeachers.find(
+        (t) =>
+          (t.email && t.email.toLowerCase() === teacherEmail.toLowerCase()) ||
+          (currentUser?.name && t.name === currentUser.name)
+      ),
+    [propTeachers, teacherEmail, currentUser?.name]
+  );
+
   const [teacherAvatar, setTeacherAvatar] = useState<string | null>(() => {
+    if (matchedTeacherDoc?.avatarUrl) return matchedTeacherDoc.avatarUrl;
     if (typeof localStorage !== 'undefined') {
       return localStorage.getItem(teacherStorageKey) || null;
     }
     return null;
   });
 
-  // Fetch courses & subscribe to live Firestore Form 3 and courses collections
   useEffect(() => {
-    fetchDataSheetCourses().then(res => {
-      if (res && res.length > 0) setCourses(res);
-    });
-
-    const unsubCourses = subscribeCourses(
-      (remoteCourses) => {
-        if (remoteCourses && remoteCourses.length > 0) {
-          setCourses(remoteCourses);
-        }
-      },
-      () => {}
-    );
-
-    const mergeAndSetForm3 = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      const merged = Array.from(map.values()).sort((a, b) => {
-        const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return timeB - timeA;
-      });
-      setForm3List(merged);
-    };
-
-    const unsubForm3 = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const recs = remoteRecords || [];
-        remoteForm3Ref.current = recs;
-        mergeAndSetForm3(recs);
-      },
-      (err) => console.warn('TeacherView Form3 stream notice:', err)
-    );
-
-    const handleForm3LocalSync = () => mergeAndSetForm3();
-    window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
-    window.addEventListener('storage', handleForm3LocalSync);
-
-    return () => {
-      unsubCourses();
-      unsubForm3();
-      window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
-      window.removeEventListener('storage', handleForm3LocalSync);
-    };
-  }, []);
-
-  useEffect(() => {
+    if (matchedTeacherDoc?.avatarUrl) {
+      setTeacherAvatar(matchedTeacherDoc.avatarUrl);
+      return;
+    }
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(`kktech_teacher_avatar_${teacherEmail}`);
-      if (saved) setTeacherAvatar(saved);
+      setTeacherAvatar(saved || null);
     }
-  }, [teacherEmail]);
+  }, [teacherEmail, matchedTeacherDoc?.avatarUrl]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,6 +153,17 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
           } catch (err) {
             console.warn('LocalStorage teacher avatar save note:', err);
           }
+          const cleanUserId = (matchedTeacherDoc?.user || teacherEmail).replace(/[^a-zA-Z0-9_-]/g, '_');
+          const targetTchId = matchedTeacherDoc?.id || `tch-${cleanUserId}`;
+          saveTeacherAvatarToFirestore(
+            {
+              id: targetTchId,
+              name: matchedTeacherDoc?.name || currentUser?.name || teacherEmail,
+              email: teacherEmail,
+              user: matchedTeacherDoc?.user || teacherEmail,
+            },
+            compressed
+          ).catch((err) => console.warn('Firestore teacher avatar save note:', err));
         }
       };
       img.src = dataUrl;
@@ -220,7 +198,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
     }) || null;
   }, [currentUserName, allTeachers]);
 
-  // Pre-compute real evaluation & submission status per student from Firestore
+  // Pre-compute unified evaluation & submission status per student
   const evalByStudentId = useMemo(() => {
     const map = new Map<string, {
       isGraded: boolean;
@@ -229,64 +207,14 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
       submissionsCount: number;
     }>();
 
-    // Group Form 3 supervision records by studentCode / studentId
-    const form3ByKey = new Map<string, Form3SupervisionRecord>();
-    form3List.forEach(r => {
-      if (r.studentId && !form3ByKey.has(r.studentId)) form3ByKey.set(r.studentId, r);
-      if (r.studentCode && !form3ByKey.has(r.studentCode)) form3ByKey.set(r.studentCode, r);
-    });
-
-    // Flatten submissions by candidate key
-    const subsByKey = new Map<string, WeeklySubmission[]>();
-    Object.entries(submissions).forEach(([k, arr]) => {
-      if (!Array.isArray(arr)) return;
-      const list = subsByKey.get(k) || [];
-      arr.forEach(s => {
-        list.push(s);
-        if (s.studentId) {
-          const prevList = subsByKey.get(s.studentId) || [];
-          if (!prevList.some(x => x.id === s.id)) {
-            subsByKey.set(s.studentId, [...prevList, s]);
-          }
-        }
-      });
-      subsByKey.set(k, list);
-    });
-
     students.forEach(std => {
-      const candidateKeys = Array.from(
-        new Set([std.id, std.studentCode, `std-${std.studentCode}`, std.id?.replace(/^std-/, '')].filter(Boolean) as string[])
-      );
-      const weekMap = new Map<number, WeeklySubmission>();
-      candidateKeys.forEach((k) => {
-        (subsByKey.get(k) || []).forEach((s) => {
-          const existing = weekMap.get(s.weekNumber);
-          if (!existing || (existing.status !== 'graded' && s.status === 'graded')) {
-            weekMap.set(s.weekNumber, s);
-          }
-        });
+      const summary = getStudentEvaluationSummary(std, submissions, form3List);
+      map.set(std.id, {
+        isGraded: summary.isGraded,
+        scoreText: summary.evaluationScore !== null ? summary.evaluationScore.toFixed(1) : '-',
+        gradeLabel: summary.gradeLabel,
+        submissionsCount: summary.submittedWeeksCount,
       });
-      const stdSubs = Array.from(weekMap.values());
-      const f3 = form3ByKey.get(std.id) || form3ByKey.get(std.studentCode);
-      const gradedSub = stdSubs.find(s => s.status === 'graded');
-
-      if (f3 || gradedSub) {
-        const rawScore = typeof f3?.score === 'number' ? f3.score : (gradedSub?.teacherScore ?? 19.0);
-        const rawGrade = f3?.grade || gradedSub?.teacherGrade || 'ดีเยี่ยม (A)';
-        map.set(std.id, {
-          isGraded: true,
-          scoreText: rawScore.toFixed(1),
-          gradeLabel: rawGrade,
-          submissionsCount: stdSubs.length,
-        });
-      } else {
-        map.set(std.id, {
-          isGraded: false,
-          scoreText: '-',
-          gradeLabel: stdSubs.length > 0 ? `ส่งแล้ว ${stdSubs.length} สัปดาห์` : 'รอประเมิน',
-          submissionsCount: stdSubs.length,
-        });
-      }
     });
 
     return map;

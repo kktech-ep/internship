@@ -34,13 +34,12 @@ import {
   School
 } from 'lucide-react';
 import { Company, Student, Form3SupervisionRecord, Form3Photo } from '../types';
-import { getAllLoginSheetStudents } from '../services/sheetAuthService';
-import { getLocalForm3Rows } from '../services/googleSheetsService';
-import { subscribeForm3Supervisions } from '../services/firestoreService';
+import { buildUnifiedCompanies } from '../utils/dataUnifier';
 
 interface CompanyMapViewProps {
   companies: Company[];
   students: Student[];
+  form3List?: Form3SupervisionRecord[];
   onOpenForm1: () => void;
   onOpenForm3: (studentId?: string) => void;
 }
@@ -125,6 +124,7 @@ function getSvgCoordinates(compName: string, index: number): { x: number; y: num
 export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
   companies: _propCompanies,
   students: propStudents,
+  form3List = [],
   onOpenForm1,
   onOpenForm3,
 }) => {
@@ -135,149 +135,37 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
   const [activeCompanyId, setActiveCompanyId] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [selectedPhoto, setSelectedPhoto] = useState<Form3Photo | null>(null);
-  const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
-  const remoteForm3Ref = useRef<Form3SupervisionRecord[]>([]);
 
-  // Listen to Firestore real-time Form 3 supervision records and merge with local
-  useEffect(() => {
-    const mergeAndSet = (remoteList?: Form3SupervisionRecord[]) => {
-      const remote = remoteList !== undefined ? remoteList : remoteForm3Ref.current;
-      const local = getLocalForm3Rows();
-      const map = new Map<string, Form3SupervisionRecord>();
-      local.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      remote.forEach(r => { if (r && r.id) map.set(r.id, r); });
-      setForm3List(Array.from(map.values()));
-    };
-
-    const unsub = subscribeForm3Supervisions(
-      (remoteRecords) => {
-        const recs = remoteRecords || [];
-        remoteForm3Ref.current = recs;
-        mergeAndSet(recs);
-      },
-      (err) => console.warn('Form 3 stream notice:', err)
-    );
-
-    const handleSync = () => mergeAndSet();
-    window.addEventListener('kktech_form3_updated', handleSync);
-    window.addEventListener('storage', handleSync);
-
-    return () => {
-      unsub();
-      window.removeEventListener('kktech_form3_updated', handleSync);
-      window.removeEventListener('storage', handleSync);
-    };
-  }, []);
-
-  // Merge propStudents with complete Google Sheets "login" tab students
-  const allSheetStudents = useMemo<Student[]>(() => {
-    const fromSheet = getAllLoginSheetStudents();
-    const map = new Map<string, Student>();
-    
-    // Fill from preloaded/cached sheet rows
-    for (const s of fromSheet) {
-      if (s.studentCode) map.set(s.studentCode, s);
-    }
-    // Merge props
-    for (const s of propStudents) {
-      if (s.studentCode) {
-        const exist = map.get(s.studentCode);
-        map.set(s.studentCode, { ...exist, ...s });
-      }
-    }
-    return Array.from(map.values());
-  }, [propStudents]);
-
-  // Build complete list of distinct companies referencing Google Sheets "login" tab Company column
+  // Derive distinct companies using single authoritative dataUnifier builder synced with A4/Hub/Looker
   const sheetCompanies = useMemo<SheetCompanyItem[]>(() => {
-    const compGroups = new Map<string, {
-      name: string;
-      students: Student[];
-      firstStudent: Student;
-    }>();
-
-    // Group students by Company
-    for (const std of allSheetStudents) {
-      const cName = (std.companyName || '').trim();
-      if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
-
-      if (!compGroups.has(cName)) {
-        compGroups.set(cName, {
-          name: cName,
-          students: [],
-          firstStudent: std
-        });
-      }
-      compGroups.get(cName)!.students.push(std);
-    }
-
-    const items: SheetCompanyItem[] = [];
-    let idx = 1;
-
-    for (const [name, group] of compGroups.entries()) {
-      const compId = `comp-${idx++}`;
-      const firstStd = group.firstStudent;
-      const reg = firstStd.companyRegistration;
-      const coords = getSvgCoordinates(name, idx);
-
-      // Determine sector
-      let sector: 'pea' | 'solar' | 'factory' | 'service' = 'service';
-      let sectorLabel = 'ระบบไฟฟ้าและบริการทั่วไป';
-      if (name.includes('การไฟฟ้า') || name.includes('กฟภ') || name.includes('กฟผ') || name.includes('PEA') || name.includes('EGAT')) {
-        sector = 'pea';
-        sectorLabel = 'สถานีไฟฟ้า & สายส่ง PEA/EGAT';
-      } else if (name.includes('โซล่าร์') || name.includes('Solar') || name.includes('พลังงาน')) {
-        sector = 'solar';
-        sectorLabel = 'ระบบพลังงานทดแทน & Solar Rooftop';
-      } else if (name.includes('อุตสาหกรรม') || name.includes('ผลิต') || name.includes('มิตซูบิชิ') || name.includes('คูโบต้า') || name.includes('ไทยเพาเวอร์') || name.includes('PLC')) {
-        sector = 'factory';
-        sectorLabel = 'โรงงานอุตสาหกรรม / ตู้ MDB & PLC';
-      }
-
-      // Match Form 3 supervision records for this company or its students
-      const matchedForm3 = form3List.filter(f => {
-        const matchName = f.companyName && (
-          f.companyName.includes(name) || 
-          name.includes(f.companyName) ||
-          (name.includes('การไฟฟ้าส่วนภูมิภาค') && f.companyName.includes('การไฟฟ้าส่วนภูมิภาค'))
-        );
-        const matchStudent = group.students.some(s => 
-          s.studentCode === f.studentCode || 
-          s.id === f.studentId || 
-          s.name === f.studentName
-        );
-        return matchName || matchStudent;
-      });
-
-      const isSupervised = matchedForm3.length > 0;
-      const statusText = isSupervised ? 'นิเทศแล้ว' : 'รอนิเทศ';
-
-      items.push({
-        id: compId,
-        name: name,
-        address: `${coords.zone} จ.ขอนแก่น (เชื่อมโยงจากแผ่นงาน Login)`,
-        zone: coords.zone,
-        distanceKm: Math.round(((coords.lat - 16.4322) ** 2 + (coords.lng - 102.8236) ** 2) * 5000) / 10 + 3.5,
-        sector,
-        sectorLabel,
-        contactPerson: reg?.mentorName || 'วิศวกรผู้ควบคุมงาน / ผู้จัดการฝ่าย',
-        phone: reg?.emergencyPhone || reg?.mentorPhone || '043-221-xxx',
-        lat: reg?.gpsLat || coords.lat,
-        lng: reg?.gpsLng || coords.lng,
-        mapX: coords.x,
-        mapY: coords.y,
-        students: group.students,
-        studentsCount: group.students.length,
-        form3Records: matchedForm3,
-        isSupervised,
-        statusText,
-        jobScope: reg?.department || 'งานติดตั้ง บำรุงรักษา และควบคุมระบบไฟฟ้ากำลัง'
-      });
-    }
-
-    // Sort by student count descending (places with more students appear first)
-    return items.sort((a, b) => b.studentsCount - a.studentsCount);
-  }, [allSheetStudents, form3List]);
+    const unified = buildUnifiedCompanies(propStudents, form3List);
+    return unified
+      .map((u, idx) => {
+        const coords = getSvgCoordinates(u.name, idx + 1);
+        return {
+          id: u.id,
+          name: u.name,
+          address: u.address,
+          zone: u.zone || coords.zone,
+          distanceKm: u.distanceKm,
+          sector: u.sector,
+          sectorLabel: u.sectorLabel,
+          contactPerson: u.contactPerson,
+          phone: u.phone,
+          lat: u.lat !== 16.4322 ? u.lat : coords.lat,
+          lng: u.lng !== 102.8236 ? u.lng : coords.lng,
+          mapX: coords.x,
+          mapY: coords.y,
+          students: u.students,
+          studentsCount: u.studentsCount,
+          form3Records: u.form3Records,
+          isSupervised: u.isSupervised,
+          statusText: u.statusText,
+          jobScope: u.jobScope,
+        };
+      })
+      .sort((a, b) => b.studentsCount - a.studentsCount);
+  }, [propStudents, form3List]);
 
   // Set default active company to first company if unset
   useEffect(() => {
@@ -357,7 +245,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
     window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
   };
 
-  const totalStudentsInSystem = allSheetStudents.length;
+  const totalStudentsInSystem = propStudents.length;
   const totalCompaniesCount = sheetCompanies.length;
   const supervisedCount = sheetCompanies.filter(c => c.isSupervised).length;
   const pendingCount = totalCompaniesCount - supervisedCount;
@@ -733,7 +621,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                 <span>ขอนแก่น & ปริมณฑล</span>
               </div>
               <div className="text-xs text-slate-500 font-mono">
-                แสดงผล {filteredCompanies.length} แห่ง ({allSheetStudents.length} นักศึกษา)
+                แสดงผล {filteredCompanies.length} แห่ง ({propStudents.length} นักศึกษา)
               </div>
             </div>
 

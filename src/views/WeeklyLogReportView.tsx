@@ -21,7 +21,6 @@ import { Student, WeeklySubmission, DailyLog, PhotoEvidence, AuthUser } from '..
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { saveSubmissionToFirestore } from '../services/firestoreService';
 import {
-  readSubmissionFromLocalCache,
   writeSubmissionToLocalCache,
 } from '../utils/submissionUtils';
 
@@ -62,10 +61,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
-  const existingSubmission =
-    submissions.find(s => s.weekNumber === selectedWeek) ||
-    readSubmissionFromLocalCache(student, selectedWeek) ||
-    undefined;
+  const existingSubmission = submissions.find(s => s.weekNumber === selectedWeek);
 
   useEffect(() => {
     if (initialWeek && initialWeek >= 1 && initialWeek <= 18) {
@@ -331,9 +327,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {WEEKS_1_TO_18.map((w) => {
             const isSelected = selectedWeek === w.weekNumber;
-            const sub =
-              submissions.find(s => s.weekNumber === w.weekNumber) ||
-              readSubmissionFromLocalCache(student, w.weekNumber);
+            const sub = submissions.find(s => s.weekNumber === w.weekNumber);
             const isGraded = sub?.status === 'graded';
             const isPending = sub?.status === 'pending';
 
