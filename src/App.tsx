@@ -63,6 +63,7 @@ import {
   subscribeTeachers,
   saveStudentToFirestore,
   saveSubmissionToFirestore,
+  saveSubmissionsBatchToFirestore,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
 } from './services/firestoreService';
@@ -70,6 +71,7 @@ import {
   getCandidateStudentKeys,
   getMergedStudentSubmissions,
   writeSubmissionToLocalCache,
+  markSubmissionSyncedToCloud,
   removeSubmissionFromLocalCache,
   mergeSubmissionsWithLocalCache,
   reconcileSubmissionsWithCloud,
@@ -254,22 +256,22 @@ export default function App() {
           const mergedMap = new Map<string, Student>();
           sheetBase.forEach((s) => mergedMap.set(s.id, normalizeStudentAcademicInfo(s)));
           remoteStudents.forEach((rs) => {
-            if (!mergedMap.has(rs.id)) return;
+            if (!rs || (!mergedMap.has(rs.id) && !rs.studentCode)) return;
             const localCachedAvatar =
               (typeof localStorage !== 'undefined' &&
                 (localStorage.getItem(`kktech_avatar_${rs.id}`) ||
                   localStorage.getItem(`kktech_avatar_std-${rs.studentCode}`))) ||
               undefined;
-            const prev = mergedMap.get(rs.id)!;
+            const prev = mergedMap.get(rs.id);
             mergedMap.set(
               rs.id,
               normalizeStudentAcademicInfo({
-                ...prev,
+                ...(prev || {}),
                 ...rs,
-                email: prev.email || rs.email,
-                studentCode: prev.studentCode || rs.studentCode,
-                avatarUrl: rs.avatarUrl || prev.avatarUrl || localCachedAvatar,
-              })
+                email: prev?.email || rs.email || '',
+                studentCode: prev?.studentCode || rs.studentCode || '',
+                avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
+              } as Student)
             );
           });
           setStudents(Array.from(mergedMap.values()));
@@ -429,6 +431,8 @@ export default function App() {
       const token = getCachedAccessToken();
       syncResult = await saveAndSyncStudentBothWays(updatedStudent, token);
 
+      await syncDerivedCompaniesToFirestore(nextStudents, form3List);
+
       await appendForm1ToGoogleSheet(
         {
           timestamp: new Date().toLocaleString('th-TH'),
@@ -446,8 +450,6 @@ export default function App() {
         },
         token
       );
-
-      syncDerivedCompaniesToFirestore(nextStudents, form3List).catch(() => {});
     } catch (sheetErr) {
       console.warn('Unified database sync note:', sheetErr);
     }
@@ -503,7 +505,9 @@ export default function App() {
       mentorPosition: 'วิศวกรไฟฟ้า / พี่เลี้ยง',
       teacherScore: isAlreadyGraded ? existingForWeek?.teacherScore ?? 0 : 0,
       teacherGrade: isAlreadyGraded ? existingForWeek?.teacherGrade ?? '' : '',
-      teacherComment: isAlreadyGraded ? existingForWeek?.teacherComment : undefined,
+      ...(isAlreadyGraded && existingForWeek?.teacherComment
+        ? { teacherComment: existingForWeek.teacherComment }
+        : {}),
       teacherName: currentStudent.supervisorTeacher,
       studentSignature: currentStudent.name.replace(/^(นาย|นางสาว)\s*/, ''),
       mentorSignature: (currentStudent.companyRegistration.mentorName || 'ชาญชัย มงคลศรี').replace(
@@ -536,11 +540,13 @@ export default function App() {
     setSubmissions(nextSubsMap);
     syncStudentLiveStats(currentStudent, nextSubsMap);
 
-    // Persist submission to Firebase Firestore (internship2-2569)
+    // Persist submission immediately to Firebase Firestore (internship2-2569)
     try {
       await saveSubmissionToFirestore(newSub);
+      markSubmissionSyncedToCloud(newSub.id);
     } catch (e) {
       console.error('Error saving submission to Firestore:', e);
+      throw e;
     }
   };
 
@@ -637,12 +643,13 @@ export default function App() {
       return next;
     });
 
-    // Persist updated evaluations to Firebase Firestore (internship2-2569)
-    for (const sub of modifiedSubs) {
+    // Persist all updated evaluations atomically and immediately to Firebase Firestore
+    if (modifiedSubs.length > 0) {
       try {
-        await saveSubmissionToFirestore(sub);
+        await saveSubmissionsBatchToFirestore(modifiedSubs);
+        modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
       } catch (e) {
-        console.error('Error updating evaluation in Firestore:', e);
+        console.error('Error updating evaluations in Firestore:', e);
       }
     }
   };

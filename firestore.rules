@@ -42,6 +42,10 @@ service cloud.firestore {
       allow read, write, delete: if true;
     }
 
+    match /teaching_reports/{reportId} {
+      allow read, write, delete: if isValidId(reportId);
+    }
+
     // Default deny for unlisted collections
     match /{document=**} {
       allow read, write: if false;

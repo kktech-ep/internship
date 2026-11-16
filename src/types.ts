@@ -184,3 +184,41 @@ export interface SheetTeacher {
   rooms?: string[];
   subjects?: string[];
 }
+
+export interface TeachingReportCourse {
+  id: string;
+  subjectCode: string;
+  subjectName: string;
+  room: string;
+  teachDate: string;
+  teachTime: string;
+}
+
+export interface TeachingReportPhoto {
+  id: string;
+  url: string;
+  caption: string;
+  sourceType: 'supervision' | 'internship' | 'curated' | 'custom';
+  sourceTitle: string;
+  studentName?: string;
+  companyName?: string;
+  subjectCode?: string;
+  teacherName?: string;
+  visitDate?: string;
+}
+
+export interface TeachingReportRecord {
+  id: string;
+  teacherKey: string;
+  reporterName: string;
+  position: string;
+  specialDuty: string;
+  reportDate: string;
+  weekNumber: number;
+  courses: TeachingReportCourse[];
+  learningOutcome: string;
+  weekPhotos?: TeachingReportPhoto[];
+  hasManualPhotoEdits?: boolean;
+  updatedAt: string;
+}
+

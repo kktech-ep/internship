@@ -228,8 +228,8 @@ export function reconcileSubmissionsWithCloud(
     const existingIdx = grouped[sub.studentId].findIndex((x) => x.weekNumber === sub.weekNumber);
     if (existingIdx < 0) {
       grouped[sub.studentId].push(sub);
-    } else if (grouped[sub.studentId][existingIdx].status !== 'graded' && sub.status === 'graded') {
-      grouped[sub.studentId][existingIdx] = sub;
+    } else if (grouped[sub.studentId][existingIdx].status === 'graded' && sub.status !== 'graded') {
+      // Keep graded record over ungraded duplicate
     } else {
       grouped[sub.studentId][existingIdx] = sub;
     }

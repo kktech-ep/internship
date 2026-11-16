@@ -151,6 +151,10 @@ export function extractTeacherNames(raw?: string): string[] {
     .filter((s) => s.length > 0 && s !== '-');
 }
 
+export function normalizeCompanyNameKey(name?: string): string {
+  return (name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 export function deriveCompanyZoneAndSector(companyName: string): {
   zone: string;
   sector: 'pea' | 'solar' | 'factory' | 'service';
@@ -158,20 +162,24 @@ export function deriveCompanyZoneAndSector(companyName: string): {
 } {
   const lower = companyName.toLowerCase();
   let zone = 'อ.เมืองขอนแก่น';
-  if (lower.includes('เชียงยืน')) zone = 'อ.เชียงยืน';
+  if (lower.includes('เชียงยืน')) zone = 'อ.เชียงยืน จ.มหาสารคาม';
   else if (lower.includes('บ้านฝาง')) zone = 'อ.บ้านฝาง';
-  else if (lower.includes('ท่าคันโท')) zone = 'อ.ท่าคันโท';
-  else if (lower.includes('น้ำหนาว')) zone = 'อ.น้ำหนาว';
+  else if (lower.includes('ท่าคันโท')) zone = 'อ.ท่าคันโท จ.กาฬสินธุ์';
+  else if (lower.includes('น้ำหนาว')) zone = 'อ.น้ำหนาว จ.เพชรบูรณ์';
   else if (lower.includes('บ้านไผ่')) zone = 'อ.บ้านไผ่';
-  else if (lower.includes('ภูเขียว')) zone = 'อ.ภูเขียว';
+  else if (lower.includes('ภูกระดึง')) zone = 'อ.ภูกระดึง จ.เลย';
+  else if (lower.includes('ภูผาม่าน')) zone = 'อ.ภูผาม่าน';
+  else if (lower.includes('ภูเวียง')) zone = 'อ.ภูเวียง';
+  else if (lower.includes('ภูเขียว')) zone = 'อ.ภูเขียว จ.ชัยภูมิ';
   else if (lower.includes('หนองเรือ')) zone = 'อ.หนองเรือ';
+  else if (lower.includes('แวงน้อย')) zone = 'อ.แวงน้อย';
   else if (lower.includes('น้ำพอง') || lower.includes('มิตรผล')) zone = 'อ.น้ำพอง';
   else if (lower.includes('ชุมแพ')) zone = 'อ.ชุมแพ';
   else if (lower.includes('พระยืน')) zone = 'อ.พระยืน';
   else if (lower.includes('อุบลรัตน์')) zone = 'อ.อุบลรัตน์';
   else if (lower.includes('กระนวน')) zone = 'อ.กระนวน';
   else if (lower.includes('เขาสวนกวาง')) zone = 'อ.เขาสวนกวาง';
-  else if (lower.includes('พล') || lower.includes('เมืองพล')) zone = 'อ.เมืองพล';
+  else if (lower.includes('อำเภอพล') || lower.includes('อ.พล') || lower.includes('เมืองพล')) zone = 'อ.เมืองพล';
   else if (lower.includes('ท่าพระ') || lower.includes('230kv') || lower.includes('กฟผ.')) zone = 'ต.ท่าพระ';
   else if (lower.includes('ศิลา') || lower.includes('kkp')) zone = 'ต.ศิลา';
   else if (lower.includes('มิตซูบิชิ') || lower.includes('แอร์') || lower.includes('consumer')) zone = 'นิคมอุตสาหกรรม';
@@ -248,12 +256,13 @@ export function buildUnifiedCompanies(
   const compMap = new Map<string, { name: string; students: Student[]; firstStudent: Student }>();
 
   for (const std of students) {
-    const cName = (std.companyName || '').trim();
-    if (!cName || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
-    if (!compMap.has(cName)) {
-      compMap.set(cName, { name: cName, students: [], firstStudent: std });
+    const cName = (std.companyName || '').replace(/\s+/g, ' ').trim();
+    const compKey = normalizeCompanyNameKey(cName);
+    if (!compKey || cName === 'ยังไม่ระบุสถานประกอบการ' || cName === '-') continue;
+    if (!compMap.has(compKey)) {
+      compMap.set(compKey, { name: cName, students: [], firstStudent: std });
     }
-    compMap.get(cName)!.students.push(std);
+    compMap.get(compKey)!.students.push(std);
   }
 
   const matchedForm3Ids = new Set<string>();
@@ -292,27 +301,24 @@ export function buildUnifiedCompanies(
     };
   };
 
-  for (const [cName, group] of compMap.entries()) {
+  for (const [compKey, group] of compMap.entries()) {
+    const cName = group.name;
     const compId = `comp-${idx++}`;
     const firstStd = group.firstStudent;
     const reg = firstStd.companyRegistration;
     const { zone, sector, sectorLabel } = deriveCompanyZoneAndSector(cName);
-    const normComp = cName.toLowerCase().trim();
 
     const matchedForm3 = form3List
       .filter((f) => {
         if (!f) return false;
-        const normFormComp = (f.companyName || '').toLowerCase().trim();
-        const compMatches =
-          normFormComp &&
-          (normFormComp.includes(normComp) ||
-            normComp.includes(normFormComp) ||
-            (normComp.includes('pea') && normFormComp.includes('pea')) ||
-            (normComp.includes('การไฟฟ้าส่วนภูมิภาค') && f.companyName.includes('การไฟฟ้าส่วนภูมิภาค')) ||
-            (normComp.includes('มิตรผล') && normFormComp.includes('มิตรผล')) ||
-            (normComp.includes('โซล่าร์') && normFormComp.includes('โซล่าร์')));
+        const normFormComp = normalizeCompanyNameKey(f.companyName);
+        // Strict per-workplace matching: never cross-link different การไฟฟ้า or company branches
+        const compMatches = Boolean(normFormComp && normFormComp === compKey);
         const studentMatches = group.students.some((s) => matchesStudentRecord(f, s));
-        return compMatches || studentMatches;
+        const pointsToAnotherKnownCompany = Boolean(
+          normFormComp && normFormComp !== compKey && compMap.has(normFormComp)
+        );
+        return compMatches || (studentMatches && !pointsToAnotherKnownCompany);
       })
       .sort((a, b) => {
         const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
@@ -336,7 +342,7 @@ export function buildUnifiedCompanies(
       id: compId,
       name: cName,
       department: latestRecord?.companyDepartment || reg?.department || 'แผนกซ่อมบำรุงและระบบไฟฟ้า',
-      address: reg?.notes || `${zone} จ.ขอนแก่น`,
+      address: reg?.notes || (zone.includes('จ.') ? zone : `${zone} จ.ขอนแก่น`),
       zone,
       distanceKm,
       sector,
@@ -363,15 +369,16 @@ export function buildUnifiedCompanies(
   }
 
   // Append any supervised workplaces in Form 3 not yet matching a student's companyName
-  const extraGroups = new Map<string, Form3SupervisionRecord[]>();
+  const extraGroups = new Map<string, { name: string; recs: Form3SupervisionRecord[] }>();
   form3List.forEach((f) => {
     if (!f || matchedForm3Ids.has(f.id)) return;
-    const key = (f.companyName || 'สถานประกอบการ (บันทึกการนิเทศ)').trim();
-    if (!extraGroups.has(key)) extraGroups.set(key, []);
-    extraGroups.get(key)!.push(f);
+    const rawName = (f.companyName || 'สถานประกอบการ (บันทึกการนิเทศ)').replace(/\s+/g, ' ').trim();
+    const key = normalizeCompanyNameKey(rawName);
+    if (!extraGroups.has(key)) extraGroups.set(key, { name: rawName, recs: [] });
+    extraGroups.get(key)!.recs.push(f);
   });
 
-  for (const [extraName, recs] of extraGroups.entries()) {
+  for (const [, { name: extraName, recs }] of extraGroups.entries()) {
     recs.sort((a, b) => {
       const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
       const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
@@ -459,7 +466,9 @@ export function toFirestoreCompanies(unified: UnifiedCompanySummary[]): Company[
   return unified.map((u) => ({
     id: u.id,
     name: u.name,
-    shortName: u.name.slice(0, 30),
+    shortName: u.name.startsWith('การไฟฟ้าส่วนภูมิภาค')
+      ? u.name.replace('การไฟฟ้าส่วนภูมิภาค', 'กฟภ.')
+      : u.name.slice(0, 36),
     address: u.address,
     zone: u.zone,
     distanceKm: u.distanceKm,

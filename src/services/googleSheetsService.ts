@@ -235,6 +235,15 @@ export function markForm3PendingIds(ids: string[]): void {
   writePendingForm3Ids(cur);
 }
 
+export function clearForm3PendingIds(ids: string[]): void {
+  const cur = readPendingForm3Ids();
+  let changed = false;
+  ids.forEach((id) => {
+    if (id && cur.delete(id)) changed = true;
+  });
+  if (changed) writePendingForm3Ids(cur);
+}
+
 export function getLocalForm3Rows(): Form3SupervisionRecord[] {
   try {
     const raw = localStorage.getItem(LOCAL_FORM3_STORAGE_KEY);

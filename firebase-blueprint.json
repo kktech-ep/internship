@@ -195,6 +195,23 @@
         "lastSyncAt": { "type": "string" }
       },
       "required": ["room", "subjectCode", "subjectName", "teacherName"]
+    },
+    "TeachingReport": {
+      "title": "TeachingReport",
+      "description": "Weekly workplace teaching report, assigned courses, and photo gallery per teacher and week",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "teacherKey": { "type": "string", "maxLength": 150 },
+        "reporterName": { "type": "string", "maxLength": 150 },
+        "position": { "type": "string", "maxLength": 150 },
+        "specialDuty": { "type": "string", "maxLength": 200 },
+        "reportDate": { "type": "string", "maxLength": 50 },
+        "weekNumber": { "type": "number" },
+        "learningOutcome": { "type": "string", "maxLength": 2000 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "teacherKey", "reporterName", "weekNumber", "updatedAt"]
     }
   },
   "firestore": {
@@ -233,6 +250,10 @@
     "/login_sheet/{userId}": {
       "schema": "LoginSheetRow",
       "description": "Mirrored rows from Google Spreadsheet login tab"
+    },
+    "/teaching_reports/{reportId}": {
+      "schema": "TeachingReport",
+      "description": "Teacher weekly workplace teaching reports and custom course/photo selections"
     }
   }
 }

@@ -15,7 +15,7 @@
  */
 
 import { doc, getDocs, collection, writeBatch, WriteBatch } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, stripUndefinedDeep } from '../firebase';
 import {
   fetchFullLoginSheetRows,
   convertLoginRowToStudent,
@@ -195,6 +195,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
           companyRegistration: keepExistingForm1 && existing?.companyRegistration
             ? existing.companyRegistration
             : student.companyRegistration,
+          ...(keepExistingForm1 && existing?.lastSyncSource ? { lastSyncSource: existing.lastSyncSource } : {}),
           ...(existing?.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
           ...(typeof existing?.accumulatedHours === 'number' && existing.accumulatedHours !== 320
             ? { accumulatedHours: existing.accumulatedHours }
@@ -214,8 +215,8 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         validUserIds.add(cleanUserId);
 
         batchOps.push((batch) => {
-          batch.set(doc(db, 'students', student.id), mergedStudent);
-          batch.set(doc(db, 'users', cleanUserId), {
+          batch.set(doc(db, 'students', student.id), stripUndefinedDeep(mergedStudent));
+          batch.set(doc(db, 'users', cleanUserId), stripUndefinedDeep({
             email: userEmail,
             name: name,
             role: 'student',
@@ -228,7 +229,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             pass: row.pass || '',
             companyName: (mergedStudent.companyName || '').trim(),
             updatedAt: startTime.toISOString()
-          });
+          }));
         });
         studentRows++;
       } else {
@@ -280,10 +281,13 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     for (const comp of derivedCompanies) {
       validCompanyIds.add(comp.id);
       batchOps.push((batch) => {
-        batch.set(doc(db, 'companies', comp.id), {
-          ...comp,
-          lastSyncAt: startTime.toISOString()
-        });
+        batch.set(
+          doc(db, 'companies', comp.id),
+          stripUndefinedDeep({
+            ...comp,
+            lastSyncAt: startTime.toISOString()
+          })
+        );
       });
     }
 
@@ -388,22 +392,22 @@ export async function saveAndSyncStudentBothWays(
   const cleanUserId = userEmail.replace(/[^a-zA-Z0-9_-]/g, '_');
   const batch = writeBatch(db);
 
-  // 1. Write to Firebase Firestore /students/{studentId}
+  // 1. Write to Firebase Firestore /students/{studentId}, /login_sheet/{userId}, and /users/{userId} immediately
   try {
     batch.set(
       doc(db, 'students', student.id),
-      {
+      stripUndefinedDeep({
         ...student,
         updatedAt: now.toISOString(),
         lastSyncSource: 'web_portal_form1'
-      },
+      }),
       { merge: true }
     );
 
     // 2. Write to Firebase Firestore /login_sheet/{userId}
     batch.set(
       doc(db, 'login_sheet', cleanUserId),
-      {
+      stripUndefinedDeep({
         user: userEmail,
         name: student.name,
         room: student.room,
@@ -417,15 +421,30 @@ export async function saveAndSyncStudentBothWays(
         delial: student.companyRegistration?.notes || '',
         timestamp: now.toLocaleString('th-TH'),
         lastSync: now.toISOString()
-      },
+      }),
+      { merge: true }
+    );
+
+    // 2b. Mirror updated room/companyName into /users/{userId}
+    batch.set(
+      doc(db, 'users', cleanUserId),
+      stripUndefinedDeep({
+        email: userEmail,
+        name: student.name,
+        room: student.room,
+        level: student.level,
+        companyName: student.companyName,
+        updatedAt: now.toISOString()
+      }),
       { merge: true }
     );
 
     await batch.commit();
-    result.firestoreResult = 'บันทึกลง Firebase Firestore (internship2-2569) สำเร็จ';
+    result.firestoreResult = 'บันทึกลงฐานข้อมูลออนไลน์ (Real-time) สำเร็จ';
   } catch (err) {
     console.warn('[SyncEngine] Firestore student save notice:', err);
-    result.firestoreResult = 'บันทึกใน Firestore ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err));
+    result.success = false;
+    result.firestoreResult = 'บันทึกในฐานข้อมูลออนไลน์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err));
   }
 
   // 3. Write directly to Google Sheet ID 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28 tab 'login'
@@ -649,7 +668,7 @@ export async function syncDerivedCompaniesToFirestore(
 
     for (const comp of derived) {
       ops.push((batch) => {
-        batch.set(doc(db, 'companies', comp.id), { ...comp, lastSyncAt: nowIso }, { merge: true });
+        batch.set(doc(db, 'companies', comp.id), stripUndefinedDeep({ ...comp, lastSyncAt: nowIso }), { merge: true });
       });
     }
 

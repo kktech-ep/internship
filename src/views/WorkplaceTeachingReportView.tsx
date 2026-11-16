@@ -27,9 +27,10 @@ import {
   ZoomOut,
   Search,
   UserCheck,
-  RotateCcw
+  RotateCcw,
+  Save
 } from 'lucide-react';
-import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow, SheetTeacher } from '../types';
+import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow, SheetTeacher, TeachingReportRecord } from '../types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo, getWeekDates } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { 
@@ -40,6 +41,8 @@ import {
   fetchDataSheetCourses,
   fetchPivotSheetCourses
 } from '../services/courseDataService';
+import { compressImageFile } from '../components/StudentAvatar';
+import { saveTeachingReportToFirestore, subscribeTeachingReports } from '../services/firestoreService';
 
 interface WorkplaceTeachingReportViewProps {
   currentUser?: AuthUser | null;
@@ -110,6 +113,15 @@ function formatThaiDateShort(dateStr: string): string {
   const month = THAI_MONTHS_SHORT[d.getMonth()];
   const yearBE = (d.getFullYear() + 543) % 100;
   return `${day} ${month} ${yearBE}`;
+}
+
+function toSafeTeachingReportId(reporterName: string, weekNumber: number): string {
+  const clean = (reporterName || 'teacher').trim();
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash << 5) - hash + clean.charCodeAt(i)) | 0;
+  }
+  return `tr-${Math.abs(hash).toString(36)}-w${weekNumber}`;
 }
 
 export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewProps> = ({
@@ -190,11 +202,42 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return weeksList.find(w => w.weekNumber === selectedWeek) || weeksList[0];
   }, [weeksList, selectedWeek]);
 
-  // Course list state - dynamically loaded by teacher
+  // Course list state - dynamically loaded by teacher or Firestore real-time teaching_reports
   const [courses, setCourses] = useState<TeachingCourseItem[]>([]);
+  const [remoteReportsMap, setRemoteReportsMap] = useState<Record<string, TeachingReportRecord>>({});
+  const [reportSaveStatus, setReportSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [reportSaveError, setReportSaveError] = useState<string | null>(null);
+  const lastAppliedRemoteTsRef = useRef<Record<string, string>>({});
+  const skipNextAutoSaveRef = useRef<boolean>(false);
+  const hasInitializedRef = useRef<boolean>(false);
 
-  // Reload teacher courses whenever selected teacher changes
+  const reportDocId = useMemo(
+    () => toSafeTeachingReportId(reporterName, selectedWeek),
+    [reporterName, selectedWeek]
+  );
+
+  // Real-time subscription to /teaching_reports
   useEffect(() => {
+    const unsub = subscribeTeachingReports(
+      (reports) => {
+        const map: Record<string, TeachingReportRecord> = {};
+        reports.forEach((r) => {
+          if (r && r.id) map[r.id] = r;
+        });
+        setRemoteReportsMap(map);
+      },
+      (err) => console.warn('Teaching reports realtime stream note:', err)
+    );
+    return () => unsub();
+  }, []);
+
+  // Reload teacher courses whenever selected teacher changes (unless overridden by saved Firestore report)
+  useEffect(() => {
+    const savedRemote = remoteReportsMap[reportDocId];
+    if (savedRemote && savedRemote.courses && savedRemote.courses.length > 0) {
+      return;
+    }
+
     const rawCourses = getCoursesByTeacher(
       reporterName,
       propCourses && propCourses.length > 0 ? propCourses : undefined
@@ -221,9 +264,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         teachTime: idx === 0 ? '15.00-17.00' : '14.00-19.00'
       }));
 
+      skipNextAutoSaveRef.current = true;
       setCourses(items);
     } else {
       // Fallback default courses for นายทักษิณ โสภาปิยะ
+      skipNextAutoSaveRef.current = true;
       setCourses([
         {
           id: 'crs-1',
@@ -243,7 +288,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         }
       ]);
     }
-  }, [reporterName]);
+  }, [reporterName, reportDocId]);
 
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncMsg, setCourseSyncMsg] = useState<string | null>(null);
@@ -463,8 +508,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     'มีความรู้เกี่ยวกับกิจกรรมในสถานประกอบการตามหลักการและกระบวนการ'
   );
 
-  // Auto-summarize from database whenever selected week or teacher changes
+  // Auto-summarize from database whenever selected week or teacher changes (respects saved Firestore report)
   useEffect(() => {
+    if (remoteReportsMap[reportDocId]?.learningOutcome) {
+      return;
+    }
+
     // 1. Check if Form 3 records exist for this week
     const weekRecords = form3List.filter(r => {
       if (!r.teacherName?.includes(reporterName.replace(/^(นาย|นางสาว|นาง)\s*/, ''))) {
@@ -477,6 +526,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
     if (f3WithComments && f3WithComments.teacherComment) {
       const trimmed = f3WithComments.teacherComment.trim();
+      skipNextAutoSaveRef.current = true;
       setLearningOutcome(`นักศึกษาปฏิบัติงานได้อย่างถูกต้อง ปลอดภัย มีความรู้ความเข้าใจในกระบวนการทำงาน ${trimmed}`);
       return;
     }
@@ -486,18 +536,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     const weekSubs = allSubs.filter(s => s.weekNumber === selectedWeek);
     if (weekSubs.length > 0 && weekSubs[0].dailyLogs && weekSubs[0].dailyLogs.length > 0) {
       const topLog = weekSubs[0].dailyLogs[0].taskDescription;
+      skipNextAutoSaveRef.current = true;
       setLearningOutcome(`นักศึกษามีความรู้และทักษะเกี่ยวกับ ${topLog.slice(0, 70)} ตามมาตรฐานวิชาชีพ`);
       return;
     }
 
     // 3. Week meta default
     const meta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek);
+    skipNextAutoSaveRef.current = true;
     if (meta) {
       setLearningOutcome(`มีความรู้เกี่ยวกับ${meta.title}ในสถานประกอบการตามหลักการและกระบวนการ`);
     } else {
       setLearningOutcome('มีความรู้เกี่ยวกับกิจกรรมในสถานประกอบการตามหลักการและกระบวนการ');
     }
-  }, [selectedWeek, reporterName, form3List, submissions]);
+  }, [selectedWeek, reporterName, form3List, submissions, reportDocId, remoteReportsMap]);
 
   // -------------------------------------------------------------
   // Dynamic Photo Generator for Page 2 (2x3 Grid)
@@ -777,8 +829,81 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevPhotoContextRef = useRef<{ selectedWeek: number; reporterName: string }>({ selectedWeek, reporterName });
 
+  // Apply incoming real-time report from Firestore when teacher/week changes or updates remotely
+  useEffect(() => {
+    const remote = remoteReportsMap[reportDocId];
+    if (!remote) return;
+    if (lastAppliedRemoteTsRef.current[reportDocId] === remote.updatedAt) return;
+
+    lastAppliedRemoteTsRef.current[reportDocId] = remote.updatedAt;
+    skipNextAutoSaveRef.current = true;
+    if (remote.position) setPosition(remote.position);
+    if (remote.specialDuty !== undefined) setSpecialDuty(remote.specialDuty);
+    if (remote.reportDate) setReportDate(remote.reportDate);
+    if (remote.courses && remote.courses.length > 0) setCourses(remote.courses);
+    if (remote.learningOutcome) setLearningOutcome(remote.learningOutcome);
+    if (remote.hasManualPhotoEdits && remote.weekPhotos && remote.weekPhotos.length > 0) {
+      setHasManualPhotoEdits(true);
+      setWeekPhotos(remote.weekPhotos);
+    }
+    setReportSaveStatus('saved');
+  }, [reportDocId, remoteReportsMap]);
+
+  // Helper to persist current teaching report immediately to online Firestore
+  const saveTeachingReportNow = async () => {
+    if (courses.length === 0) return;
+    const nowIso = new Date().toISOString();
+    lastAppliedRemoteTsRef.current[reportDocId] = nowIso;
+    setReportSaveStatus('saving');
+    setReportSaveError(null);
+    try {
+      const payload: TeachingReportRecord = {
+        id: reportDocId,
+        teacherKey: reporterName.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim(),
+        reporterName,
+        position,
+        specialDuty,
+        reportDate,
+        weekNumber: selectedWeek,
+        courses,
+        learningOutcome,
+        ...(hasManualPhotoEdits ? { weekPhotos, hasManualPhotoEdits: true } : { hasManualPhotoEdits: false }),
+        updatedAt: nowIso,
+      };
+      await saveTeachingReportToFirestore(payload);
+      setReportSaveStatus('saved');
+    } catch (err) {
+      console.error('Error saving teaching report to Firestore:', err);
+      setReportSaveStatus('error');
+      setReportSaveError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Auto-save edits to Firestore immediately after brief debounce
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      return;
+    }
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+    if (courses.length === 0) return;
+
+    const timer = setTimeout(() => {
+      saveTeachingReportNow();
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [courses, position, specialDuty, reportDate, learningOutcome, weekPhotos, hasManualPhotoEdits]);
+
   // Auto-populate when selectedWeek, reporterName, courses, or data change (unless user manually picked photos for this week/teacher)
   useEffect(() => {
+    const remote = remoteReportsMap[reportDocId];
+    if (remote?.hasManualPhotoEdits && remote.weekPhotos && remote.weekPhotos.length > 0) {
+      return;
+    }
+
     const contextChanged =
       prevPhotoContextRef.current.selectedWeek !== selectedWeek ||
       prevPhotoContextRef.current.reporterName !== reporterName;
@@ -797,9 +922,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         submissions,
         students
       );
+      skipNextAutoSaveRef.current = true;
       setWeekPhotos(list);
     }
-  }, [selectedWeek, reporterName, courses, form3List, submissions, students, hasManualPhotoEdits]);
+  }, [selectedWeek, reporterName, courses, form3List, submissions, students, hasManualPhotoEdits, reportDocId, remoteReportsMap]);
 
   // Complete Database Library: ALL supervision photos from ALL teachers & ALL companies
   const allDbSupervisionPhotos = useMemo<GalleryPhotoItem[]>(() => {
@@ -1014,16 +1140,23 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     });
   };
 
-  // Handler for uploading local image file as Data URL
-  const handleFileUpload = (index: number, file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        handleUpdatePhotoUrl(index, result);
+  // Handler for uploading local image file as compressed Data URL (safe for Firestore 1MB doc limit)
+  const handleFileUpload = async (index: number, file: File) => {
+    try {
+      const compressed = await compressImageFile(file, 640, 0.68);
+      if (compressed) {
+        handleUpdatePhotoUrl(index, compressed);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (result) {
+          handleUpdatePhotoUrl(index, result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Loading states for PDF buttons & Preview modal
@@ -1721,6 +1854,26 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
             <button
+              type="button"
+              onClick={saveTeachingReportNow}
+              disabled={reportSaveStatus === 'saving'}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm shadow-2xs transition cursor-pointer disabled:opacity-60"
+              title="บันทึกข้อมูลรายงานการสอนและรายวิชาลงฐานข้อมูลออนไลน์ทันที"
+            >
+              {reportSaveStatus === 'saving' ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+              ) : (
+                <Save className="w-4 h-4 text-emerald-700" />
+              )}
+              <span>
+                {reportSaveStatus === 'saving'
+                  ? 'กำลังบันทึก...'
+                  : reportSaveStatus === 'saved'
+                  ? 'บันทึกออนไลน์แล้ว (Real-time)'
+                  : 'บันทึกลงฐานข้อมูลออนไลน์'}
+              </span>
+            </button>
+            <button
               onClick={() => handleOpenPrintPreview('all')}
               className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg transition cursor-pointer"
               title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
@@ -1729,6 +1882,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
             </button>
           </div>
+          {reportSaveError && (
+            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">
+              ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: {reportSaveError}
+            </div>
+          )}
         </div>
 
         {/* Inputs Form Grid */}

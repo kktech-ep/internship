@@ -22,6 +22,7 @@ import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { saveSubmissionToFirestore } from '../services/firestoreService';
 import {
   writeSubmissionToLocalCache,
+  markSubmissionSyncedToCloud,
 } from '../utils/submissionUtils';
 
 interface WeeklyLogReportViewProps {
@@ -107,7 +108,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const maxDim = 800;
+          const maxDim = 640;
 
           if (width > height && width > maxDim) {
             height = Math.round((height * maxDim) / width);
@@ -122,7 +123,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.75);
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.65);
 
             setPhotos(prev => [
               ...prev,
@@ -192,7 +193,9 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
       mentorPosition: 'วิศวกรไฟฟ้า / พี่เลี้ยง',
       teacherScore: isAlreadyGraded ? (existingSubmission?.teacherScore ?? 0) : 0,
       teacherGrade: isAlreadyGraded ? (existingSubmission?.teacherGrade ?? '') : '',
-      teacherComment: isAlreadyGraded ? existingSubmission?.teacherComment : undefined,
+      ...(isAlreadyGraded && existingSubmission?.teacherComment
+        ? { teacherComment: existingSubmission.teacherComment }
+        : {}),
       teacherName: student.supervisorTeacher || 'นายทักษิณ โสภาปิยะ',
       studentSignature: student.name.replace(/^(นาย|นางสาว)\s*/, ''),
       mentorSignature: (student.companyRegistration?.mentorName || 'ชาญชัย มงคลศรี').replace(/^(นาย|นางสาว|นาง|ช่าง)\s*/, ''),
@@ -209,12 +212,13 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
 
     try {
       await saveSubmissionToFirestore(newSubmission);
+      markSubmissionSyncedToCloud(newSubmission.id);
       setIsSaving(false);
-      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลงฐานข้อมูลและเชื่อมโยงเอกสาร ทว.04 เรียบร้อยแล้ว!`);
+      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลงฐานข้อมูลออนไลน์ (Real-time) และเชื่อมโยงเอกสาร ทว.04 เรียบร้อยแล้ว!`);
     } catch (err) {
       console.error('Error saving submission to Firestore:', err);
       setIsSaving(false);
-      setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} ลงเครื่องและเชื่อมโยงเอกสาร ทว.04 แล้ว (รอซิงค์คลาวด์อัตโนมัติ)`);
+      setErrorMessage('ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ในขณะนี้: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 

@@ -22,7 +22,7 @@ interface Form2WeeklyReportModalProps {
   student: Student;
   currentWeek: number;
   submissions?: WeeklySubmission[];
-  onSubmit: (submission: Partial<WeeklySubmission>) => void;
+  onSubmit: (submission: Partial<WeeklySubmission>) => Promise<void> | void;
   onNavigateA4?: (weekNum: number) => void;
 }
 
@@ -47,6 +47,8 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   });
 
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
@@ -105,7 +107,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const maxDim = 800;
+          const maxDim = 640;
 
           if (width > height && width > maxDim) {
             height = Math.round((height * maxDim) / width);
@@ -120,7 +122,7 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.75);
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.65);
 
             setPhotos(prev => [
               ...prev,
@@ -153,31 +155,39 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
     setDailyTasks(updated);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError(null);
     const totalWeeklyHours = dailyTasks.reduce((sum, d) => sum + (Number(d.hours) || 0), 0) || 40.0;
-    onSubmit({
-      weekNumber: selectedWeek,
-      dateRange: currentWeekMeta.dateRange,
-      taskTitle,
-      dailyLogs: dailyTasks,
-      totalHours: totalWeeklyHours,
-      safetyChecklist,
-      photos,
-      status: 'pending',
-      submittedAt: new Date().toLocaleDateString('th-TH', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      }) + ' ' + new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
-    });
+    try {
+      await onSubmit({
+        weekNumber: selectedWeek,
+        dateRange: currentWeekMeta.dateRange,
+        taskTitle,
+        dailyLogs: dailyTasks,
+        totalHours: totalWeeklyHours,
+        safetyChecklist,
+        photos,
+        status: 'pending',
+        submittedAt: new Date().toLocaleDateString('th-TH', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        }) + ' ' + new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
+      });
 
-    setIsSuccess(true);
-    if (!onNavigateA4) {
-      setTimeout(() => {
-        setIsSuccess(false);
-        onClose();
-      }, 1400);
+      setIsSuccess(true);
+      if (!onNavigateA4) {
+        setTimeout(() => {
+          setIsSuccess(false);
+          onClose();
+        }, 1400);
+      }
+    } catch (err) {
+      setSubmitError('บันทึกลงฐานข้อมูลออนไลน์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -424,26 +434,35 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
               </div>
             </div>
 
+            {/* Error Notice */}
+            {submitError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+                {submitError}
+              </div>
+            )}
+
             {/* Bottom Actions */}
             <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
               <span className="text-[11px] text-slate-500 flex items-center gap-1">
                 <Database className="w-3.5 h-3.5 text-amber-600" />
-                <span>ซิงค์ตรงเข้า Firebase Firestore (internship2-2569)</span>
+                <span>บันทึกออนไลน์และแสดงผลเรียลไทม์</span>
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition disabled:opacity-60"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium shadow-sm transition inline-flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-medium shadow-sm transition inline-flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>บันทึกลง Firestore (สัปดาห์ที่ {selectedWeek})</span>
+                  <span>{isSubmitting ? 'กำลังบันทึก...' : `บันทึกรายงาน (สัปดาห์ที่ ${selectedWeek})`}</span>
                 </button>
               </div>
             </div>

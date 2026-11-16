@@ -39,11 +39,12 @@ import {
   appendForm3ToGoogleSheet,
   appendBatchForm3ToGoogleSheet, 
   GOOGLE_SHEET_CONFIG,
-  getLocalForm3Rows 
+  getLocalForm3Rows,
+  clearForm3PendingIds
 } from '../../services/googleSheetsService';
-import { saveForm3SupervisionToFirestore } from '../../services/firestoreService';
+import { saveForm3SupervisionsBatchToFirestore } from '../../services/firestoreService';
 import { getCachedAccessToken } from '../../services/authService';
-import { normalizeStudentAcademicInfo } from '../../utils/dataUnifier';
+import { normalizeCompanyNameKey, normalizeStudentAcademicInfo } from '../../utils/dataUnifier';
 
 interface Form3SupervisionModalProps {
   isOpen: boolean;
@@ -135,19 +136,20 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
     return list;
   }, [students]);
 
-  // Group all students by Company from login sheet (ตาราง Company)
+  // Group all students strictly by exact Company from login sheet (แยกแต่ละแห่งตาม Google Sheet ไม่โยงรวมกัน)
   const companyGroups = useMemo(() => {
-    const map = new Map<string, Student[]>();
+    const map = new Map<string, { displayName: string; students: Student[] }>();
     allStudents.forEach(std => {
-      const compName = (std.companyName || '').trim() || 'ยังไม่ระบุสถานประกอบการ';
-      if (!map.has(compName)) {
-        map.set(compName, []);
+      const compName = (std.companyName || '').replace(/\s+/g, ' ').trim() || 'ยังไม่ระบุสถานประกอบการ';
+      const compKey = normalizeCompanyNameKey(compName);
+      if (!map.has(compKey)) {
+        map.set(compKey, { displayName: compName, students: [] });
       }
-      map.get(compName)!.push(std);
+      map.get(compKey)!.students.push(std);
     });
 
-    return Array.from(map.entries())
-      .map(([name, stdList]) => ({
+    return Array.from(map.values())
+      .map(({ displayName: name, students: stdList }) => ({
         name,
         students: stdList,
         count: stdList.length,
@@ -212,7 +214,8 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
   // Students in currently active company
   const currentCompanyStudents = useMemo(() => {
     if (!activeCompanyName) return [];
-    const group = companyGroups.find(c => c.name === activeCompanyName);
+    const activeKey = normalizeCompanyNameKey(activeCompanyName);
+    const group = companyGroups.find(c => normalizeCompanyNameKey(c.name) === activeKey);
     return group ? group.students : [];
   }, [companyGroups, activeCompanyName]);
 
@@ -484,7 +487,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxDim = 720; // Safe size for Firestore 1MB doc limit & sheets
+        const maxDim = 640; // Safe size for Firestore 1MB doc limit & sheets
         let { width, height } = img;
         if (width > height) {
           if (width > maxDim) {
@@ -502,7 +505,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.72);
+          const compressed = canvas.toDataURL('image/jpeg', 0.65);
           setPhotos(prev => ({
             ...prev,
             [slotNumber]: {
@@ -604,19 +607,13 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
     }));
 
     try {
-      // 1. Save all records in batch to Google Sheets Form_3 tab & Local Storage
-      const token = getCachedAccessToken();
-      const sheetResult = await appendBatchForm3ToGoogleSheet(recordsToSave, token);
-      setSheetSyncStatus(sheetResult.message);
+      // 1. Save immediately and atomically to online Firebase Firestore first for real-time visibility
+      await saveForm3SupervisionsBatchToFirestore(recordsToSave);
+      clearForm3PendingIds(recordsToSave.map((r) => r.id));
 
-      // 2. Save each record to Firebase Firestore collection /form3_supervisions/{recordId}
-      for (const rec of recordsToSave) {
-        await saveForm3SupervisionToFirestore(rec);
-      }
-
-      // 3. Trigger parent callback to update student weekly submissions
+      // 2. Trigger parent callback immediately to update student weekly submissions & /companies
       if (onSaveEvaluation) {
-        onSaveEvaluation({
+        await onSaveEvaluation({
           studentIds: recordsToSave.map(r => r.studentId),
           studentId: recordsToSave[0]?.studentId,
           score: score,
@@ -630,11 +627,20 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
         });
       }
 
+      // 3. Also sync to Google Sheets Form_3 tab & Local Storage
+      const token = getCachedAccessToken();
+      try {
+        const sheetResult = await appendBatchForm3ToGoogleSheet(recordsToSave, token);
+        clearForm3PendingIds(recordsToSave.map((r) => r.id));
+        setSheetSyncStatus(`บันทึกลงฐานข้อมูลออนไลน์ (Real-time) แล้ว • ${sheetResult.message}`);
+      } catch {
+        setSheetSyncStatus(`บันทึกข้อมูลนักศึกษา ${recordsToSave.length} คน ลงฐานข้อมูลออนไลน์ (Real-time) เรียบร้อยแล้ว`);
+      }
+
       setSavedRecords(recordsToSave);
     } catch (err) {
       console.error('Error saving Form 3 supervision batch:', err);
-      setSheetSyncStatus(`บันทึกข้อมูลนักศึกษา ${recordsToSave.length} คน เรียบร้อยในระบบออฟไลน์`);
-      setSavedRecords(recordsToSave);
+      setSheetSyncStatus(`ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -6,10 +6,11 @@ import {
   getDocs,
   onSnapshot,
   query,
-  limit
+  limit,
+  writeBatch
 } from 'firebase/firestore';
-import { db, OperationType, handleFirestoreError } from '../firebase';
-import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow, SheetTeacher } from '../types';
+import { db, OperationType, handleFirestoreError, stripUndefinedDeep } from '../firebase';
+import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow, SheetTeacher, TeachingReportRecord } from '../types';
 import { getAllLoginSheetStudents } from './sheetAuthService';
 import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
 
@@ -21,6 +22,7 @@ export const COLLECTIONS = {
   FORM3_SUPERVISIONS: 'form3_supervisions',
   COURSES: 'courses',
   TEACHERS: 'teachers',
+  TEACHING_REPORTS: 'teaching_reports',
 } as const;
 
 /**
@@ -101,7 +103,7 @@ export function subscribeSubmissions(
 export async function saveStudentToFirestore(student: Student): Promise<void> {
   const path = `${COLLECTIONS.STUDENTS}/${student.id}`;
   try {
-    await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), student, { merge: true });
+    await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), stripUndefinedDeep(student), { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -113,7 +115,7 @@ export async function saveStudentToFirestore(student: Student): Promise<void> {
 export async function saveCompanyToFirestore(company: Company): Promise<void> {
   const path = `${COLLECTIONS.COMPANIES}/${company.id}`;
   try {
-    await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company, { merge: true });
+    await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), stripUndefinedDeep(company), { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -125,7 +127,36 @@ export async function saveCompanyToFirestore(company: Company): Promise<void> {
 export async function saveSubmissionToFirestore(submission: WeeklySubmission): Promise<void> {
   const path = `${COLLECTIONS.SUBMISSIONS}/${submission.id}`;
   try {
-    await setDoc(doc(db, COLLECTIONS.SUBMISSIONS, submission.id), submission, { merge: true });
+    await setDoc(
+      doc(db, COLLECTIONS.SUBMISSIONS, submission.id),
+      stripUndefinedDeep({ ...submission, updatedAt: new Date().toISOString() }),
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Save multiple weekly submissions atomically in Firestore
+ */
+export async function saveSubmissionsBatchToFirestore(submissions: WeeklySubmission[]): Promise<void> {
+  if (!submissions || submissions.length === 0) return;
+  const path = COLLECTIONS.SUBMISSIONS;
+  try {
+    const nowIso = new Date().toISOString();
+    const CHUNK = 400;
+    for (let i = 0; i < submissions.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      for (const sub of submissions.slice(i, i + CHUNK)) {
+        batch.set(
+          doc(db, COLLECTIONS.SUBMISSIONS, sub.id),
+          stripUndefinedDeep({ ...sub, updatedAt: nowIso }),
+          { merge: true }
+        );
+      }
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -214,11 +245,11 @@ export async function saveTeacherAvatarToFirestore(
   try {
     await setDoc(
       doc(db, COLLECTIONS.TEACHERS, teacher.id),
-      {
+      stripUndefinedDeep({
         ...teacher,
         avatarUrl,
         updatedAt: new Date().toISOString(),
-      },
+      }),
       { merge: true }
     );
   } catch (error) {
@@ -284,10 +315,78 @@ export async function seedFirestoreIfEmpty(
 export async function saveForm3SupervisionToFirestore(record: Form3SupervisionRecord): Promise<void> {
   const path = `${COLLECTIONS.FORM3_SUPERVISIONS}/${record.id}`;
   try {
-    await setDoc(doc(db, COLLECTIONS.FORM3_SUPERVISIONS, record.id), record, { merge: true });
+    await setDoc(
+      doc(db, COLLECTIONS.FORM3_SUPERVISIONS, record.id),
+      stripUndefinedDeep(record),
+      { merge: true }
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+/**
+ * Save a batch of Form_3 supervision records atomically and immediately to Firestore
+ */
+export async function saveForm3SupervisionsBatchToFirestore(records: Form3SupervisionRecord[]): Promise<void> {
+  if (!records || records.length === 0) return;
+  const path = COLLECTIONS.FORM3_SUPERVISIONS;
+  try {
+    const CHUNK = 200;
+    for (let i = 0; i < records.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      for (const rec of records.slice(i, i + CHUNK)) {
+        batch.set(
+          doc(db, COLLECTIONS.FORM3_SUPERVISIONS, rec.id),
+          stripUndefinedDeep(rec),
+          { merge: true }
+        );
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Save or update a teacher's weekly workplace teaching report in Firestore
+ */
+export async function saveTeachingReportToFirestore(report: TeachingReportRecord): Promise<void> {
+  const path = `${COLLECTIONS.TEACHING_REPORTS}/${report.id}`;
+  try {
+    await setDoc(
+      doc(db, COLLECTIONS.TEACHING_REPORTS, report.id),
+      stripUndefinedDeep({ ...report, updatedAt: report.updatedAt || new Date().toISOString() }),
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Listen for real-time changes to the Teaching Reports collection
+ */
+export function subscribeTeachingReports(
+  onData: (reports: TeachingReportRecord[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.TEACHING_REPORTS;
+  return onSnapshot(
+    collection(db, colPath),
+    (snapshot) => {
+      const items: TeachingReportRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as TeachingReportRecord);
+      });
+      onData(items);
+    },
+    (error) => {
+      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
+      if (onError) onError(error as Error);
+    }
+  );
 }
 
 /**

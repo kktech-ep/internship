@@ -117,10 +117,10 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
 
     if (syncRes && typeof syncRes === 'object' && 'sheetResult' in syncRes) {
       setSyncResultMsg(
-        `${syncRes.sheetResult} และเชื่อมต่อซิงค์กับ Firebase Firestore: internship2-2569 เรียบร้อยแล้ว`
+        `${syncRes.firestoreResult} • ${syncRes.sheetResult}`
       );
     } else {
-      setSyncResultMsg('บันทึกข้อมูลและเชื่อมต่อซิงค์กับ Google Sheets ⇋ Firebase Firestore: internship2-2569 เรียบร้อยแล้ว');
+      setSyncResultMsg('บันทึกข้อมูลลงฐานข้อมูลออนไลน์ (Real-time) เรียบร้อยแล้ว');
     }
 
     setIsSubmitting(false);

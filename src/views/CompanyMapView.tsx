@@ -71,31 +71,58 @@ function getSvgCoordinates(compName: string, index: number): { x: number; y: num
   const lower = compName.toLowerCase();
   
   if (lower.includes('เชียงยืน')) {
-    return { x: 580, y: 310, lat: 16.4021, lng: 103.1022, zone: 'อ.เชียงยืน' };
+    return { x: 580, y: 310, lat: 16.4021, lng: 103.1022, zone: 'อ.เชียงยืน จ.มหาสารคาม' };
   }
   if (lower.includes('บ้านฝาง')) {
     return { x: 300, y: 315, lat: 16.4522, lng: 102.6321, zone: 'อ.บ้านฝาง' };
   }
   if (lower.includes('ท่าคันโท')) {
-    return { x: 570, y: 140, lat: 16.9211, lng: 103.2422, zone: 'อ.ท่าคันโท' };
+    return { x: 570, y: 140, lat: 16.9211, lng: 103.2422, zone: 'อ.ท่าคันโท จ.กาฬสินธุ์' };
   }
   if (lower.includes('น้ำหนาว')) {
-    return { x: 120, y: 180, lat: 16.7821, lng: 101.7222, zone: 'อ.น้ำหนาว' };
+    return { x: 120, y: 180, lat: 16.7821, lng: 101.7222, zone: 'อ.น้ำหนาว จ.เพชรบูรณ์' };
   }
   if (lower.includes('บ้านไผ่')) {
     return { x: 430, y: 520, lat: 16.0592, lng: 102.7301, zone: 'อ.บ้านไผ่' };
   }
+  if (lower.includes('ภูกระดึง')) {
+    return { x: 150, y: 115, lat: 16.8852, lng: 101.8814, zone: 'อ.ภูกระดึง จ.เลย' };
+  }
+  if (lower.includes('ภูผาม่าน')) {
+    return { x: 110, y: 245, lat: 16.6584, lng: 101.9082, zone: 'อ.ภูผาม่าน' };
+  }
+  if (lower.includes('ภูเวียง')) {
+    return { x: 225, y: 235, lat: 16.6625, lng: 102.3851, zone: 'อ.ภูเวียง' };
+  }
   if (lower.includes('ภูเขียว')) {
-    return { x: 160, y: 260, lat: 16.3721, lng: 102.1322, zone: 'อ.ภูเขียว' };
+    return { x: 160, y: 280, lat: 16.3721, lng: 102.1322, zone: 'อ.ภูเขียว จ.ชัยภูมิ' };
   }
   if (lower.includes('หนองเรือ')) {
-    return { x: 250, y: 310, lat: 16.4921, lng: 102.4822, zone: 'อ.หนองเรือ' };
+    return { x: 255, y: 310, lat: 16.4921, lng: 102.4822, zone: 'อ.หนองเรือ' };
+  }
+  if (lower.includes('แวงน้อย')) {
+    return { x: 350, y: 565, lat: 15.8021, lng: 102.4234, zone: 'อ.แวงน้อย' };
   }
   if (lower.includes('น้ำพอง') || lower.includes('มิตรผล')) {
-    return { x: 460, y: 110, lat: 16.7112, lng: 102.8711, zone: 'อ.น้ำพอง' };
+    return { x: 460, y: 125, lat: 16.7112, lng: 102.8711, zone: 'อ.น้ำพอง' };
+  }
+  if (lower.includes('กระนวน')) {
+    return { x: 545, y: 195, lat: 16.7021, lng: 103.0782, zone: 'อ.กระนวน' };
   }
   if (lower.includes('ชุมแพ')) {
-    return { x: 180, y: 320, lat: 16.5411, lng: 102.1011, zone: 'อ.ชุมแพ' };
+    return { x: 185, y: 335, lat: 16.5411, lng: 102.1011, zone: 'อ.ชุมแพ' };
+  }
+  if (lower.includes('พระยืน')) {
+    return { x: 345, y: 410, lat: 16.3121, lng: 102.6512, zone: 'อ.พระยืน' };
+  }
+  if (lower.includes('อุบลรัตน์')) {
+    return { x: 310, y: 180, lat: 16.7511, lng: 102.6211, zone: 'อ.อุบลรัตน์' };
+  }
+  if (lower.includes('เขาสวนกวาง')) {
+    return { x: 465, y: 80, lat: 16.8521, lng: 102.8611, zone: 'อ.เขาสวนกวาง' };
+  }
+  if (lower.includes('อำเภอพล') || lower.includes('อ.พล') || lower.includes('เมืองพล')) {
+    return { x: 395, y: 560, lat: 15.8121, lng: 102.5922, zone: 'อ.เมืองพล' };
   }
   if (lower.includes('ท่าพระ') || lower.includes('230kv') || lower.includes('กฟผ.')) {
     return { x: 420, y: 470, lat: 16.3211, lng: 102.8011, zone: 'ต.ท่าพระ' };

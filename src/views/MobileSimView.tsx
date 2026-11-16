@@ -116,25 +116,37 @@ function getSvgCoordinates(compName: string, index: number): { x: number; y: num
   const lower = compName.toLowerCase();
   
   if (lower.includes('เชียงยืน')) {
-    return { x: 490, y: 280, lat: 16.4021, lng: 103.1022, zone: 'อ.เชียงยืน' };
+    return { x: 490, y: 280, lat: 16.4021, lng: 103.1022, zone: 'อ.เชียงยืน จ.มหาสารคาม' };
   }
   if (lower.includes('บ้านฝาง')) {
     return { x: 240, y: 280, lat: 16.4522, lng: 102.6321, zone: 'อ.บ้านฝาง' };
   }
   if (lower.includes('ท่าคันโท')) {
-    return { x: 490, y: 120, lat: 16.9211, lng: 103.2422, zone: 'อ.ท่าคันโท' };
+    return { x: 490, y: 120, lat: 16.9211, lng: 103.2422, zone: 'อ.ท่าคันโท จ.กาฬสินธุ์' };
   }
   if (lower.includes('น้ำหนาว')) {
-    return { x: 80, y: 160, lat: 16.7821, lng: 101.7222, zone: 'อ.น้ำหนาว' };
+    return { x: 80, y: 160, lat: 16.7821, lng: 101.7222, zone: 'อ.น้ำหนาว จ.เพชรบูรณ์' };
   }
   if (lower.includes('บ้านไผ่')) {
     return { x: 360, y: 460, lat: 16.0592, lng: 102.7301, zone: 'อ.บ้านไผ่' };
   }
+  if (lower.includes('ภูกระดึง')) {
+    return { x: 115, y: 95, lat: 16.8852, lng: 101.8814, zone: 'อ.ภูกระดึง จ.เลย' };
+  }
+  if (lower.includes('ภูผาม่าน')) {
+    return { x: 85, y: 205, lat: 16.6584, lng: 101.9082, zone: 'อ.ภูผาม่าน' };
+  }
+  if (lower.includes('ภูเวียง')) {
+    return { x: 175, y: 200, lat: 16.6625, lng: 102.3851, zone: 'อ.ภูเวียง' };
+  }
   if (lower.includes('ภูเขียว')) {
-    return { x: 110, y: 230, lat: 16.3721, lng: 102.1322, zone: 'อ.ภูเขียว' };
+    return { x: 110, y: 240, lat: 16.3721, lng: 102.1322, zone: 'อ.ภูเขียว จ.ชัยภูมิ' };
   }
   if (lower.includes('หนองเรือ')) {
     return { x: 190, y: 280, lat: 16.4921, lng: 102.4822, zone: 'อ.หนองเรือ' };
+  }
+  if (lower.includes('แวงน้อย')) {
+    return { x: 270, y: 500, lat: 15.8021, lng: 102.4234, zone: 'อ.แวงน้อย' };
   }
   if (lower.includes('น้ำพอง') || lower.includes('มิตรผล')) {
     return { x: 370, y: 130, lat: 16.7112, lng: 102.8711, zone: 'อ.น้ำพอง' };
@@ -154,7 +166,7 @@ function getSvgCoordinates(compName: string, index: number): { x: number; y: num
   if (lower.includes('เขาสวนกวาง')) {
     return { x: 390, y: 90, lat: 16.8521, lng: 102.8611, zone: 'อ.เขาสวนกวาง' };
   }
-  if (lower.includes('พล') || lower.includes('เมืองพล')) {
+  if (lower.includes('อำเภอพล') || lower.includes('อ.พล') || lower.includes('เมืองพล')) {
     return { x: 330, y: 510, lat: 15.8121, lng: 102.5922, zone: 'อ.เมืองพล' };
   }
   
