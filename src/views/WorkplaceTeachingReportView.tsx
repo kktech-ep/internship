@@ -2583,7 +2583,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               {reportSaveStatus === 'saving'
                 ? 'กำลังบันทึก...'
                 : reportSaveStatus === 'saved'
-                ? 'บันทึกออนไลน์แล้ว (Real-time)'
+                ? 'บันทึกรายงานการสอน'
                 : 'บันทึกลงฐานข้อมูลออนไลน์'}
             </span>
           </button>
