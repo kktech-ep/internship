@@ -11,12 +11,13 @@ import {
   Image as ImageIcon,
   Layers,
   Plus,
+  Printer,
   Search,
   Sparkles,
   User,
   Users,
-  ArrowLeft,
   AlertCircle,
+  X,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -31,6 +32,7 @@ import { getWeekDates, getCurrentWeekInfo } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { getAllTeachersFromData } from '../services/courseDataService';
 import { subscribeTeachingReports } from '../services/firestoreService';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 import {
   WorkplaceTeachingReportView,
   toSafeTeachingReportId,
@@ -142,7 +144,12 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
       },
       (err) => {
         setIsLoadingReports(false);
-        setLoadError(err.message || 'ไม่สามารถเชื่อมต่อฐานข้อมูลรายงานการสอนได้');
+        setLoadError(
+          formatThaiErrorMessage(
+            err,
+            'ไม่สามารถเชื่อมต่อฐานข้อมูลรายงานการสอนได้ในขณะนี้ กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง'
+          )
+        );
       }
     );
     return () => unsub();
@@ -195,25 +202,31 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
   );
   const [statusFilter, setStatusFilter] = useState<'all' | 'saved' | 'unsaved'>('all');
   const [weekSearch, setWeekSearch] = useState<string>('');
-  const [subMode, setSubMode] = useState<'overview' | 'editor'>('overview');
+  const [subMode, setSubMode] = useState<'overview' | 'editor'>('editor');
+  const [highlightedWeek, setHighlightedWeek] = useState<number | undefined>(() => initialHighlightWeek);
   const [editorState, setEditorState] = useState<{
     teacherName: string;
     weekNumber: number;
     openPreview: boolean;
+    autoPrint: boolean;
     sessionKey: number;
   }>(() => ({
     teacherName: initialTeacherFilter || defaultTeacher,
     weekNumber: initialHighlightWeek || currentWeekNumber,
     openPreview: false,
+    autoPrint: false,
     sessionKey: 0,
   }));
 
-  // Sync teacher filter when navigated immediately after saving a teaching report
+  // Sync teacher filter & highlighted week when navigated from saved report
   useEffect(() => {
     if (initialTeacherFilter) {
       setSelectedTeacherFilter(initialTeacherFilter);
     }
-  }, [initialTeacherFilter]);
+    if (typeof initialHighlightWeek === 'number') {
+      setHighlightedWeek(initialHighlightWeek);
+    }
+  }, [initialTeacherFilter, initialHighlightWeek]);
 
   // Keep default teacher aligned once user/teachers load if still at initial fallback
   useEffect(() => {
@@ -343,11 +356,17 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
     })[0];
   }, [selectedTeacherFilter, reports, singleTeacherRows]);
 
-  const openEditorForReport = (teacherName: string, weekNumber: number, openPreview: boolean) => {
+  const openEditorForReport = (
+    teacherName: string,
+    weekNumber: number,
+    openPreview: boolean,
+    autoPrint: boolean = false
+  ) => {
     setEditorState((prev) => ({
       teacherName,
       weekNumber,
       openPreview,
+      autoPrint,
       sessionKey: prev.sessionKey + 1,
     }));
     setSubMode('editor');
@@ -356,35 +375,52 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
     }
   };
 
-  // If in editor mode, render WorkplaceTeachingReportView with top navigation back to overview
-  if (subMode === 'editor') {
-    return (
-      <div className="space-y-4 font-['Prompt',sans-serif]">
-        {/* Top Breadcrumb Bar (Hidden when printing) */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 px-4 py-3 shadow-xs flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSubMode('overview')}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm transition cursor-pointer"
+  return (
+    <div className="space-y-5 pb-14 print:space-y-0 print:pb-0 font-['Prompt',sans-serif]">
+      {/* Unified Workspace Mode Switcher (Hidden when printing) */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="inline-flex flex-wrap p-1 bg-slate-100 rounded-xl text-xs sm:text-sm font-semibold gap-1">
+          <button
+            type="button"
+            onClick={() => setSubMode('editor')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
+              subMode === 'editor'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className={`w-4 h-4 ${subMode === 'editor' ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span>รายงานการจัดการเรียนรู้ในสถานประกอบการ (แบบฟอร์ม & เอกสาร A4)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubMode('overview')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
+              subMode === 'overview'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <BookOpen className={`w-4 h-4 ${subMode === 'overview' ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <span>สถานะการบันทึกรายสัปดาห์ (สัปดาห์ที่ 1–18)</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                subMode === 'overview'
+                  ? 'bg-indigo-100 text-indigo-800'
+                  : 'bg-slate-200 text-slate-700'
+              }`}
             >
-              <ArrowLeft className="w-4 h-4 text-slate-700" />
-              <span>กลับหน้ารายการสถานะรายสัปดาห์</span>
-            </button>
-            <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-slate-900">
-                รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                สัปดาห์ที่ {editorState.weekNumber}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-200">
-                {editorState.teacherName}
-              </span>
-            </div>
-          </div>
+              {savedCountForSelected}/18
+            </span>
+          </button>
         </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>บันทึกและเชื่อมโยงฐานข้อมูล Real-time</span>
+        </span>
+      </div>
 
+      {subMode === 'editor' ? (
         <WorkplaceTeachingReportView
           key={`editor-${editorState.sessionKey}`}
           currentUser={currentUser}
@@ -397,20 +433,22 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
           initialTeacherName={editorState.teacherName}
           initialWeek={editorState.weekNumber}
           initialOpenPreview={editorState.openPreview}
+          initialAutoPrint={editorState.autoPrint}
           onBackToOverview={() => setSubMode('overview')}
           onReportSaved={(saved) => {
             setReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
             onTeachingReportSaved?.(saved);
           }}
+          onNavigateToTeachingReports={(teacherName, weekNumber) => {
+            setSelectedTeacherFilter(teacherName);
+            setHighlightedWeek(weekNumber);
+            setSubMode('overview');
+          }}
         />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 pb-14 font-['Prompt',sans-serif]">
-      {/* Page Header Card */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm space-y-4">
+      ) : (
+        <div className="space-y-6">
+          {/* Page Header Card */}
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
@@ -513,9 +551,21 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
       </div>
 
       {loadError && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex items-center gap-2.5 text-sm">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          <span>{loadError}</span>
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex items-center justify-between gap-3 text-sm shadow-2xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="font-medium">
+              <strong>แจ้งเตือนระบบฐานข้อมูล:</strong> {loadError}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLoadError(null)}
+            className="p-1 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-100 transition cursor-pointer shrink-0"
+            title="ปิดการแจ้งเตือน"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -577,6 +627,31 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
           <div className="w-11 h-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
             <Calendar className="w-6 h-6" />
           </div>
+        </div>
+      </div>
+
+      {/* Visual Progress Bar (Weeks 1-18) */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm sm:text-base text-slate-900">
+              ความก้าวหน้าการบันทึกรายงานการสอนรายสัปดาห์ (สัปดาห์ที่ 1–18)
+            </span>
+            <span className="text-xs font-semibold text-slate-500">
+              — {activeTeacherForStats}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+              {savedCountForSelected} / 18 สัปดาห์ ({Math.round((savedCountForSelected / 18) * 100)}%)
+            </span>
+          </div>
+        </div>
+        <div className="h-3 w-full rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 transition-all duration-500"
+            style={{ width: `${Math.round((savedCountForSelected / 18) * 100)}%` }}
+          />
         </div>
       </div>
 
@@ -671,8 +746,8 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                 const isCurr = row.weekNumber === currentWeekNumber;
                 const isJustSaved =
                   Boolean(row.isSaved) &&
-                  typeof initialHighlightWeek === 'number' &&
-                  row.weekNumber === initialHighlightWeek;
+                  typeof highlightedWeek === 'number' &&
+                  row.weekNumber === highlightedWeek;
                 const photosCount =
                   rep?.photoCount ??
                   rep?.weekPhotos?.filter((p) => Boolean(p.url)).length ??
@@ -797,10 +872,10 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                           <button
                             type="button"
                             onClick={() =>
-                              openEditorForReport(selectedTeacherFilter, row.weekNumber, true)
+                              openEditorForReport(selectedTeacherFilter, row.weekNumber, true, false)
                             }
                             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs sm:text-sm transition cursor-pointer"
-                            title="เปิดดูเอกสารบันทึกข้อความและรายงาน 3 หน้า A4 พร้อมสั่งพิมพ์/ดาวน์โหลด PDF"
+                            title="เปิดดูเอกสารบันทึกข้อความและรายงาน 3 หน้า A4"
                           >
                             <Eye className="w-4 h-4 text-indigo-600" />
                             <span>เรียกดูเอกสาร</span>
@@ -808,13 +883,24 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                           <button
                             type="button"
                             onClick={() =>
-                              openEditorForReport(selectedTeacherFilter, row.weekNumber, false)
+                              openEditorForReport(selectedTeacherFilter, row.weekNumber, false, false)
                             }
                             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-xs transition cursor-pointer"
                             title="แก้ไขข้อมูลรายวิชา ผลการจัดการเรียนรู้ หรือรูปภาพในรายงานสัปดาห์นี้"
                           >
                             <Edit3 className="w-4 h-4" />
                             <span>แก้ไขเอกสาร</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openEditorForReport(selectedTeacherFilter, row.weekNumber, true, true)
+                            }
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-xs transition cursor-pointer"
+                            title="เปิดและสั่งพิมพ์เอกสารรายงานการสอนสัปดาห์นี้ทันที"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span>สั่งพิมพ์</span>
                           </button>
                         </>
                       ) : (
@@ -977,7 +1063,7 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                       <button
                         type="button"
                         onClick={() =>
-                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), true)
+                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), true, false)
                         }
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs transition cursor-pointer"
                       >
@@ -987,12 +1073,23 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                       <button
                         type="button"
                         onClick={() =>
-                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), false)
+                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), false, false)
                         }
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer"
                       >
                         <Edit3 className="w-4 h-4" />
                         <span>แก้ไขเอกสาร</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), true, true)
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
+                        title="เปิดและสั่งพิมพ์เอกสารรายงานการสอนฉบับนี้"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>สั่งพิมพ์</span>
                       </button>
                     </div>
                   </div>
@@ -1000,6 +1097,8 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
               )}
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>

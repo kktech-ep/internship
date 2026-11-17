@@ -28,7 +28,8 @@ import {
   Search,
   UserCheck,
   RotateCcw,
-  Save
+  Save,
+  AlertCircle
 } from 'lucide-react';
 import { AuthUser, Student, Form3SupervisionRecord, WeeklySubmission, CourseDataRow, SheetTeacher, TeachingReportRecord } from '../types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo, getWeekDates } from '../data/weeksData';
@@ -43,6 +44,7 @@ import {
 } from '../services/courseDataService';
 import { compressImageFile } from '../components/StudentAvatar';
 import { saveTeachingReportToFirestore, subscribeTeachingReports } from '../services/firestoreService';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
 interface WorkplaceTeachingReportViewProps {
   currentUser?: AuthUser | null;
@@ -55,6 +57,7 @@ interface WorkplaceTeachingReportViewProps {
   initialTeacherName?: string;
   initialWeek?: number;
   initialOpenPreview?: boolean;
+  initialAutoPrint?: boolean;
   onBackToOverview?: () => void;
   onReportSaved?: (report: TeachingReportRecord) => void;
   onNavigateToTeachingReports?: (teacherName: string, weekNumber: number) => void;
@@ -142,6 +145,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   initialTeacherName,
   initialWeek,
   initialOpenPreview,
+  initialAutoPrint,
   onBackToOverview,
   onReportSaved,
   onNavigateToTeachingReports,
@@ -254,6 +258,32 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     () => toSafeTeachingReportId(reporterName, selectedWeek),
     [reporterName, selectedWeek]
   );
+
+  // Track which weeks (1-18) have been saved in Firestore for the selected teacher
+  const savedWeekNumbersSet = useMemo(() => {
+    const cleanTarget = (reporterName || '')
+      .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+      .trim()
+      .toLowerCase();
+    const set = new Set<number>();
+    for (let w = 1; w <= 18; w++) {
+      const id = toSafeTeachingReportId(reporterName, w);
+      if (remoteReportsMap[id]) {
+        set.add(w);
+      }
+    }
+    Object.values(remoteReportsMap).forEach((rec) => {
+      if (!rec) return;
+      const recTeacher = (rec.reporterName || rec.teacherKey || '')
+        .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+        .trim()
+        .toLowerCase();
+      if (recTeacher && cleanTarget && recTeacher === cleanTarget && rec.weekNumber >= 1 && rec.weekNumber <= 18) {
+        set.add(Number(rec.weekNumber));
+      }
+    });
+    return set;
+  }, [remoteReportsMap, reporterName]);
 
   // Sync from parent propTeachingReports if provided
   useEffect(() => {
@@ -451,7 +481,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       setCourseSyncMsg('อัปเดตและซิงค์ข้อมูลรายวิชาจาก Google Sheets (data & ตาราง Pivot 1) เรียบร้อย');
       setTimeout(() => setCourseSyncMsg(null), 5000);
     } catch (e: any) {
-      setCourseSyncMsg('ซิงค์ข้อมูลไม่สำเร็จ: ' + (e.message || String(e)));
+      setCourseSyncMsg(
+        'ซิงค์ข้อมูลไม่สำเร็จ: ' +
+          formatThaiErrorMessage(e, 'ไม่สามารถดึงข้อมูลรายวิชาจาก Google Sheets ได้ กรุณาลองใหม่อีกครั้ง')
+      );
       setTimeout(() => setCourseSyncMsg(null), 5000);
     } finally {
       setIsSyncingCourses(false);
@@ -917,26 +950,55 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Helper to persist current teaching report immediately to online Firestore
   const saveTeachingReportNow = async (isManualClick: boolean = false) => {
-    if (courses.length === 0) return;
-    const nowIso = new Date().toISOString();
-    lastAppliedContextRef.current = { docId: reportDocId, updatedAt: nowIso };
+    if (courses.length === 0) {
+      if (isManualClick) {
+        setReportSaveStatus('error');
+        setReportSaveError('กรุณาเพิ่มรายวิชาอย่างน้อย 1 รายวิชา ก่อนบันทึกลงฐานข้อมูล');
+      }
+      return;
+    }
+    const nowIso = new Date().toISOString().slice(0, 100);
+    const safeReporterName = (reporterName || 'ครูนิเทศก์').trim().slice(0, 150) || 'ครูนิเทศก์';
+    const strippedTeacherKey = safeReporterName
+      .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+      .trim();
+    const safeTeacherKey = (strippedTeacherKey || safeReporterName).slice(0, 150);
+    const safeWeekNumber = Math.min(18, Math.max(1, Math.round(Number(selectedWeek) || 1)));
+    const safeDocId = toSafeTeachingReportId(safeReporterName, safeWeekNumber).slice(0, 128);
+
+    lastAppliedContextRef.current = { docId: safeDocId, updatedAt: nowIso };
     hasPendingUserEditRef.current = false;
     setReportSaveStatus('saving');
     setReportSaveError(null);
     try {
-      const activePhotosCount = weekPhotos.filter((p) => Boolean(p.url)).length;
+      const trimmedPhotos = weekPhotos.slice(0, 6);
+      const activePhotosCount = Math.min(
+        10,
+        Math.max(0, trimmedPhotos.filter((p) => Boolean(p?.url)).length)
+      );
+      const sanitizedCourses = courses.slice(0, 30).map((c, idx) => ({
+        id: String(c.id || `crs-${idx + 1}`),
+        subjectCode: String(c.subjectCode || '').trim(),
+        subjectName: String(c.subjectName || '').trim(),
+        room: String(c.room || '').trim(),
+        teachDate: String(c.teachDate || '').trim(),
+        teachTime: String(c.teachTime || '').trim(),
+      }));
+
       const payload: TeachingReportRecord = {
-        id: reportDocId,
-        teacherKey: reporterName.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim(),
-        reporterName,
-        position,
-        specialDuty,
-        reportDate,
-        weekNumber: selectedWeek,
-        courses,
-        learningOutcome,
+        id: safeDocId,
+        teacherKey: safeTeacherKey,
+        reporterName: safeReporterName,
+        position: String(position || '').trim().slice(0, 150),
+        specialDuty: String(specialDuty || '-').trim().slice(0, 200),
+        reportDate: String(reportDate || '').trim().slice(0, 50),
+        weekNumber: safeWeekNumber,
+        courses: sanitizedCourses,
+        learningOutcome: String(learningOutcome || '').trim().slice(0, 2000),
         photoCount: activePhotosCount,
-        ...(hasManualPhotoEdits ? { weekPhotos, hasManualPhotoEdits: true } : { hasManualPhotoEdits: false }),
+        ...(hasManualPhotoEdits
+          ? { weekPhotos: trimmedPhotos, hasManualPhotoEdits: true }
+          : { hasManualPhotoEdits: false }),
         updatedAt: nowIso,
       };
       await saveTeachingReportToFirestore(payload);
@@ -945,15 +1007,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       setReportSaveStatus('saved');
       if (isManualClick) {
         setSavedLinkBanner({
-          teacherName: reporterName,
-          weekNumber: selectedWeek,
+          teacherName: safeReporterName,
+          weekNumber: safeWeekNumber,
           savedAt: nowIso,
         });
       }
     } catch (err) {
       console.error('Error saving teaching report to Firestore:', err);
       setReportSaveStatus('error');
-      setReportSaveError(err instanceof Error ? err.message : String(err));
+      setReportSaveError(
+        formatThaiErrorMessage(
+          err,
+          'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง'
+        )
+      );
     }
   };
 
@@ -1243,6 +1310,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(Boolean(initialOpenPreview));
   const [previewTab, setPreviewTab] = useState<'all' | 'doc1' | 'doc2_1' | 'doc2_2'>('all');
   const [previewZoom, setPreviewZoom] = useState<number>(() => getFitPreviewZoom());
+  const autoPrintTriggeredRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (initialOpenPreview) {
@@ -1251,6 +1319,27 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       setIsPrintPreviewOpen(true);
     }
   }, [initialOpenPreview, initialTeacherName, initialWeek]);
+
+  useEffect(() => {
+    if (!initialAutoPrint || !isPrintPreviewOpen || autoPrintTriggeredRef.current) return;
+    autoPrintTriggeredRef.current = true;
+    const timer = setTimeout(() => {
+      const cleanTeacher = (reporterName || 'ครูนิเทศก์')
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ');
+      const prevTitle = document.title;
+      document.title = `รายงานวิชาในสถานประกอบการ_${cleanTeacher}_สัปดาห์ที่${selectedWeek}`;
+      const restoreTitle = () => {
+        document.title = prevTitle;
+        window.removeEventListener('afterprint', restoreTitle);
+      };
+      window.addEventListener('afterprint', restoreTitle);
+      window.print();
+      setTimeout(restoreTitle, 1500);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [initialAutoPrint, isPrintPreviewOpen, reporterName, selectedWeek]);
 
   const handleOpenPrintPreview = (tab: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') => {
     setPreviewTab(tab);
@@ -2022,10 +2111,82 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         )}
 
         {reportSaveError && (
-          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">
-            ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: {reportSaveError}
+          <div className="text-xs sm:text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                <strong>แจ้งเตือนการบันทึกข้อมูล:</strong> {reportSaveError}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReportSaveError(null)}
+              className="p-1 text-rose-600 hover:text-rose-800 rounded cursor-pointer shrink-0"
+              title="ปิดการแจ้งเตือน"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
+
+        {/* Week 1-18 Save Status & Progress Strip */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-slate-800">
+                ความก้าวหน้าการบันทึกรายสัปดาห์ (สัปดาห์ที่ 1–18):
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                <span>
+                  {savedWeekNumbersSet.size} / 18 สัปดาห์ ({Math.round((savedWeekNumbersSet.size / 18) * 100)}%)
+                </span>
+              </span>
+            </div>
+            {onNavigateToTeachingReports && (
+              <button
+                type="button"
+                onClick={() => onNavigateToTeachingReports(reporterName, selectedWeek)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold transition cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>เปิดดูแถบ บันทึกรายงานการสอนรายสัปดาห์ &rarr;</span>
+              </button>
+            )}
+          </div>
+          <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-300"
+              style={{ width: `${Math.round((savedWeekNumbersSet.size / 18) * 100)}%` }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => {
+              const isWeekSaved = savedWeekNumbersSet.has(w);
+              const isSelected = w === selectedWeek;
+              return (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setSelectedWeek(w)}
+                  title={
+                    isWeekSaved
+                      ? `สัปดาห์ที่ ${w}: บันทึกแล้ว (คลิกเพื่อดู/แก้ไข)`
+                      : `สัปดาห์ที่ ${w}: ยังไม่บันทึก (คลิกเพื่อเลือก)`
+                  }
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                    isWeekSaved
+                      ? 'bg-emerald-100 border-emerald-300 text-emerald-900 hover:bg-emerald-200'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                  } ${isSelected ? 'ring-2 ring-indigo-600 ring-offset-1' : ''}`}
+                >
+                  <span>ส.{w}</span>
+                  {isWeekSaved && <Check className="w-3 h-3 text-emerald-700" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Inputs Form Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-1 text-[13px]">
@@ -2151,12 +2312,28 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           </div>
 
           {/* Sync notification */}
-          {courseSyncMsg && (
-            <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-[13px] flex items-center gap-2 shadow-2xs">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{courseSyncMsg}</span>
-            </div>
-          )}
+          {courseSyncMsg && (() => {
+            const isSyncError =
+              courseSyncMsg.includes('ไม่สำเร็จ') ||
+              courseSyncMsg.includes('ไม่สามารถ') ||
+              courseSyncMsg.includes('ผิดพลาด');
+            return (
+              <div
+                className={`p-2.5 rounded-lg border text-[13px] flex items-center gap-2 shadow-2xs ${
+                  isSyncError
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}
+              >
+                {isSyncError ? (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+                <span>{courseSyncMsg}</span>
+              </div>
+            );
+          })()}
 
           <div className="space-y-2.5 overflow-x-auto">
             {/* Desktop column headers (Strictly aligned with input columns) */}

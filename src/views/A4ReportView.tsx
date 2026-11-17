@@ -26,7 +26,6 @@ import {
   Layers,
   Eye,
   X,
-  Sparkles,
   MapPin,
   Phone,
   ArrowRight,
@@ -37,12 +36,11 @@ import {
   Trash2,
   List
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow, TeachingReportRecord } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow } from '../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { getCoursesByRoom } from '../services/courseDataService';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
-import { WorkplaceTeachingReportView } from './WorkplaceTeachingReportView';
 import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
 import {
   computeSubmissionTotalHours,
@@ -69,9 +67,6 @@ interface A4ReportViewProps {
   onSelectStudent?: (studentId: string) => void;
   onDeleteSubmission?: (submissionId: string, studentId: string) => Promise<boolean>;
   onDeleteSupervision?: (recordId: string) => Promise<boolean>;
-  teachingReports?: TeachingReportRecord[];
-  onTeachingReportSaved?: (report: TeachingReportRecord) => void;
-  onNavigateToTeachingReports?: (teacherName: string, weekNumber: number) => void;
 }
 
 export interface CompanySupervisionSummary {
@@ -111,13 +106,10 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   onSelectStudent,
   onDeleteSubmission,
   onDeleteSupervision,
-  teachingReports,
-  onTeachingReportSaved,
-  onNavigateToTeachingReports,
 }) => {
   const isStudentRole = currentUser?.role === 'student';
-  // Main view tab: 'table' (All Companies Form_3 Summary), 'a4' (Official Weekly A4 Document), or 'teaching' (Workplace Integrated Learning Report)
-  const [activeTab, setActiveTab] = useState<'table' | 'a4' | 'teaching'>(() =>
+  // Main view tab: 'table' (All Companies Form_3 Summary) or 'a4' (Official Weekly A4 Document)
+  const [activeTab, setActiveTab] = useState<'table' | 'a4'>(() =>
     currentUser?.role === 'student' ? 'a4' : 'table'
   );
   const [a4SubView, setA4SubView] = useState<'individual' | 'group-summary'>('individual');
@@ -770,17 +762,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             >
               <FileText className={`w-4 h-4 ${activeTab === 'a4' ? 'text-indigo-600' : 'text-slate-400'}`} />
               <span>แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('teaching')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
-                activeTab === 'teaching'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Sparkles className={`w-4 h-4 ${activeTab === 'teaching' ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span>รายงานการจัดการเรียนรู้ในสถานประกอบการ</span>
             </button>
           </div>
 
@@ -2094,22 +2075,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             )}
           </div>
         </div>
-      )}
-
-      {/* =========================================================================
-          TAB 3: รายงานการจัดการเรียนรู้ในสถานประกอบการ (Workplace Teaching Report)
-          ========================================================================= */}
-      {activeTab === 'teaching' && (
-        <WorkplaceTeachingReportView
-          currentUser={currentUser}
-          students={allSheetStudents}
-          form3List={form3List}
-          submissions={mergedSubmissions}
-          courses={propCourses}
-          teachingReports={teachingReports}
-          onReportSaved={onTeachingReportSaved}
-          onNavigateToTeachingReports={onNavigateToTeachingReports}
-        />
       )}
     </div>
   );

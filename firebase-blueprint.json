@@ -198,7 +198,7 @@
     },
     "TeachingReport": {
       "title": "TeachingReport",
-      "description": "Weekly workplace teaching report, assigned courses, and photo gallery per teacher and week",
+      "description": "Weekly workplace teaching report, assigned courses, and photo gallery per teacher and week (1-18)",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -208,7 +208,11 @@
         "specialDuty": { "type": "string", "maxLength": 200 },
         "reportDate": { "type": "string", "maxLength": 50 },
         "weekNumber": { "type": "number" },
+        "courses": { "type": "array" },
         "learningOutcome": { "type": "string", "maxLength": 2000 },
+        "weekPhotos": { "type": "array" },
+        "hasManualPhotoEdits": { "type": "boolean" },
+        "photoCount": { "type": "number" },
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "teacherKey", "reporterName", "weekNumber", "updatedAt"]

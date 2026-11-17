@@ -122,6 +122,7 @@ export default function App() {
     teacherName: string;
     weekNumber: number;
   } | null>(null);
+  const [teachingReportsVisitKey, setTeachingReportsVisitKey] = useState<number>(0);
 
   const hasCloudSubsRef = React.useRef<boolean>(false);
   const hasCloudForm3Ref = React.useRef<boolean>(false);
@@ -1006,7 +1007,7 @@ export default function App() {
         setCurrentView('student');
       }
     } else if (role === 'teacher') {
-      const allowedTeacherViews = ['hub', 'teacher', 'map', 'a4', 'guide'];
+      const allowedTeacherViews = ['hub', 'teacher', 'map', 'a4', 'teaching-reports', 'guide'];
       if (!allowedTeacherViews.includes(currentView)) {
         setCurrentView('teacher');
       }
@@ -1071,6 +1072,9 @@ export default function App() {
         currentView={currentView}
         onNavigate={(view) => {
           setIsMobileMode(false);
+          if (view === 'teaching-reports') {
+            setTeachingReportsVisitKey((k) => k + 1);
+          }
           setCurrentView(view);
         }}
         isMobileMode={isMobileMode}
@@ -1252,17 +1256,12 @@ export default function App() {
                 }}
                 onDeleteSubmission={handleDeleteSubmission}
                 onDeleteSupervision={handleDeleteSupervision}
-                teachingReports={teachingReports}
-                onTeachingReportSaved={handleTeachingReportSaved}
-                onNavigateToTeachingReports={(teacherName, weekNumber) => {
-                  setFocusedTeachingReportTarget({ teacherName, weekNumber });
-                  setCurrentView('teaching-reports');
-                }}
               />
             )}
 
             {currentView === 'teaching-reports' && (
               <WeeklyTeachingReportsView
+                key={`tr-visit-${teachingReportsVisitKey}`}
                 currentUser={currentUser}
                 students={students}
                 form3List={form3List}

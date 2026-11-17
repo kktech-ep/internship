@@ -3,7 +3,29 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isValidId(id) {
-      return id is string && id.size() <= 128;
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTeachingReport(data) {
+      return data.keys().hasAll(['id', 'teacherKey', 'reporterName', 'weekNumber', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'teacherKey', 'reporterName', 'position', 'specialDuty',
+          'reportDate', 'weekNumber', 'courses', 'learningOutcome',
+          'weekPhotos', 'hasManualPhotoEdits', 'photoCount', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.teacherKey is string && data.teacherKey.size() > 0 && data.teacherKey.size() <= 150
+        && data.reporterName is string && data.reporterName.size() > 0 && data.reporterName.size() <= 150
+        && data.weekNumber is int && data.weekNumber >= 1 && data.weekNumber <= 18
+        && data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 100
+        && (!('position' in data) || (data.position is string && data.position.size() <= 150))
+        && (!('specialDuty' in data) || (data.specialDuty is string && data.specialDuty.size() <= 200))
+        && (!('reportDate' in data) || (data.reportDate is string && data.reportDate.size() <= 50))
+        && (!('learningOutcome' in data) || (data.learningOutcome is string && data.learningOutcome.size() <= 2000))
+        && (!('courses' in data) || (data.courses is list && data.courses.size() <= 30))
+        && (!('weekPhotos' in data) || (data.weekPhotos is list && data.weekPhotos.size() <= 6))
+        && (!('hasManualPhotoEdits' in data) || data.hasManualPhotoEdits is bool)
+        && (!('photoCount' in data) || (data.photoCount is int && data.photoCount >= 0 && data.photoCount <= 10));
     }
 
     match /students/{studentId} {
@@ -43,7 +65,9 @@ service cloud.firestore {
     }
 
     match /teaching_reports/{reportId} {
-      allow read, write, delete: if isValidId(reportId);
+      allow read: if true;
+      allow create, update: if isValidId(reportId) && isValidTeachingReport(request.resource.data);
+      allow delete: if isValidId(reportId);
     }
 
     match /user_avatars/{avatarId} {
