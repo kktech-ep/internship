@@ -129,6 +129,25 @@ function formatThaiDateShort(dateStr: string): string {
   return `${day} ${month} ${yearBE}`;
 }
 
+function addDaysToIsoDate(dateStr: string, daysToAdd: number): string {
+  if (!dateStr || !daysToAdd) return dateStr;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!match) {
+    const parsed = new Date(dateStr);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+    parsed.setUTCDate(parsed.getUTCDate() + daysToAdd);
+    return parsed.toISOString().slice(0, 10);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month, day + daysToAdd));
+  const y = utc.getUTCFullYear();
+  const m = String(utc.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(utc.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function toSafeTeachingReportId(reporterName: string, weekNumber: number): string {
   const clean = (reporterName || 'teacher').trim();
   let hash = 0;
@@ -322,13 +341,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return () => unsub();
   }, [propTeachingReports === undefined]);
 
-  // Find the teacher's most recently saved teaching report that has courses
-  const latestSavedTeacherReport = useMemo(() => {
+  // Find all saved teaching reports with courses for the selected teacher
+  const teacherSavedReportsWithCourses = useMemo(() => {
     const cleanTarget = (reporterName || '')
       .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
       .trim()
       .toLowerCase();
-    const candidates = Object.values(remoteReportsMap).filter((rec) => {
+    return Object.values(remoteReportsMap).filter((rec) => {
       if (!rec || !rec.courses || rec.courses.length === 0) return false;
       const recReporter = (rec.reporterName || '')
         .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
@@ -340,19 +359,36 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         .toLowerCase();
       return Boolean(cleanTarget && (recReporter === cleanTarget || recKey === cleanTarget));
     });
-    if (candidates.length === 0) return null;
-    return [...candidates].sort((a, b) => {
+  }, [remoteReportsMap, reporterName]);
+
+  // Prefer the nearest previous saved week (e.g. Week N-1 when recording Week N), else fallback to the latest saved week overall
+  const latestSavedTeacherReport = useMemo(() => {
+    if (teacherSavedReportsWithCourses.length === 0) return null;
+    const preceding = teacherSavedReportsWithCourses.filter(
+      (rec) => Number(rec.weekNumber) < selectedWeek
+    );
+    if (preceding.length > 0) {
+      return [...preceding].sort((a, b) => {
+        const weekDiff = (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0);
+        if (weekDiff !== 0) return weekDiff;
+        return (
+          (new Date(b.updatedAt || 0).getTime() || 0) -
+          (new Date(a.updatedAt || 0).getTime() || 0)
+        );
+      })[0];
+    }
+    return [...teacherSavedReportsWithCourses].sort((a, b) => {
       const timeDiff =
         (new Date(b.updatedAt || 0).getTime() || 0) -
         (new Date(a.updatedAt || 0).getTime() || 0);
       if (timeDiff !== 0) return timeDiff;
       return (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0);
     })[0];
-  }, [remoteReportsMap, reporterName]);
+  }, [teacherSavedReportsWithCourses, selectedWeek]);
 
   const prevCourseDocIdRef = useRef<string>('');
 
-  // Load courses from current week's saved report, or fall back to the most recent saved week first, then sheet defaults
+  // Load courses & dates from current week's saved report, or carry over from previous saved week (+7 days per week)
   useEffect(() => {
     const docChanged = prevCourseDocIdRef.current !== reportDocId;
     prevCourseDocIdRef.current = reportDocId;
@@ -369,15 +405,25 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     const defaultDate = new Date().toISOString().slice(0, 10);
 
     if (latestSavedTeacherReport && latestSavedTeacherReport.courses.length > 0) {
+      const weekDelta = selectedWeek - (Number(latestSavedTeacherReport.weekNumber) || selectedWeek);
+      const daysOffset = weekDelta * 7;
+
+      if (latestSavedTeacherReport.reportDate) {
+        setReportDate(addDaysToIsoDate(latestSavedTeacherReport.reportDate, daysOffset));
+      }
+
       setCourses(
-        latestSavedTeacherReport.courses.map((c, idx) => ({
-          id: String(c.id || `crs-${idx + 1}-${c.subjectCode}`),
-          subjectCode: String(c.subjectCode || '').trim(),
-          subjectName: String(c.subjectName || '').trim(),
-          room: String(c.room || '').trim(),
-          teachDate: String(c.teachDate || defaultDate).trim(),
-          teachTime: String(c.teachTime || '').trim(),
-        }))
+        latestSavedTeacherReport.courses.map((c, idx) => {
+          const baseTeachDate = String(c.teachDate || latestSavedTeacherReport.reportDate || defaultDate).trim();
+          return {
+            id: String(c.id || `crs-${idx + 1}-${c.subjectCode}`),
+            subjectCode: String(c.subjectCode || '').trim(),
+            subjectName: String(c.subjectName || '').trim(),
+            room: String(c.room || '').trim(),
+            teachDate: addDaysToIsoDate(baseTeachDate, daysOffset),
+            teachTime: String(c.teachTime || '').trim(),
+          };
+        })
       );
       return;
     }
@@ -429,7 +475,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         }
       ]);
     }
-  }, [reporterName, reportDocId, remoteReportsMap, latestSavedTeacherReport, propCourses]);
+  }, [reporterName, selectedWeek, reportDocId, remoteReportsMap, latestSavedTeacherReport, propCourses]);
 
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncMsg, setCourseSyncMsg] = useState<string | null>(null);
@@ -2346,7 +2392,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               </span>
               {!remoteReportsMap[reportDocId]?.courses?.length && latestSavedTeacherReport && (
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80">
-                  นำข้อมูลที่บันทึกล่าสุดจากสัปดาห์ที่ {latestSavedTeacherReport.weekNumber} มาแสดง
+                  นำข้อมูลจากสัปดาห์ที่ {latestSavedTeacherReport.weekNumber} มาแสดง
+                  {selectedWeek !== Number(latestSavedTeacherReport.weekNumber)
+                    ? ` (ปรับวันที่ ${(selectedWeek - Number(latestSavedTeacherReport.weekNumber)) > 0 ? '+' : ''}${(selectedWeek - Number(latestSavedTeacherReport.weekNumber)) * 7} วัน)`
+                    : ''}
                 </span>
               )}
             </div>
