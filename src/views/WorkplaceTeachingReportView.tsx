@@ -260,6 +260,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const hasPendingUserEditRef = useRef<boolean>(false);
   const markUserEdited = () => {
     hasPendingUserEditRef.current = true;
+    setReportSaveStatus((prev) => (prev === 'saved' || prev === 'error' ? 'idle' : prev));
   };
 
   const reportDocId = useMemo(
@@ -1086,7 +1087,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           setReportSaveStatus('saved');
           setReportSaveError(null);
           setReportCloudNote(
-            'บันทึกข้อมูลไว้ในหน่วยความจำสำรองเรียบร้อยแล้ว สามารถเรียกดู แก้ไข และสั่งพิมพ์ได้ทันที (ฐานข้อมูล Cloud เกินโควตาประจำวันชั่วคราว ระบบจะซิงค์ขึ้นออนไลน์อัตโนมัติเมื่อโควตารีเซ็ต)'
+            'บันทึกข้อมูลไว้ในหน่วยความจำสำรองเรียบร้อยแล้ว สามารถเรียกดู แก้ไข และสั่งพิมพ์ได้ทันที (ฐานข้อมูล Cloud เกินโควตาประจำวันชั่วคราว เมื่อโควตารีเซ็ตแล้วกรุณากดปุ่มบันทึกอีกครั้งเพื่อส่งขึ้นออนไลน์)'
           );
           if (isManualClick) {
             setSavedLinkBanner({
@@ -1111,16 +1112,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     }
   };
 
-  // Auto-save edits after debounce (1.5s to preserve Firestore write quota)
-  useEffect(() => {
-    if (!hasPendingUserEditRef.current) return;
-    if (courses.length === 0) return;
+  // Manual save only: users explicitly click the Save button to persist to the database
 
-    const timer = setTimeout(() => {
-      saveTeachingReportNow();
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [courses, position, specialDuty, reportDate, learningOutcome, weekPhotos, hasManualPhotoEdits]);
 
   // Auto-populate when selectedWeek, reporterName, courses, or data change (unless user manually picked photos for this week/teacher)
   useEffect(() => {

@@ -18,7 +18,7 @@ import { GoogleSheetModal } from './components/Modals/GoogleSheetModal';
 import { AuthModal } from './components/Modals/AuthModal';
 import { LoginGatewayView } from './views/LoginGatewayView';
 import { StudentGuideView } from './views/StudentGuideView';
-import { mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements } from './data/mockData';
+import { mockStudents, mockCompanies, mockAnnouncements } from './data/mockData';
 import {
   Student,
   Company,
@@ -51,12 +51,10 @@ import {
 } from './services/sheetAuthService';
 import { fetchDataSheetCourses, getCachedCourses } from './services/courseDataService';
 import {
-  syncAllLoginSheetRowsToFirebase,
   saveAndSyncStudentBothWays,
   syncDerivedCompaniesToFirestore,
 } from './services/sheetFirebaseSyncService';
 import {
-  seedFirestoreIfEmpty,
   subscribeStudents,
   subscribeCompanies,
   subscribeSubmissions,
@@ -72,13 +70,10 @@ import {
   resolveUserAvatarUrl,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
-  saveTeachingReportToFirestore,
   subscribeTeachingReports,
 } from './services/firestoreService';
 import {
   getLocalTeachingReports,
-  getPendingTeachingReportIds,
-  markTeachingReportSynced,
   reconcileTeachingReportsWithCloud,
 } from './utils/teachingReportCache';
 import { formatThaiErrorMessage } from './utils/thaiErrorUtils';
@@ -265,26 +260,16 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Initialize and synchronize with Firebase Firestore (project: internship2-2569) & Google Sheets
+  // Initialize and subscribe to Firebase Firestore (project: internship2-2569) & Google Sheets (read-only; writes only on button clicks)
   useEffect(() => {
-    // 1. Seed initial data if Firestore collections are empty
-    seedFirestoreIfEmpty(mockStudents, mockCompanies, mockWeeklySubmissions, mockAnnouncements);
-
-    // 2. Refresh courses catalog from Google Sheet 'data' tab
+    // 1. Refresh courses catalog from Google Sheet 'data' tab
     fetchDataSheetCourses()
       .then((crs) => {
         if (crs && crs.length > 0) setCourses(crs);
       })
       .catch(() => {});
 
-    // 3. Synchronize Google Sheet login -> Firestore at most once every 12 hours automatically
-    // (Manual sync buttons still run full sync immediately on demand without exhausting daily Firestore quota)
-    const AUTO_SYNC_KEY = 'kktech_last_auto_sync_ts';
-    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-    const lastAutoSync =
-      typeof localStorage !== 'undefined' ? Number(localStorage.getItem(AUTO_SYNC_KEY) || '0') : 0;
-    const shouldAutoSyncCloud = !lastAutoSync || Date.now() - lastAutoSync > TWELVE_HOURS_MS;
-
+    // 2. Read Google Sheet login accounts locally without triggering automatic Firestore writes
     const applyFreshSheetUsers = () => {
       const freshSheetStudents = getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
       if (freshSheetStudents.length > 0) {
@@ -323,23 +308,9 @@ export default function App() {
       }
     };
 
-    if (shouldAutoSyncCloud) {
-      syncAllLoginSheetRowsToFirebase().then((res) => {
-        console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
-        if (res.success && typeof localStorage !== 'undefined') {
-          try {
-            localStorage.setItem(AUTO_SYNC_KEY, String(Date.now()));
-          } catch {
-            // ignore
-          }
-        }
-        applyFreshSheetUsers();
-      });
-    } else {
-      fetchSheetLoginAccounts(false)
-        .then(() => applyFreshSheetUsers())
-        .catch(() => {});
-    }
+    fetchSheetLoginAccounts(false)
+      .then(() => applyFreshSheetUsers())
+      .catch(() => {});
 
     // 4. Real-time subscription to Students collection anchored strictly to current Google Sheet students
     const unsubStudents = subscribeStudents(
@@ -513,19 +484,6 @@ export default function App() {
         const merged = reconcileTeachingReportsWithCloud(remoteReports || []);
         setTeachingReports(merged);
         setTeachingReportsNotice(null);
-
-        // Flush any locally saved pending teaching reports once Firestore is available again
-        const pendingIds = getPendingTeachingReportIds();
-        if (pendingIds.length > 0) {
-          pendingIds.forEach((pId) => {
-            const pendingReport = merged.find((r) => r.id === pId);
-            if (pendingReport) {
-              saveTeachingReportToFirestore(pendingReport)
-                .then(() => markTeachingReportSynced(pId))
-                .catch(() => {});
-            }
-          });
-        }
       },
       (err) => {
         console.warn('Teaching reports stream note:', err);
