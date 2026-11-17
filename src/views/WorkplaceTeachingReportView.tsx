@@ -44,7 +44,12 @@ import {
 } from '../services/courseDataService';
 import { compressImageFile } from '../components/StudentAvatar';
 import { saveTeachingReportToFirestore, subscribeTeachingReports } from '../services/firestoreService';
-import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
+import {
+  getLocalTeachingReports,
+  markTeachingReportSynced,
+  writeTeachingReportToLocalCache,
+} from '../utils/teachingReportCache';
+import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
 
 interface WorkplaceTeachingReportViewProps {
   currentUser?: AuthUser | null;
@@ -58,7 +63,6 @@ interface WorkplaceTeachingReportViewProps {
   initialWeek?: number;
   initialOpenPreview?: boolean;
   initialAutoPrint?: boolean;
-  onBackToOverview?: () => void;
   onReportSaved?: (report: TeachingReportRecord) => void;
   onNavigateToTeachingReports?: (teacherName: string, weekNumber: number) => void;
 }
@@ -146,7 +150,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   initialWeek,
   initialOpenPreview,
   initialAutoPrint,
-  onBackToOverview,
   onReportSaved,
   onNavigateToTeachingReports,
 }) => {
@@ -236,13 +239,18 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [courses, setCourses] = useState<TeachingCourseItem[]>([]);
   const [remoteReportsMap, setRemoteReportsMap] = useState<Record<string, TeachingReportRecord>>(() => {
     const map: Record<string, TeachingReportRecord> = {};
-    (propTeachingReports || []).forEach((r) => {
+    const seedList =
+      propTeachingReports && propTeachingReports.length > 0
+        ? propTeachingReports
+        : getLocalTeachingReports();
+    seedList.forEach((r) => {
       if (r && r.id) map[r.id] = r;
     });
     return map;
   });
   const [reportSaveStatus, setReportSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [reportSaveError, setReportSaveError] = useState<string | null>(null);
+  const [reportCloudNote, setReportCloudNote] = useState<string | null>(null);
   const [savedLinkBanner, setSavedLinkBanner] = useState<{
     teacherName: string;
     weekNumber: number;
@@ -297,8 +305,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     });
   }, [propTeachingReports]);
 
-  // Real-time subscription to /teaching_reports
+  // Only subscribe directly if parent did not supply propTeachingReports (prevents duplicate reads)
   useEffect(() => {
+    if (propTeachingReports !== undefined) return;
     const unsub = subscribeTeachingReports(
       (reports) => {
         const map: Record<string, TeachingReportRecord> = {};
@@ -310,7 +319,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       (err) => console.warn('Teaching reports realtime stream note:', err)
     );
     return () => unsub();
-  }, []);
+  }, [propTeachingReports === undefined]);
 
   // Reload teacher courses whenever selected teacher changes (unless overridden by saved Firestore report)
   useEffect(() => {
@@ -1001,16 +1010,42 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           : { hasManualPhotoEdits: false }),
         updatedAt: nowIso,
       };
-      await saveTeachingReportToFirestore(payload);
+
+      // Persist immediately in local cache & parent state so viewing/editing/printing always works
+      writeTeachingReportToLocalCache(payload, false);
       setRemoteReportsMap((prev) => ({ ...prev, [payload.id]: payload }));
       onReportSaved?.(payload);
-      setReportSaveStatus('saved');
-      if (isManualClick) {
-        setSavedLinkBanner({
-          teacherName: safeReporterName,
-          weekNumber: safeWeekNumber,
-          savedAt: nowIso,
-        });
+
+      try {
+        await saveTeachingReportToFirestore(payload);
+        markTeachingReportSynced(payload.id);
+        setReportSaveStatus('saved');
+        setReportSaveError(null);
+        setReportCloudNote(null);
+        if (isManualClick) {
+          setSavedLinkBanner({
+            teacherName: safeReporterName,
+            weekNumber: safeWeekNumber,
+            savedAt: nowIso,
+          });
+        }
+      } catch (cloudErr) {
+        if (isQuotaOrNetworkError(cloudErr)) {
+          setReportSaveStatus('saved');
+          setReportSaveError(null);
+          setReportCloudNote(
+            'บันทึกข้อมูลไว้ในหน่วยความจำสำรองเรียบร้อยแล้ว สามารถเรียกดู แก้ไข และสั่งพิมพ์ได้ทันที (ฐานข้อมูล Cloud เกินโควตาประจำวันชั่วคราว ระบบจะซิงค์ขึ้นออนไลน์อัตโนมัติเมื่อโควตารีเซ็ต)'
+          );
+          if (isManualClick) {
+            setSavedLinkBanner({
+              teacherName: safeReporterName,
+              weekNumber: safeWeekNumber,
+              savedAt: nowIso,
+            });
+          }
+        } else {
+          throw cloudErr;
+        }
       }
     } catch (err) {
       console.error('Error saving teaching report to Firestore:', err);
@@ -1024,14 +1059,14 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     }
   };
 
-  // Auto-save edits to Firestore immediately after brief debounce
+  // Auto-save edits after debounce (1.5s to preserve Firestore write quota)
   useEffect(() => {
     if (!hasPendingUserEditRef.current) return;
     if (courses.length === 0) return;
 
     const timer = setTimeout(() => {
       saveTeachingReportNow();
-    }, 600);
+    }, 1500);
     return () => clearTimeout(timer);
   }, [courses, position, specialDuty, reportDate, learningOutcome, weekPhotos, hasManualPhotoEdits]);
 
@@ -2025,53 +2060,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 รายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ
               </h2>
             </div>
-            <p className="text-[13px] text-slate-500">
-          
-            </p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {onBackToOverview && (
-              <button
-                type="button"
-                onClick={onBackToOverview}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-sm shadow-2xs transition cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4 text-slate-600" />
-                <span>กลับหน้าสถานะรายสัปดาห์</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => saveTeachingReportNow(true)}
-              disabled={reportSaveStatus === 'saving'}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm shadow-2xs transition cursor-pointer disabled:opacity-60"
-              title="บันทึกข้อมูลรายงานการสอนและรายวิชาลงฐานข้อมูลออนไลน์ทันที และเชื่อมโยงไปที่แถบบันทึกรายงานการสอนรายสัปดาห์"
-            >
-              {reportSaveStatus === 'saving' ? (
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
-              ) : reportSaveStatus === 'saved' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-              ) : (
-                <Save className="w-4 h-4 text-emerald-700" />
-              )}
-              <span>
-                {reportSaveStatus === 'saving'
-                  ? 'กำลังบันทึก...'
-                  : reportSaveStatus === 'saved'
-                  ? 'บันทึกออนไลน์แล้ว (Real-time)'
-                  : 'บันทึกลงฐานข้อมูลออนไลน์'}
-              </span>
-            </button>
-            <button
-              onClick={() => handleOpenPrintPreview('all')}
-              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg transition cursor-pointer"
-              title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
-            >
-              <Printer className="w-10 h-10 text-white" />
-              <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
-            </button>
           </div>
         </div>
 
@@ -2110,6 +2098,23 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           </div>
         )}
 
+        {reportCloudNote && (
+          <div className="text-xs sm:text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{reportCloudNote}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReportCloudNote(null)}
+              className="p-1 text-amber-700 hover:text-amber-900 rounded cursor-pointer shrink-0"
+              title="ปิดการแจ้งเตือน"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {reportSaveError && (
           <div className="text-xs sm:text-sm text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-2xs">
             <div className="flex items-center gap-2">
@@ -2130,14 +2135,14 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         )}
 
         {/* Week 1-18 Save Status & Progress Strip */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2.5">
+        <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-3.5 sm:p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-bold text-slate-800">
-                ความก้าวหน้าการบันทึกรายสัปดาห์ (สัปดาห์ที่ 1–18):
+            <div className="flex flex-wrap items-center gap-2 text-xs sm:text-[13px]">
+              <span className="font-semibold text-slate-800">
+                ความก้าวหน้าการบันทึกรายสัปดาห์ (สัปดาห์ที่ 1–18)
               </span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-semibold text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 <span>
                   {savedWeekNumbersSet.size} / 18 สัปดาห์ ({Math.round((savedWeekNumbersSet.size / 18) * 100)}%)
                 </span>
@@ -2147,20 +2152,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <button
                 type="button"
                 onClick={() => onNavigateToTeachingReports(reporterName, selectedWeek)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-indigo-50/70 text-indigo-700 border border-slate-200 hover:border-indigo-200 text-xs font-semibold transition cursor-pointer shadow-2xs"
               >
                 <BookOpen className="w-3.5 h-3.5" />
                 <span>เปิดดูแถบ บันทึกรายงานการสอนรายสัปดาห์ &rarr;</span>
               </button>
             )}
           </div>
-          <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+          <div className="h-1.5 w-full rounded-full bg-slate-200/80 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-300"
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 transition-all duration-300"
               style={{ width: `${Math.round((savedWeekNumbersSet.size / 18) * 100)}%` }}
             />
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-9 gap-1.5">
             {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => {
               const isWeekSaved = savedWeekNumbersSet.has(w);
               const isSelected = w === selectedWeek;
@@ -2174,14 +2179,18 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                       ? `สัปดาห์ที่ ${w}: บันทึกแล้ว (คลิกเพื่อดู/แก้ไข)`
                       : `สัปดาห์ที่ ${w}: ยังไม่บันทึก (คลิกเพื่อเลือก)`
                   }
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                  className={`inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium border transition cursor-pointer whitespace-nowrap ${
                     isWeekSaved
-                      ? 'bg-emerald-100 border-emerald-300 text-emerald-900 hover:bg-emerald-200'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                  } ${isSelected ? 'ring-2 ring-indigo-600 ring-offset-1' : ''}`}
+                      ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800 hover:bg-emerald-100/80'
+                      : 'bg-white border-slate-200/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  } ${
+                    isSelected
+                      ? 'ring-2 ring-indigo-500/80 border-indigo-400 font-semibold shadow-2xs'
+                      : ''
+                  }`}
                 >
-                  <span>ส.{w}</span>
-                  {isWeekSaved && <Check className="w-3 h-3 text-emerald-700" />}
+                  <span>สัปดาห์ที่ {w}</span>
+                  {isWeekSaved && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
                 </button>
               );
             })}
@@ -2451,6 +2460,40 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             }}
             className="w-full p-2 text-[13px] rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => saveTeachingReportNow(true)}
+            disabled={reportSaveStatus === 'saving'}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm shadow-2xs transition cursor-pointer disabled:opacity-60"
+            title="บันทึกข้อมูลรายงานการสอนและรายวิชาลงฐานข้อมูลออนไลน์ทันที และเชื่อมโยงไปที่แถบบันทึกรายงานการสอนรายสัปดาห์"
+          >
+            {reportSaveStatus === 'saving' ? (
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+            ) : reportSaveStatus === 'saved' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+            ) : (
+              <Save className="w-4 h-4 text-emerald-700" />
+            )}
+            <span>
+              {reportSaveStatus === 'saving'
+                ? 'กำลังบันทึก...'
+                : reportSaveStatus === 'saved'
+                ? 'บันทึกออนไลน์แล้ว (Real-time)'
+                : 'บันทึกลงฐานข้อมูลออนไลน์'}
+            </span>
+          </button>
+          <button
+            onClick={() => handleOpenPrintPreview('all')}
+            className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg transition cursor-pointer"
+            title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
+          >
+            <Printer className="w-10 h-10 text-white" />
+            <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
+          </button>
         </div>
       </div>
 

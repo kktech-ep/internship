@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   BookOpen,
   Calendar,
+  Camera,
   CheckCircle2,
   Clock,
+  Database,
   Edit3,
   Eye,
   FileText,
@@ -15,6 +17,7 @@ import {
   Search,
   Sparkles,
   User,
+  UserCheck,
   Users,
   AlertCircle,
   X,
@@ -26,13 +29,19 @@ import {
   SheetTeacher,
   Student,
   TeachingReportRecord,
+  UserAvatarRecord,
   WeeklySubmission,
 } from '../types';
 import { getWeekDates, getCurrentWeekInfo } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
-import { getAllTeachersFromData } from '../services/courseDataService';
-import { subscribeTeachingReports } from '../services/firestoreService';
-import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
+import { getAllTeachersFromData, getCachedCourses } from '../services/courseDataService';
+import {
+  subscribeTeachingReports,
+  resolveUserAvatarUrl,
+  saveUserAvatarToFirestore,
+} from '../services/firestoreService';
+import { getLocalTeachingReports } from '../utils/teachingReportCache';
+import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
 import {
   WorkplaceTeachingReportView,
   toSafeTeachingReportId,
@@ -45,7 +54,10 @@ interface WeeklyTeachingReportsViewProps {
   submissions: Record<string, WeeklySubmission[]>;
   courses?: CourseDataRow[];
   teachers?: SheetTeacher[];
+  userAvatars?: UserAvatarRecord[];
+  onUpdateTeacherAvatar?: (dataUrl: string) => Promise<void> | void;
   teachingReports?: TeachingReportRecord[];
+  cloudLoadError?: string | null;
   initialTeacherFilter?: string;
   initialHighlightWeek?: number;
   onTeachingReportSaved?: (report: TeachingReportRecord) => void;
@@ -98,16 +110,29 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
   students,
   form3List,
   submissions,
-  courses,
+  courses: propCourses,
   teachers: propTeachers,
+  userAvatars = [],
+  onUpdateTeacherAvatar,
   teachingReports: propTeachingReports,
+  cloudLoadError,
   initialTeacherFilter,
   initialHighlightWeek,
   onTeachingReportSaved,
 }) => {
-  const [reports, setReports] = useState<TeachingReportRecord[]>(() => propTeachingReports || []);
-  const [isLoadingReports, setIsLoadingReports] = useState<boolean>(() => !(propTeachingReports && propTeachingReports.length > 0));
+  const courses = propCourses && propCourses.length > 0 ? propCourses : getCachedCourses();
+  const [reports, setReports] = useState<TeachingReportRecord[]>(() =>
+    propTeachingReports && propTeachingReports.length > 0
+      ? propTeachingReports
+      : getLocalTeachingReports()
+  );
+  const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dismissedCloudError, setDismissedCloudError] = useState<boolean>(false);
+
+  useEffect(() => {
+    setDismissedCloudError(false);
+  }, [cloudLoadError]);
 
   // Keep synced with App-level teachingReports (instant updates right after saving)
   useEffect(() => {
@@ -125,8 +150,10 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
     setIsLoadingReports(false);
   }, [propTeachingReports]);
 
-  // Real-time subscription to Firestore /teaching_reports
+  // Only open a standalone Firestore listener if parent App.tsx did not supply teachingReports
   useEffect(() => {
+    if (propTeachingReports !== undefined) return;
+    setIsLoadingReports(true);
     const unsub = subscribeTeachingReports(
       (items) => {
         setReports((prev) => {
@@ -153,7 +180,7 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
       }
     );
     return () => unsub();
-  }, []);
+  }, [propTeachingReports === undefined]);
 
   // Build canonical teacher list matching WorkplaceTeachingReportView
   const allTeachers = useMemo(() => {
@@ -356,6 +383,148 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
     })[0];
   }, [selectedTeacherFilter, reports, singleTeacherRows]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const teacherEmail = currentUser?.email || 'thaksinso@kktech.ac.th';
+  const teacherStorageKey = `kktech_teacher_avatar_${teacherEmail}`;
+  const [avatarSavedBadge, setAvatarSavedBadge] = useState(false);
+
+  const teacherListSource = useMemo(
+    () => (propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers()),
+    [propTeachers]
+  );
+
+  const matchedTeacherDoc = useMemo(
+    () =>
+      teacherListSource.find(
+        (t) =>
+          (t.email && t.email.toLowerCase() === teacherEmail.toLowerCase()) ||
+          (currentUser?.name && t.name === currentUser.name)
+      ),
+    [teacherListSource, teacherEmail, currentUser?.name]
+  );
+
+  const cloudTeacherAvatar = useMemo(
+    () =>
+      resolveUserAvatarUrl(userAvatars, {
+        email: teacherEmail,
+        name: currentUser?.name || matchedTeacherDoc?.name,
+      }) || matchedTeacherDoc?.avatarUrl,
+    [userAvatars, teacherEmail, currentUser?.name, matchedTeacherDoc?.name, matchedTeacherDoc?.avatarUrl]
+  );
+
+  const [teacherAvatar, setTeacherAvatar] = useState<string | null>(() => {
+    if (cloudTeacherAvatar) return cloudTeacherAvatar;
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(teacherStorageKey) || null;
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (cloudTeacherAvatar) {
+      setTeacherAvatar(cloudTeacherAvatar);
+      return;
+    }
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(`kktech_teacher_avatar_${teacherEmail}`);
+      setTeacherAvatar(saved || null);
+    }
+  }, [teacherEmail, cloudTeacherAvatar]);
+
+  const handleTeacherAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 320;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          setTeacherAvatar(compressed);
+          try {
+            localStorage.setItem(teacherStorageKey, compressed);
+          } catch (err) {
+            console.warn('LocalStorage teacher avatar save note:', err);
+          }
+          try {
+            if (onUpdateTeacherAvatar) {
+              await onUpdateTeacherAvatar(compressed);
+            } else {
+              const cleanUserId = (matchedTeacherDoc?.user || teacherEmail).replace(/[^a-zA-Z0-9_-]/g, '_');
+              const targetTchId = matchedTeacherDoc?.id || `tch-${cleanUserId}`;
+              await saveUserAvatarToFirestore({
+                email: teacherEmail,
+                name: matchedTeacherDoc?.name || currentUser?.name || teacherEmail,
+                role: currentUser?.role === 'admin' ? 'admin' : 'teacher',
+                avatarUrl: compressed,
+                teacherDocId: targetTchId,
+              });
+            }
+            setAvatarSavedBadge(true);
+            setTimeout(() => setAvatarSavedBadge(false), 3000);
+          } catch (err) {
+            console.error('Failed to save teacher avatar to Firestore:', err);
+          }
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const displayTeacherName =
+    currentUser?.name || matchedTeacherDoc?.name || defaultTeacher || 'นายทักษิณ โสภาปิยะ';
+  const displayTeacherInitials =
+    currentUser?.initials ||
+    displayTeacherName
+      .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+      .slice(0, 2) ||
+    'ทส';
+  const displayTeacherDepartment =
+    currentUser?.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น';
+
+  const teacherAssignedCourses = useMemo(() => {
+    const cleanTarget = normalizeTeacherName(displayTeacherName);
+    if (!cleanTarget) return [];
+    return courses.filter((c) => {
+      const cleanC = normalizeTeacherName(c.teacherName);
+      return cleanC && (cleanC.includes(cleanTarget) || cleanTarget.includes(cleanC));
+    });
+  }, [courses, displayTeacherName]);
+
+  const teacherAssignedRooms = useMemo(() => {
+    const set = new Set<string>();
+    teacherAssignedCourses.forEach((c) => {
+      if (c.room && c.room.trim()) set.add(c.room.trim());
+    });
+    (matchedTeacherDoc?.rooms || []).forEach((r) => {
+      if (r && r.trim()) set.add(r.trim());
+    });
+    return Array.from(set).sort();
+  }, [teacherAssignedCourses, matchedTeacherDoc]);
+
   const openEditorForReport = (
     teacherName: string,
     weekNumber: number,
@@ -377,6 +546,110 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
 
   return (
     <div className="space-y-5 pb-14 print:space-y-0 print:pb-0 font-['Prompt',sans-serif]">
+      {/* Supervisor Teacher Profile Header Card (Hidden when printing) */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm print:hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="flex items-start sm:items-center gap-4">
+            {/* Teacher Profile Photo / Avatar with Upload Button */}
+            <div className="relative group shrink-0">
+              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-slate-900 via-sky-950 to-indigo-950 p-0.5 shadow-md overflow-hidden flex items-center justify-center">
+                {teacherAvatar ? (
+                  <img
+                    src={teacherAvatar}
+                    alt={displayTeacherName}
+                    className="w-full h-full object-cover rounded-[14px]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white rounded-[14px]">
+                    <span className="font-bold text-xl sm:text-2xl tracking-tight">
+                      {displayTeacherInitials}
+                    </span>
+                    <span className="text-[11px] text-sky-300 font-medium mt-0.5">ครูนิเทศก์</span>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="คลิกเพื่ออัปโหลดหรือเปลี่ยนรูปภาพครูนิเทศก์"
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center shadow-md transition transform hover:scale-110 cursor-pointer border-2 border-white"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+              {avatarSavedBadge && (
+                <span
+                  title="บันทึกรูปประจำตัวลงฐานข้อมูลออนไลน์แล้ว"
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-emerald-500 text-white shadow-md border-2 border-white animate-bounce"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                </span>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleTeacherAvatarUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Teacher Details */}
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+                  {displayTeacherName}
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  ครูนิเทศก์ประจำวิชา & ที่ปรึกษา
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+                  {teacherAssignedCourses.length > 0
+                    ? `${teacherAssignedCourses.length} รายวิชาที่รับผิดชอบ`
+                    : `${courses.length} รายวิชาเชื่อมโยง`}
+                </span>
+                {teacherAssignedRooms.length > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                    กลุ่ม: {teacherAssignedRooms.join(', ')}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-sm text-slate-500 flex flex-wrap items-center gap-2 sm:gap-3">
+                <span className="flex items-center gap-1.5 text-slate-700 font-medium">
+                  <UserCheck className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>สิทธิ์: ครูนิเทศก์ผู้สอน (Teacher/Supervisor)</span>
+                </span>
+                <span className="text-slate-300 hidden sm:inline">•</span>
+                <span className="font-mono text-slate-600">{teacherEmail}</span>
+                <span className="text-slate-300 hidden sm:inline">•</span>
+                <span className="text-slate-600">{displayTeacherDepartment}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Stats matching TeacherView */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+            <div className="text-sm text-slate-600 space-y-0.5">
+              <div className="flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  รายวิชาในระบบ: <strong className="font-mono text-sky-700">{courses.length}</strong> • นักศึกษา:{' '}
+                  <strong className="font-mono text-emerald-700">{students.length}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[13px] text-slate-500">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>
+                  บันทึกรายงานแล้ว:{' '}
+                  <strong className="font-mono text-indigo-700">{savedCountForSelected}/18</strong> สัปดาห์
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Unified Workspace Mode Switcher (Hidden when printing) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="inline-flex flex-wrap p-1 bg-slate-100 rounded-xl text-xs sm:text-sm font-semibold gap-1">
@@ -434,7 +707,6 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
           initialWeek={editorState.weekNumber}
           initialOpenPreview={editorState.openPreview}
           initialAutoPrint={editorState.autoPrint}
-          onBackToOverview={() => setSubMode('overview')}
           onReportSaved={(saved) => {
             setReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
             onTeachingReportSaved?.(saved);
@@ -550,24 +822,53 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
         </div>
       </div>
 
-      {loadError && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex items-center justify-between gap-3 text-sm shadow-2xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-            <span className="font-medium">
-              <strong>แจ้งเตือนระบบฐานข้อมูล:</strong> {loadError}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setLoadError(null)}
-            className="p-1 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-100 transition cursor-pointer shrink-0"
-            title="ปิดการแจ้งเตือน"
+      {(() => {
+        const effectiveLoadError = loadError || (!dismissedCloudError ? cloudLoadError : null) || null;
+        if (!effectiveLoadError) return null;
+        const isQuotaFallback = isQuotaOrNetworkError(effectiveLoadError);
+        return (
+          <div
+            className={`rounded-2xl p-4 flex items-center justify-between gap-3 text-sm shadow-2xs border ${
+              isQuotaFallback
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertCircle
+                className={`w-5 h-5 shrink-0 mt-0.5 ${
+                  isQuotaFallback ? 'text-amber-600' : 'text-rose-600'
+                }`}
+              />
+              <div className="space-y-0.5 font-medium">
+                <div>
+                  <strong>แจ้งเตือนระบบฐานข้อมูล:</strong> {effectiveLoadError}
+                </div>
+                {isQuotaFallback && (
+                  <div className="text-xs text-amber-800">
+                    ระบบได้เปิดใช้งานการบันทึกและแสดงผลข้อมูลจากหน่วยความจำสำรองอัตโนมัติ คุณสามารถบันทึก แก้ไข เรียกดู และสั่งพิมพ์ได้ตามปกติ และระบบจะซิงค์ขึ้น Cloud ให้โดยอัตโนมัติเมื่อโควตารีเซ็ต
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                setDismissedCloudError(true);
+              }}
+              className={`p-1 rounded-lg transition cursor-pointer shrink-0 ${
+                isQuotaFallback
+                  ? 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'
+                  : 'text-rose-600 hover:text-rose-800 hover:bg-rose-100'
+              }`}
+              title="ปิดการแจ้งเตือน"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -703,7 +1004,7 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
                   } ${isCurr ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-bold text-xs sm:text-sm">ส.{row.weekNumber}</span>
+                    <span className="font-bold text-xs whitespace-nowrap">สัปดาห์ที่ {row.weekNumber}</span>
                     {row.isSaved ? (
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     ) : (

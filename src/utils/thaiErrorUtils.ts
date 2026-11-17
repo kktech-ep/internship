@@ -105,3 +105,31 @@ export function formatThaiErrorMessage(
 
   return fallback;
 }
+
+/**
+ * Returns true if the error is caused by Firestore daily quota limits or temporary offline/network issues.
+ */
+export function isQuotaOrNetworkError(error: unknown): boolean {
+  let raw = '';
+  if (error instanceof Error) {
+    raw = error.message || '';
+  } else if (typeof error === 'string') {
+    raw = error;
+  } else if (error && typeof error === 'object' && 'message' in error) {
+    raw = String((error as { message?: unknown }).message ?? '');
+  }
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes('quota exceeded') ||
+    lower.includes('free daily read units') ||
+    lower.includes('resource-exhausted') ||
+    lower.includes('the client is offline') ||
+    lower.includes('offline') ||
+    lower.includes('unavailable') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('network error') ||
+    lower.includes('เกินโควตา') ||
+    lower.includes('ไม่สามารถเชื่อมต่ออินเทอร์เน็ต')
+  );
+}

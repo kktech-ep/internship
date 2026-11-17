@@ -72,8 +72,16 @@ import {
   resolveUserAvatarUrl,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
+  saveTeachingReportToFirestore,
   subscribeTeachingReports,
 } from './services/firestoreService';
+import {
+  getLocalTeachingReports,
+  getPendingTeachingReportIds,
+  markTeachingReportSynced,
+  reconcileTeachingReportsWithCloud,
+} from './utils/teachingReportCache';
+import { formatThaiErrorMessage } from './utils/thaiErrorUtils';
 import {
   getCandidateStudentKeys,
   getMergedStudentSubmissions,
@@ -117,7 +125,10 @@ export default function App() {
   const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
   const [teachers, setTeachers] = useState<SheetTeacher[]>(() => getAllLoginSheetTeachers());
   const [userAvatars, setUserAvatars] = useState<UserAvatarRecord[]>([]);
-  const [teachingReports, setTeachingReports] = useState<TeachingReportRecord[]>([]);
+  const [teachingReports, setTeachingReports] = useState<TeachingReportRecord[]>(() =>
+    getLocalTeachingReports()
+  );
+  const [teachingReportsNotice, setTeachingReportsNotice] = useState<string | null>(null);
   const [focusedTeachingReportTarget, setFocusedTeachingReportTarget] = useState<{
     teacherName: string;
     weekNumber: number;
@@ -266,9 +277,15 @@ export default function App() {
       })
       .catch(() => {});
 
-    // 3. Synchronize all rows from Google Spreadsheet login tab into Firebase Firestore (internship2-2569)
-    syncAllLoginSheetRowsToFirebase().then((res) => {
-      console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
+    // 3. Synchronize Google Sheet login -> Firestore at most once every 12 hours automatically
+    // (Manual sync buttons still run full sync immediately on demand without exhausting daily Firestore quota)
+    const AUTO_SYNC_KEY = 'kktech_last_auto_sync_ts';
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+    const lastAutoSync =
+      typeof localStorage !== 'undefined' ? Number(localStorage.getItem(AUTO_SYNC_KEY) || '0') : 0;
+    const shouldAutoSyncCloud = !lastAutoSync || Date.now() - lastAutoSync > TWELVE_HOURS_MS;
+
+    const applyFreshSheetUsers = () => {
       const freshSheetStudents = getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
       if (freshSheetStudents.length > 0) {
         setStudents((prev) => {
@@ -304,7 +321,25 @@ export default function App() {
           }));
         });
       }
-    });
+    };
+
+    if (shouldAutoSyncCloud) {
+      syncAllLoginSheetRowsToFirebase().then((res) => {
+        console.log('[UnifiedDatabase] Google Sheet login ⇋ Firebase sync result:', res.message);
+        if (res.success && typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(AUTO_SYNC_KEY, String(Date.now()));
+          } catch {
+            // ignore
+          }
+        }
+        applyFreshSheetUsers();
+      });
+    } else {
+      fetchSheetLoginAccounts(false)
+        .then(() => applyFreshSheetUsers())
+        .catch(() => {});
+    }
 
     // 4. Real-time subscription to Students collection anchored strictly to current Google Sheet students
     const unsubStudents = subscribeStudents(
@@ -472,12 +507,35 @@ export default function App() {
     };
     window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
 
-    // 11. Real-time subscription to Workplace Teaching Reports (/teaching_reports)
+    // 11. Single authoritative real-time subscription to Workplace Teaching Reports (/teaching_reports)
     const unsubTeachingReports = subscribeTeachingReports(
       (remoteReports) => {
-        setTeachingReports(remoteReports || []);
+        const merged = reconcileTeachingReportsWithCloud(remoteReports || []);
+        setTeachingReports(merged);
+        setTeachingReportsNotice(null);
+
+        // Flush any locally saved pending teaching reports once Firestore is available again
+        const pendingIds = getPendingTeachingReportIds();
+        if (pendingIds.length > 0) {
+          pendingIds.forEach((pId) => {
+            const pendingReport = merged.find((r) => r.id === pId);
+            if (pendingReport) {
+              saveTeachingReportToFirestore(pendingReport)
+                .then(() => markTeachingReportSynced(pId))
+                .catch(() => {});
+            }
+          });
+        }
       },
-      (err) => console.warn('Teaching reports stream note:', err)
+      (err) => {
+        console.warn('Teaching reports stream note:', err);
+        setTeachingReportsNotice(
+          formatThaiErrorMessage(
+            err,
+            'ไม่สามารถเชื่อมต่อฐานข้อมูลรายงานการสอนได้ในขณะนี้'
+          )
+        );
+      }
     );
 
     return () => {
@@ -1268,7 +1326,10 @@ export default function App() {
                 submissions={submissions}
                 courses={courses}
                 teachers={teachers}
+                userAvatars={userAvatars}
+                onUpdateTeacherAvatar={handleUpdateTeacherAvatar}
                 teachingReports={teachingReports}
+                cloudLoadError={teachingReportsNotice}
                 initialTeacherFilter={focusedTeachingReportTarget?.teacherName}
                 initialHighlightWeek={focusedTeachingReportTarget?.weekNumber}
                 onTeachingReportSaved={handleTeachingReportSaved}
