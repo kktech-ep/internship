@@ -25,6 +25,14 @@ export const COLLECTIONS = {
   TEACHING_REPORTS: 'teaching_reports',
 } as const;
 
+function logSubscriptionError(colPath: string, error: unknown, onError?: (err: Error) => void) {
+  try {
+    handleFirestoreError(error, OperationType.GET, colPath);
+  } catch (structuredErr) {
+    if (onError) onError(structuredErr as Error);
+  }
+}
+
 /**
  * Listen for real-time changes to the Students collection
  */
@@ -43,8 +51,7 @@ export function subscribeStudents(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -67,8 +74,7 @@ export function subscribeCompanies(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -91,8 +97,7 @@ export function subscribeSubmissions(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -180,8 +185,7 @@ export function subscribeAnnouncements(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -204,8 +208,7 @@ export function subscribeCourses(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -228,8 +231,7 @@ export function subscribeTeachers(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -275,24 +277,24 @@ export async function seedFirestoreIfEmpty(
       // Seed real students from Google Sheets login tab
       const realStudents = getAllLoginSheetStudents();
       for (const student of realStudents) {
-        await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), student);
+        await setDoc(doc(db, COLLECTIONS.STUDENTS, student.id), stripUndefinedDeep(student));
       }
 
       // Derive and seed real companies using unified builder (fallback to mockCompanies only if none)
       const unifiedCompanies = toFirestoreCompanies(buildUnifiedCompanies(realStudents, []));
       if (unifiedCompanies.length > 0) {
         for (const company of unifiedCompanies) {
-          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company);
+          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), stripUndefinedDeep(company));
         }
       } else {
         for (const company of mockCompanies) {
-          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), company);
+          await setDoc(doc(db, COLLECTIONS.COMPANIES, company.id), stripUndefinedDeep(company));
         }
       }
 
       // Seed announcements
       for (const ann of mockAnnouncements) {
-        await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), ann);
+        await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), stripUndefinedDeep(ann));
       }
       console.log('Firestore seed completed successfully from Google Sheets login tab.');
     } else {
@@ -300,7 +302,7 @@ export async function seedFirestoreIfEmpty(
       const annSnap = await getDocs(query(collection(db, COLLECTIONS.ANNOUNCEMENTS), limit(1)));
       if (annSnap.empty) {
         for (const ann of mockAnnouncements) {
-          await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), ann);
+          await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, ann.id), stripUndefinedDeep(ann));
         }
       }
     }
@@ -383,8 +385,7 @@ export function subscribeTeachingReports(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }
@@ -407,8 +408,7 @@ export function subscribeForm3Supervisions(
       onData(items);
     },
     (error) => {
-      console.warn(`Firestore subscription notice for ${colPath}:`, error.message);
-      if (onError) onError(error as Error);
+      logSubscriptionError(colPath, error, onError);
     }
   );
 }

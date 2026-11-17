@@ -168,6 +168,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
   const handleSaveToFirestore = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setSaveSuccessMessage(null);
     setErrorMessage(null);
 
     const isAlreadyGraded = existingSubmission?.status === 'graded';

@@ -113,6 +113,8 @@ export default function App() {
   const hasCloudSubsRef = React.useRef<boolean>(false);
   const hasCloudForm3Ref = React.useRef<boolean>(false);
   const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
+  const submissionsRef = React.useRef<Record<string, WeeklySubmission[]>>(submissions);
+  submissionsRef.current = submissions;
 
   // Initial active student id based on logged in user or first student from login sheet
   const [activeStudentId, setActiveStudentId] = useState<string>(() => {
@@ -232,6 +234,8 @@ export default function App() {
               companyName: keepForm1 && existing ? existing.companyName : fs.companyName,
               companyRegistration:
                 keepForm1 && existing?.companyRegistration ? existing.companyRegistration : fs.companyRegistration,
+              ...(keepForm1 && existing?.room ? { room: existing.room } : {}),
+              ...(keepForm1 && existing?.lastSyncSource ? { lastSyncSource: existing.lastSyncSource } : {}),
             });
           });
         });
@@ -418,40 +422,53 @@ export default function App() {
       },
     } as Student);
 
-    const nextStudents = students.map((s) => (s.id === currentStudent.id ? updatedStudent : s));
+    const nextStudents = students.some((s) => s.id === updatedStudent.id)
+      ? students.map((s) => (s.id === updatedStudent.id ? updatedStudent : s))
+      : [updatedStudent, ...students];
     setStudents(nextStudents);
 
     let syncResult = {
-      success: true,
-      sheetResult: 'บันทึกข้อมูลสถานประกอบการสำเร็จ',
-      firestoreResult: 'บันทึกลง Firebase Firestore (internship2-2569) สำเร็จ',
+      success: false,
+      sheetResult: '',
+      firestoreResult: '',
     };
 
     try {
       const token = getCachedAccessToken();
       syncResult = await saveAndSyncStudentBothWays(updatedStudent, token);
 
-      await syncDerivedCompaniesToFirestore(nextStudents, form3List);
+      if (syncResult.success) {
+        await syncDerivedCompaniesToFirestore(nextStudents, form3List);
+      }
 
-      await appendForm1ToGoogleSheet(
-        {
-          timestamp: new Date().toLocaleString('th-TH'),
-          studentCode: updatedStudent.studentCode,
-          studentName: updatedStudent.name,
-          level: `${updatedStudent.level} ${updatedStudent.department}`,
-          companyName: updatedStudent.companyName,
-          department: updatedStudent.companyRegistration.department,
-          mentorName: updatedStudent.companyRegistration.mentorName,
-          mentorPhone: updatedStudent.companyRegistration.mentorPhone,
-          emergencyPhone: updatedStudent.companyRegistration.emergencyPhone,
-          gpsCoordinates: updatedStudent.companyRegistration.gpsCoordinates,
-          notes: updatedStudent.companyRegistration.notes || '',
-          status: 'บันทึกสำเร็จ',
-        },
-        token
-      );
-    } catch (sheetErr) {
-      console.warn('Unified database sync note:', sheetErr);
+      if (syncResult.success) {
+        appendForm1ToGoogleSheet(
+          {
+            timestamp: new Date().toLocaleString('th-TH'),
+            studentCode: updatedStudent.studentCode,
+            studentName: updatedStudent.name,
+            level: `${updatedStudent.level} ${updatedStudent.department}`,
+            companyName: updatedStudent.companyName,
+            department: updatedStudent.companyRegistration.department,
+            mentorName: updatedStudent.companyRegistration.mentorName,
+            mentorPhone: updatedStudent.companyRegistration.mentorPhone,
+            emergencyPhone: updatedStudent.companyRegistration.emergencyPhone,
+            gpsCoordinates: updatedStudent.companyRegistration.gpsCoordinates,
+            notes: updatedStudent.companyRegistration.notes || '',
+            status: 'บันทึกสำเร็จ',
+          },
+          token
+        ).catch((sheetErr) => console.warn('Form 1 sheet append note:', sheetErr));
+      }
+    } catch (syncErr) {
+      console.warn('Unified database sync note:', syncErr);
+      syncResult = {
+        success: false,
+        sheetResult: syncResult.sheetResult || '',
+        firestoreResult:
+          'บันทึกในฐานข้อมูลออนไลน์ไม่สำเร็จ: ' +
+          (syncErr instanceof Error ? syncErr.message : String(syncErr)),
+      };
     }
 
     return syncResult;
@@ -599,58 +616,54 @@ export default function App() {
     if (idsToUpdate.length === 0) return;
 
     const modifiedSubs: WeeklySubmission[] = [];
+    const nextSubs: Record<string, WeeklySubmission[]> = { ...submissionsRef.current };
 
-    setSubmissions((prev) => {
-      const next = { ...prev };
-      for (const sId of idsToUpdate) {
-        const matchedStudent =
-          students.find((s) => s.id === sId || s.studentCode === sId || getCandidateStudentKeys(s).includes(sId)) ||
-          ({ id: sId, studentCode: sId.replace(/^std-/, '') } as Pick<Student, 'id' | 'studentCode'>);
+    for (const sId of idsToUpdate) {
+      const matchedStudent =
+        students.find((s) => s.id === sId || s.studentCode === sId || getCandidateStudentKeys(s).includes(sId)) ||
+        ({ id: sId, studentCode: sId.replace(/^std-/, '') } as Pick<Student, 'id' | 'studentCode'>);
 
-        const mergedSubs = getMergedStudentSubmissions(matchedStudent, next);
-        if (mergedSubs.length === 0) continue;
+      const mergedSubs = getMergedStudentSubmissions(matchedStudent, nextSubs);
+      if (mergedSubs.length === 0) continue;
 
-        const latestWeek = Math.max(...mergedSubs.map((s) => Number(s.weekNumber) || 0));
-        const targetSub = mergedSubs.find((s) => s.weekNumber === latestWeek);
-        if (!targetSub) continue;
+      const latestWeek = Math.max(...mergedSubs.map((s) => Number(s.weekNumber) || 0));
+      const targetSub = mergedSubs.find((s) => s.weekNumber === latestWeek);
+      if (!targetSub) continue;
 
-        const modSub: WeeklySubmission = {
-          ...targetSub,
-          status: 'graded' as const,
-          teacherScore: evalData.score,
-          teacherGrade: evalData.grade,
-          teacherComment: evalData.comment,
-          mentorComment: evalData.mentorFeedback,
-        };
-        modifiedSubs.push(modSub);
-        writeSubmissionToLocalCache(modSub, matchedStudent);
+      const modSub: WeeklySubmission = {
+        ...targetSub,
+        status: 'graded' as const,
+        teacherScore: evalData.score,
+        teacherGrade: evalData.grade,
+        teacherComment: evalData.comment,
+        mentorComment: evalData.mentorFeedback,
+      };
+      modifiedSubs.push(modSub);
+      writeSubmissionToLocalCache(modSub, matchedStudent);
 
-        const keys = getCandidateStudentKeys(matchedStudent);
-        let placed = false;
-        for (const k of keys) {
-          if (next[k]) {
-            next[k] = next[k].map((sub) =>
-              sub.id === modSub.id || sub.weekNumber === latestWeek ? modSub : sub
-            );
-            placed = true;
-          }
-        }
-        if (!placed) {
-          const primaryKey = 'id' in matchedStudent && matchedStudent.id ? matchedStudent.id : sId;
-          next[primaryKey] = [modSub];
+      const keys = getCandidateStudentKeys(matchedStudent);
+      let placed = false;
+      for (const k of keys) {
+        if (nextSubs[k]) {
+          nextSubs[k] = nextSubs[k].map((sub) =>
+            sub.id === modSub.id || sub.weekNumber === latestWeek ? modSub : sub
+          );
+          placed = true;
         }
       }
-      return next;
-    });
+      if (!placed) {
+        const primaryKey = 'id' in matchedStudent && matchedStudent.id ? matchedStudent.id : sId;
+        nextSubs[primaryKey] = [modSub];
+      }
+    }
 
-    // Persist all updated evaluations atomically and immediately to Firebase Firestore
     if (modifiedSubs.length > 0) {
-      try {
-        await saveSubmissionsBatchToFirestore(modifiedSubs);
-        modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
-      } catch (e) {
-        console.error('Error updating evaluations in Firestore:', e);
-      }
+      submissionsRef.current = nextSubs;
+      setSubmissions(nextSubs);
+
+      // Persist all updated evaluations atomically and immediately to Firebase Firestore
+      await saveSubmissionsBatchToFirestore(modifiedSubs);
+      modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
     }
   };
 
@@ -1001,14 +1014,16 @@ export default function App() {
                 }}
                 onSubmissionUpdated={(newSub) => {
                   setSelectedLogWeek(newSub.weekNumber);
-                  writeSubmissionToLocalCache(newSub, currentStudent);
                   const nextSubsMap: Record<string, WeeklySubmission[]> = {
-                    ...submissions,
+                    ...submissionsRef.current,
                     [currentStudent.id]: [
                       newSub,
-                      ...(submissions[currentStudent.id] || []).filter((s) => s.weekNumber !== newSub.weekNumber),
+                      ...(submissionsRef.current[currentStudent.id] || []).filter(
+                        (s) => s.weekNumber !== newSub.weekNumber
+                      ),
                     ],
                   };
+                  submissionsRef.current = nextSubsMap;
                   setSubmissions(nextSubsMap);
                   syncStudentLiveStats(currentStudent, nextSubsMap);
                 }}

@@ -208,8 +208,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [reportSaveStatus, setReportSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [reportSaveError, setReportSaveError] = useState<string | null>(null);
   const lastAppliedRemoteTsRef = useRef<Record<string, string>>({});
-  const skipNextAutoSaveRef = useRef<boolean>(false);
-  const hasInitializedRef = useRef<boolean>(false);
+  const hasPendingUserEditRef = useRef<boolean>(false);
+  const markUserEdited = () => {
+    hasPendingUserEditRef.current = true;
+  };
 
   const reportDocId = useMemo(
     () => toSafeTeachingReportId(reporterName, selectedWeek),
@@ -264,11 +266,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         teachTime: idx === 0 ? '15.00-17.00' : '14.00-19.00'
       }));
 
-      skipNextAutoSaveRef.current = true;
       setCourses(items);
     } else {
       // Fallback default courses for นายทักษิณ โสภาปิยะ
-      skipNextAutoSaveRef.current = true;
       setCourses([
         {
           id: 'crs-1',
@@ -396,6 +396,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           teachDate: reportDate,
           teachTime: idx === 0 ? '15.00-17.00' : '14.00-19.00'
         }));
+        markUserEdited();
         setCourses(items);
       }
       setCourseSyncMsg('อัปเดตและซิงค์ข้อมูลรายวิชาจาก Google Sheets (data & ตาราง Pivot 1) เรียบร้อย');
@@ -461,6 +462,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     }
 
     const newId = `crs-${Date.now()}`;
+    markUserEdited();
     setCourses((prev) => [
       ...prev,
       {
@@ -479,6 +481,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   const handleAddCourse = () => {
     const newId = `crs-${Date.now()}`;
+    markUserEdited();
     setCourses(prev => [
       ...prev,
       {
@@ -495,10 +498,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   const handleRemoveCourse = (id: string) => {
     if (courses.length <= 1) return;
+    markUserEdited();
     setCourses(prev => prev.filter(c => c.id !== id));
   };
 
   const handleUpdateCourse = (id: string, field: keyof TeachingCourseItem, value: string) => {
+    markUserEdited();
     setCourses(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
@@ -526,7 +531,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
     if (f3WithComments && f3WithComments.teacherComment) {
       const trimmed = f3WithComments.teacherComment.trim();
-      skipNextAutoSaveRef.current = true;
       setLearningOutcome(`นักศึกษาปฏิบัติงานได้อย่างถูกต้อง ปลอดภัย มีความรู้ความเข้าใจในกระบวนการทำงาน ${trimmed}`);
       return;
     }
@@ -536,14 +540,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     const weekSubs = allSubs.filter(s => s.weekNumber === selectedWeek);
     if (weekSubs.length > 0 && weekSubs[0].dailyLogs && weekSubs[0].dailyLogs.length > 0) {
       const topLog = weekSubs[0].dailyLogs[0].taskDescription;
-      skipNextAutoSaveRef.current = true;
       setLearningOutcome(`นักศึกษามีความรู้และทักษะเกี่ยวกับ ${topLog.slice(0, 70)} ตามมาตรฐานวิชาชีพ`);
       return;
     }
 
     // 3. Week meta default
     const meta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek);
-    skipNextAutoSaveRef.current = true;
     if (meta) {
       setLearningOutcome(`มีความรู้เกี่ยวกับ${meta.title}ในสถานประกอบการตามหลักการและกระบวนการ`);
     } else {
@@ -836,7 +838,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     if (lastAppliedRemoteTsRef.current[reportDocId] === remote.updatedAt) return;
 
     lastAppliedRemoteTsRef.current[reportDocId] = remote.updatedAt;
-    skipNextAutoSaveRef.current = true;
+    hasPendingUserEditRef.current = false;
     if (remote.position) setPosition(remote.position);
     if (remote.specialDuty !== undefined) setSpecialDuty(remote.specialDuty);
     if (remote.reportDate) setReportDate(remote.reportDate);
@@ -854,6 +856,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     if (courses.length === 0) return;
     const nowIso = new Date().toISOString();
     lastAppliedRemoteTsRef.current[reportDocId] = nowIso;
+    hasPendingUserEditRef.current = false;
     setReportSaveStatus('saving');
     setReportSaveError(null);
     try {
@@ -881,14 +884,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Auto-save edits to Firestore immediately after brief debounce
   useEffect(() => {
-    if (!hasInitializedRef.current) {
-      hasInitializedRef.current = true;
-      return;
-    }
-    if (skipNextAutoSaveRef.current) {
-      skipNextAutoSaveRef.current = false;
-      return;
-    }
+    if (!hasPendingUserEditRef.current) return;
     if (courses.length === 0) return;
 
     const timer = setTimeout(() => {
@@ -910,6 +906,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
     if (contextChanged) {
       prevPhotoContextRef.current = { selectedWeek, reporterName };
+      hasPendingUserEditRef.current = false;
       setHasManualPhotoEdits(false);
     }
 
@@ -922,7 +919,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         submissions,
         students
       );
-      skipNextAutoSaveRef.current = true;
       setWeekPhotos(list);
     }
   }, [selectedWeek, reporterName, courses, form3List, submissions, students, hasManualPhotoEdits, reportDocId, remoteReportsMap]);
@@ -1058,6 +1054,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Handler to manually re-sync photos from database
   const handleAutoPopulatePhotos = () => {
+    markUserEdited();
     setHasManualPhotoEdits(false);
     const list = generateDynamicWeekPhotos(
       selectedWeek,
@@ -1074,6 +1071,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Pick a specific photo from Database Library into targetSlotIdx
   const handleSelectLibraryPhoto = (item: GalleryPhotoItem) => {
+    markUserEdited();
     setHasManualPhotoEdits(true);
     setWeekPhotos(prev => {
       const next = [...prev];
@@ -1093,6 +1091,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   // Apply up to 6 filtered photos from Database Library at once
   const handleBatchApplyFilteredLibrary = () => {
     if (filteredLibraryPhotos.length === 0) return;
+    markUserEdited();
     setHasManualPhotoEdits(true);
     setWeekPhotos(prev => {
       const next = [...prev];
@@ -1113,6 +1112,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Handler to update photo caption
   const handleUpdateCaption = (index: number, newCaption: string) => {
+    markUserEdited();
     setHasManualPhotoEdits(true);
     setWeekPhotos(prev => {
       const next = [...prev];
@@ -1125,6 +1125,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Handler to update photo URL directly
   const handleUpdatePhotoUrl = (index: number, newUrl: string) => {
+    markUserEdited();
     setHasManualPhotoEdits(true);
     setWeekPhotos(prev => {
       const next = [...prev];
@@ -1147,15 +1148,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       if (compressed) {
         handleUpdatePhotoUrl(index, compressed);
       }
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        if (result) {
-          handleUpdatePhotoUrl(index, result);
-        }
-      };
-      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Error compressing photo upload:', err);
+      setReportSaveError('ไม่สามารถบีบอัดไฟล์รูปภาพได้ กรุณาเลือกไฟล์ JPG/PNG ที่เล็กลง');
     }
   };
 
@@ -1916,7 +1911,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </label>
             <select
               value={position}
-              onChange={(e) => setPosition(e.target.value)}
+              onChange={(e) => {
+                markUserEdited();
+                setPosition(e.target.value);
+              }}
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {POSITION_OPTIONS.map(opt => (
@@ -1934,7 +1932,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <input
               type="text"
               value={specialDuty}
-              onChange={(e) => setSpecialDuty(e.target.value)}
+              onChange={(e) => {
+                markUserEdited();
+                setSpecialDuty(e.target.value);
+              }}
               placeholder="เช่น - หรือ หัวหน้างาน..."
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -1949,7 +1950,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             <input
               type="date"
               value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
+              onChange={(e) => {
+                markUserEdited();
+                setReportDate(e.target.value);
+              }}
               className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -2121,7 +2125,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <textarea
             rows={2}
             value={learningOutcome}
-            onChange={(e) => setLearningOutcome(e.target.value)}
+            onChange={(e) => {
+              markUserEdited();
+              setLearningOutcome(e.target.value);
+            }}
             className="w-full p-2 text-[13px] rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>

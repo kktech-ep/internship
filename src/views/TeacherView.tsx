@@ -163,7 +163,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               user: matchedTeacherDoc?.user || teacherEmail,
             },
             compressed
-          ).catch((err) => console.warn('Firestore teacher avatar save note:', err));
+          ).catch((err) => {
+            console.error('Failed to save teacher avatar to Firestore:', err);
+          });
         }
       };
       img.src = dataUrl;

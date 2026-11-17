@@ -51,16 +51,24 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [syncResultMsg, setSyncResultMsg] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [showMapPreview, setShowMapPreview] = useState(false);
 
   // Load and bind student's data directly from login sheet
   useEffect(() => {
     if (isOpen && student) {
+      setSubmitError(null);
+      setIsSaved(false);
       setIsLoadingSheet(true);
       findStudentInLoginSheet(student.studentCode, student.name).then((row) => {
         setIsLoadingSheet(false);
-        if (row) {
+        const keepFirestoreForm1 = Boolean(
+          (student as Student & { lastSyncSource?: string }).lastSyncSource === 'web_portal_form1' &&
+            student.companyName &&
+            student.companyName !== 'ยังไม่ระบุสถานประกอบการ'
+        );
+        if (row && !keepFirestoreForm1) {
           setSheetRow(row);
           setRoom(row.room || student.room || '');
           setFormData({
@@ -73,15 +81,16 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
             notes: row.delial || student.companyRegistration?.notes || '',
           });
         } else {
-          setRoom(student.room || '');
+          if (row) setSheetRow(row);
+          setRoom(student.room || row?.room || '');
           setFormData({
-            companyName: student.companyName || '',
-            department: student.companyRegistration?.department || '',
-            mentorName: student.companyRegistration?.mentorName || '',
-            mentorPhone: student.companyRegistration?.mentorPhone || '',
-            emergencyPhone: student.companyRegistration?.emergencyPhone || '',
-            gpsCoordinates: student.companyRegistration?.gpsCoordinates || '',
-            notes: student.companyRegistration?.notes || '',
+            companyName: student.companyName || row?.Company || '',
+            department: student.companyRegistration?.department || row?.department || '',
+            mentorName: student.companyRegistration?.mentorName || row?.leader || '',
+            mentorPhone: student.companyRegistration?.mentorPhone || row?.leaderPhone || '',
+            emergencyPhone: student.companyRegistration?.emergencyPhone || row?.CompanyPhone || '',
+            gpsCoordinates: student.companyRegistration?.gpsCoordinates || row?.GPS || '',
+            notes: student.companyRegistration?.notes || row?.delial || '',
           });
         }
       });
@@ -100,31 +109,44 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
   const handleConfirmSubmit = async () => {
     setShowConfirmModal(false);
     setIsSubmitting(true);
+    setSubmitError(null);
 
     const nowTh = new Date().toLocaleString('th-TH');
 
-    const syncRes = await onSave({
-      companyName: formData.companyName,
-      room: room,
-      department: formData.department,
-      mentorName: formData.mentorName,
-      mentorPhone: formData.mentorPhone,
-      emergencyPhone: formData.emergencyPhone,
-      gpsCoordinates: formData.gpsCoordinates,
-      notes: formData.notes,
-      registeredAt: nowTh + ' (ซิงค์ Sheets ⇋ Firebase)',
-    });
+    try {
+      const syncRes = await onSave({
+        companyName: formData.companyName,
+        room: room,
+        department: formData.department,
+        mentorName: formData.mentorName,
+        mentorPhone: formData.mentorPhone,
+        emergencyPhone: formData.emergencyPhone,
+        gpsCoordinates: formData.gpsCoordinates,
+        notes: formData.notes,
+        registeredAt: nowTh + ' (ซิงค์ Real-time ⇋ Sheets)',
+      });
 
-    if (syncRes && typeof syncRes === 'object' && 'sheetResult' in syncRes) {
-      setSyncResultMsg(
-        `${syncRes.firestoreResult} • ${syncRes.sheetResult}`
-      );
-    } else {
-      setSyncResultMsg('บันทึกข้อมูลลงฐานข้อมูลออนไลน์ (Real-time) เรียบร้อยแล้ว');
+      if (syncRes && typeof syncRes === 'object' && 'success' in syncRes && !syncRes.success) {
+        setSubmitError(syncRes.firestoreResult || 'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (syncRes && typeof syncRes === 'object' && 'sheetResult' in syncRes) {
+        setSyncResultMsg(
+          `${syncRes.firestoreResult} • ${syncRes.sheetResult}`
+        );
+      } else {
+        setSyncResultMsg('บันทึกข้อมูลลงฐานข้อมูลออนไลน์ (Real-time) เรียบร้อยแล้ว');
+      }
+
+      setIsSubmitting(false);
+      setIsSaved(true);
+    } catch (err) {
+      console.error('Form1 submit failed:', err);
+      setSubmitError('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงฐานข้อมูลออนไลน์ กรุณาลองใหม่อีกครั้ง');
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
-    setIsSaved(true);
   };
 
   const handleGetDeviceGPS = () => {
@@ -214,6 +236,11 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handlePreSubmit} className="p-6 space-y-4 text-xs">
+            {submitError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {submitError}
+              </div>
+            )}
             {/* Student Info preview box showing: name (studentCode) ตามด้วยกลุ่ม */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
               <div className="font-bold text-slate-900 text-sm">
