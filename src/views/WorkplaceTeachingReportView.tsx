@@ -1749,6 +1749,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <div key={c.id || idx}>
                   {idx === 0 ? 'รายวิชาบูรณาการ : ' : ''}
                   {c.subjectCode} {c.subjectName}
+                  {c.room?.trim() ? ` กลุ่ม ${c.room.trim()}` : ''}
                 </div>
               ))}
             </div>
