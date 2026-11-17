@@ -37,7 +37,7 @@ import {
   Trash2,
   List
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow, TeachingReportRecord } from '../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { getCoursesByRoom } from '../services/courseDataService';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
@@ -69,6 +69,9 @@ interface A4ReportViewProps {
   onSelectStudent?: (studentId: string) => void;
   onDeleteSubmission?: (submissionId: string, studentId: string) => Promise<boolean>;
   onDeleteSupervision?: (recordId: string) => Promise<boolean>;
+  teachingReports?: TeachingReportRecord[];
+  onTeachingReportSaved?: (report: TeachingReportRecord) => void;
+  onNavigateToTeachingReports?: (teacherName: string, weekNumber: number) => void;
 }
 
 export interface CompanySupervisionSummary {
@@ -108,6 +111,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   onSelectStudent,
   onDeleteSubmission,
   onDeleteSupervision,
+  teachingReports,
+  onTeachingReportSaved,
+  onNavigateToTeachingReports,
 }) => {
   const isStudentRole = currentUser?.role === 'student';
   // Main view tab: 'table' (All Companies Form_3 Summary), 'a4' (Official Weekly A4 Document), or 'teaching' (Workplace Integrated Learning Report)
@@ -2100,6 +2106,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           form3List={form3List}
           submissions={mergedSubmissions}
           courses={propCourses}
+          teachingReports={teachingReports}
+          onReportSaved={onTeachingReportSaved}
+          onNavigateToTeachingReports={onNavigateToTeachingReports}
         />
       )}
     </div>

@@ -356,6 +356,16 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   สรุปรายงานการนิเทศ
                 </button>
+                <button
+                  onClick={() => onNavigate('teaching-reports')}
+                  className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[13px] sm:text-[15px] font-semibold rounded-lg transition cursor-pointer ${
+                    currentView === 'teaching-reports'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  บันทึกรายงานการสอนรายสัปดาห์
+                </button>
               </>
             )}
 

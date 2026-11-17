@@ -230,6 +230,7 @@ export interface TeachingReportRecord {
   learningOutcome: string;
   weekPhotos?: TeachingReportPhoto[];
   hasManualPhotoEdits?: boolean;
+  photoCount?: number;
   updatedAt: string;
 }
 

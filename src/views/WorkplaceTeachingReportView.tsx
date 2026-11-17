@@ -51,6 +51,13 @@ interface WorkplaceTeachingReportViewProps {
   submissions: Record<string, WeeklySubmission[]>;
   courses?: CourseDataRow[];
   teachers?: SheetTeacher[];
+  teachingReports?: TeachingReportRecord[];
+  initialTeacherName?: string;
+  initialWeek?: number;
+  initialOpenPreview?: boolean;
+  onBackToOverview?: () => void;
+  onReportSaved?: (report: TeachingReportRecord) => void;
+  onNavigateToTeachingReports?: (teacherName: string, weekNumber: number) => void;
 }
 
 export interface TeachingCourseItem {
@@ -115,7 +122,7 @@ function formatThaiDateShort(dateStr: string): string {
   return `${day} ${month} ${yearBE}`;
 }
 
-function toSafeTeachingReportId(reporterName: string, weekNumber: number): string {
+export function toSafeTeachingReportId(reporterName: string, weekNumber: number): string {
   const clean = (reporterName || 'teacher').trim();
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
@@ -131,6 +138,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   submissions,
   courses: propCourses,
   teachers: propTeachers,
+  teachingReports: propTeachingReports,
+  initialTeacherName,
+  initialWeek,
+  initialOpenPreview,
+  onBackToOverview,
+  onReportSaved,
+  onNavigateToTeachingReports,
 }) => {
   // 1. Teacher selection (all teachers from login sheet, Firestore, course data, and Form 3 supervision records)
   const allTeachers = useMemo(() => {
@@ -164,7 +178,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return 'นายทักษิณ โสภาปิยะ';
   }, [currentUser, allTeachers]);
 
-  const [reporterName, setReporterName] = useState<string>(defaultTeacher);
+  const [reporterName, setReporterName] = useState<string>(() => initialTeacherName || defaultTeacher);
   const [position, setPosition] = useState<string>('ครู วิทยฐานะครูชำนาญการพิเศษ');
   const [specialDuty, setSpecialDuty] = useState<string>('-');
   const [reportDate, setReportDate] = useState<string>(() => {
@@ -176,7 +190,19 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return getCurrentWeekInfo().weekNumber || 1;
   }, []);
 
-  const [selectedWeek, setSelectedWeek] = useState<number>(currentWeekCalculated);
+  const [selectedWeek, setSelectedWeek] = useState<number>(() => initialWeek || currentWeekCalculated);
+
+  useEffect(() => {
+    if (initialTeacherName) {
+      setReporterName(initialTeacherName);
+    }
+  }, [initialTeacherName]);
+
+  useEffect(() => {
+    if (typeof initialWeek === 'number' && initialWeek >= 1 && initialWeek <= 18) {
+      setSelectedWeek(initialWeek);
+    }
+  }, [initialWeek]);
 
   // Generate weeks 1-18 with exact dates
   const weeksList = useMemo(() => {
@@ -204,10 +230,21 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
   // Course list state - dynamically loaded by teacher or Firestore real-time teaching_reports
   const [courses, setCourses] = useState<TeachingCourseItem[]>([]);
-  const [remoteReportsMap, setRemoteReportsMap] = useState<Record<string, TeachingReportRecord>>({});
+  const [remoteReportsMap, setRemoteReportsMap] = useState<Record<string, TeachingReportRecord>>(() => {
+    const map: Record<string, TeachingReportRecord> = {};
+    (propTeachingReports || []).forEach((r) => {
+      if (r && r.id) map[r.id] = r;
+    });
+    return map;
+  });
   const [reportSaveStatus, setReportSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [reportSaveError, setReportSaveError] = useState<string | null>(null);
-  const lastAppliedRemoteTsRef = useRef<Record<string, string>>({});
+  const [savedLinkBanner, setSavedLinkBanner] = useState<{
+    teacherName: string;
+    weekNumber: number;
+    savedAt: string;
+  } | null>(null);
+  const lastAppliedContextRef = useRef<{ docId: string; updatedAt: string }>({ docId: '', updatedAt: '' });
   const hasPendingUserEditRef = useRef<boolean>(false);
   const markUserEdited = () => {
     hasPendingUserEditRef.current = true;
@@ -217,6 +254,18 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     () => toSafeTeachingReportId(reporterName, selectedWeek),
     [reporterName, selectedWeek]
   );
+
+  // Sync from parent propTeachingReports if provided
+  useEffect(() => {
+    if (!propTeachingReports) return;
+    setRemoteReportsMap((prev) => {
+      const map: Record<string, TeachingReportRecord> = { ...prev };
+      propTeachingReports.forEach((r) => {
+        if (r && r.id) map[r.id] = r;
+      });
+      return map;
+    });
+  }, [propTeachingReports]);
 
   // Real-time subscription to /teaching_reports
   useEffect(() => {
@@ -834,10 +883,22 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   // Apply incoming real-time report from Firestore when teacher/week changes or updates remotely
   useEffect(() => {
     const remote = remoteReportsMap[reportDocId];
-    if (!remote) return;
-    if (lastAppliedRemoteTsRef.current[reportDocId] === remote.updatedAt) return;
+    if (!remote) {
+      if (lastAppliedContextRef.current.docId !== reportDocId) {
+        lastAppliedContextRef.current = { docId: reportDocId, updatedAt: '' };
+        hasPendingUserEditRef.current = false;
+        setHasManualPhotoEdits(false);
+        setReportSaveStatus('idle');
+        setReportSaveError(null);
+      }
+      return;
+    }
 
-    lastAppliedRemoteTsRef.current[reportDocId] = remote.updatedAt;
+    const docChanged = lastAppliedContextRef.current.docId !== reportDocId;
+    const remoteUpdated = lastAppliedContextRef.current.updatedAt !== remote.updatedAt;
+    if (!docChanged && !remoteUpdated) return;
+
+    lastAppliedContextRef.current = { docId: reportDocId, updatedAt: remote.updatedAt };
     hasPendingUserEditRef.current = false;
     if (remote.position) setPosition(remote.position);
     if (remote.specialDuty !== undefined) setSpecialDuty(remote.specialDuty);
@@ -847,19 +908,23 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     if (remote.hasManualPhotoEdits && remote.weekPhotos && remote.weekPhotos.length > 0) {
       setHasManualPhotoEdits(true);
       setWeekPhotos(remote.weekPhotos);
+    } else {
+      setHasManualPhotoEdits(false);
     }
     setReportSaveStatus('saved');
+    setReportSaveError(null);
   }, [reportDocId, remoteReportsMap]);
 
   // Helper to persist current teaching report immediately to online Firestore
-  const saveTeachingReportNow = async () => {
+  const saveTeachingReportNow = async (isManualClick: boolean = false) => {
     if (courses.length === 0) return;
     const nowIso = new Date().toISOString();
-    lastAppliedRemoteTsRef.current[reportDocId] = nowIso;
+    lastAppliedContextRef.current = { docId: reportDocId, updatedAt: nowIso };
     hasPendingUserEditRef.current = false;
     setReportSaveStatus('saving');
     setReportSaveError(null);
     try {
+      const activePhotosCount = weekPhotos.filter((p) => Boolean(p.url)).length;
       const payload: TeachingReportRecord = {
         id: reportDocId,
         teacherKey: reporterName.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim(),
@@ -870,11 +935,21 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         weekNumber: selectedWeek,
         courses,
         learningOutcome,
+        photoCount: activePhotosCount,
         ...(hasManualPhotoEdits ? { weekPhotos, hasManualPhotoEdits: true } : { hasManualPhotoEdits: false }),
         updatedAt: nowIso,
       };
       await saveTeachingReportToFirestore(payload);
+      setRemoteReportsMap((prev) => ({ ...prev, [payload.id]: payload }));
+      onReportSaved?.(payload);
       setReportSaveStatus('saved');
+      if (isManualClick) {
+        setSavedLinkBanner({
+          teacherName: reporterName,
+          weekNumber: selectedWeek,
+          savedAt: nowIso,
+        });
+      }
     } catch (err) {
       console.error('Error saving teaching report to Firestore:', err);
       setReportSaveStatus('error');
@@ -1165,9 +1240,17 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return 0.85;
   };
 
-  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(Boolean(initialOpenPreview));
   const [previewTab, setPreviewTab] = useState<'all' | 'doc1' | 'doc2_1' | 'doc2_2'>('all');
   const [previewZoom, setPreviewZoom] = useState<number>(() => getFitPreviewZoom());
+
+  useEffect(() => {
+    if (initialOpenPreview) {
+      setPreviewTab('all');
+      setPreviewZoom(getFitPreviewZoom());
+      setIsPrintPreviewOpen(true);
+    }
+  }, [initialOpenPreview, initialTeacherName, initialWeek]);
 
   const handleOpenPrintPreview = (tab: 'all' | 'doc1' | 'doc2_1' | 'doc2_2' = 'all') => {
     setPreviewTab(tab);
@@ -1345,15 +1428,21 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         return;
       }
 
-      let fileName = '';
+      const cleanTeacherFilePart = (reporterName || 'ครูนิเทศก์')
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ');
+      const baseReportFileName = `รายงานวิชาในสถานประกอบการ_${cleanTeacherFilePart}_สัปดาห์ที่${selectedWeek}`;
+
+      let fileName = `${baseReportFileName}.pdf`;
       if (targetScope === 'doc1') {
-        fileName = `บันทึกข้อความ_รายงานการสอนบูรณาการ_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+        fileName = `${baseReportFileName}_บันทึกข้อความ.pdf`;
       } else if (targetScope === 'doc2') {
-        fileName = `รายงานการจัดการเรียนรู้รายสัปดาห์_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+        fileName = `${baseReportFileName}_แบบรายงาน.pdf`;
       } else if (targetScope === 'all') {
-        fileName = `เอกสารรายงานการสอนบูรณาการ_ครบชุด3หน้า_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+        fileName = `${baseReportFileName}.pdf`;
       } else {
-        fileName = `เอกสารรายงานการสอนบูรณาการ_${targets[0].label}_${reporterName}_สัปดาห์ที่${selectedWeek}.pdf`;
+        fileName = `${baseReportFileName}_${targets[0].label}.pdf`;
       }
       pdf.save(fileName);
     } catch (err) {
@@ -1854,15 +1943,27 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {onBackToOverview && (
+              <button
+                type="button"
+                onClick={onBackToOverview}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-sm shadow-2xs transition cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4 text-slate-600" />
+                <span>กลับหน้าสถานะรายสัปดาห์</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={saveTeachingReportNow}
+              onClick={() => saveTeachingReportNow(true)}
               disabled={reportSaveStatus === 'saving'}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm shadow-2xs transition cursor-pointer disabled:opacity-60"
-              title="บันทึกข้อมูลรายงานการสอนและรายวิชาลงฐานข้อมูลออนไลน์ทันที"
+              title="บันทึกข้อมูลรายงานการสอนและรายวิชาลงฐานข้อมูลออนไลน์ทันที และเชื่อมโยงไปที่แถบบันทึกรายงานการสอนรายสัปดาห์"
             >
               {reportSaveStatus === 'saving' ? (
                 <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+              ) : reportSaveStatus === 'saved' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
               ) : (
                 <Save className="w-4 h-4 text-emerald-700" />
               )}
@@ -1883,12 +1984,48 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
             </button>
           </div>
-          {reportSaveError && (
-            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">
-              ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: {reportSaveError}
-            </div>
-          )}
         </div>
+
+        {savedLinkBanner && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                บันทึกข้อมูลรายงานการสอน <strong>สัปดาห์ที่ {savedLinkBanner.weekNumber}</strong> ({savedLinkBanner.teacherName}) ลงฐานข้อมูลออนไลน์และเชื่อมโยงไปยังแถบ <strong>บันทึกรายงานการสอนรายสัปดาห์</strong> เรียบร้อยแล้ว
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {onNavigateToTeachingReports && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onNavigateToTeachingReports(
+                      savedLinkBanner.teacherName,
+                      savedLinkBanner.weekNumber
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer"
+                >
+                  ดูข้อมูลที่แถบ บันทึกรายงานการสอนรายสัปดาห์ &rarr;
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSavedLinkBanner(null)}
+                className="p-1 text-emerald-700 hover:text-emerald-900 rounded cursor-pointer"
+                title="ปิดการแจ้งเตือน"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {reportSaveError && (
+          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">
+            ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: {reportSaveError}
+          </div>
+        )}
 
         {/* Inputs Form Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 pt-1 text-[13px]">
@@ -2870,7 +3007,21 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 {/* Print button (Prints exact page(s) shown in Print Preview) */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const cleanTeacher = (reporterName || 'ครูนิเทศก์')
+                      .trim()
+                      .replace(/[\\/:*?"<>|]+/g, ' ')
+                      .replace(/\s+/g, ' ');
+                    const prevTitle = document.title;
+                    document.title = `รายงานวิชาในสถานประกอบการ_${cleanTeacher}_สัปดาห์ที่${selectedWeek}`;
+                    const restoreTitle = () => {
+                      document.title = prevTitle;
+                      window.removeEventListener('afterprint', restoreTitle);
+                    };
+                    window.addEventListener('afterprint', restoreTitle);
+                    window.print();
+                    setTimeout(restoreTitle, 1500);
+                  }}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
                   title={previewTab === 'all' ? 'สั่งพิมพ์เอกสารทั้งหมด (ครบทั้ง 3 หน้า A4)' : 'สั่งพิมพ์เฉพาะหน้านี้ให้ตรงกับตัวอย่างก่อนพิมพ์'}
                 >

@@ -9,6 +9,7 @@ import { A4ReportView } from './views/A4ReportView';
 import { AdminView } from './views/AdminView';
 import { MobileSimView } from './views/MobileSimView';
 import { WeeklyLogReportView } from './views/WeeklyLogReportView';
+import { WeeklyTeachingReportsView } from './views/WeeklyTeachingReportsView';
 import { Form1CompanyModal } from './components/Modals/Form1CompanyModal';
 import { Form2WeeklyReportModal } from './components/Modals/Form2WeeklyReportModal';
 import { Form3SupervisionModal } from './components/Modals/Form3SupervisionModal';
@@ -28,6 +29,7 @@ import {
   CourseDataRow,
   SheetTeacher,
   UserAvatarRecord,
+  TeachingReportRecord,
 } from './types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
 import { getStoredAuthUser, saveAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
@@ -70,6 +72,7 @@ import {
   resolveUserAvatarUrl,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
+  subscribeTeachingReports,
 } from './services/firestoreService';
 import {
   getCandidateStudentKeys,
@@ -114,6 +117,11 @@ export default function App() {
   const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
   const [teachers, setTeachers] = useState<SheetTeacher[]>(() => getAllLoginSheetTeachers());
   const [userAvatars, setUserAvatars] = useState<UserAvatarRecord[]>([]);
+  const [teachingReports, setTeachingReports] = useState<TeachingReportRecord[]>([]);
+  const [focusedTeachingReportTarget, setFocusedTeachingReportTarget] = useState<{
+    teacherName: string;
+    weekNumber: number;
+  } | null>(null);
 
   const hasCloudSubsRef = React.useRef<boolean>(false);
   const hasCloudForm3Ref = React.useRef<boolean>(false);
@@ -463,6 +471,14 @@ export default function App() {
     };
     window.addEventListener('kktech_form3_updated', handleForm3LocalSync);
 
+    // 11. Real-time subscription to Workplace Teaching Reports (/teaching_reports)
+    const unsubTeachingReports = subscribeTeachingReports(
+      (remoteReports) => {
+        setTeachingReports(remoteReports || []);
+      },
+      (err) => console.warn('Teaching reports stream note:', err)
+    );
+
     return () => {
       unsubStudents();
       unsubCompanies();
@@ -472,10 +488,19 @@ export default function App() {
       unsubSubmissions();
       unsubAnnouncements();
       unsubForm3();
+      unsubTeachingReports();
       window.removeEventListener('kktech_submissions_updated', handleSubLocalUpdate);
       window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
     };
   }, []);
+
+  const handleTeachingReportSaved = (saved: TeachingReportRecord) => {
+    setTeachingReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
+    setFocusedTeachingReportTarget({
+      teacherName: saved.reporterName,
+      weekNumber: Number(saved.weekNumber),
+    });
+  };
 
   // Helper: sync a student's actualWeeks & accumulatedHours from authoritative submissions + Form 3
   const syncStudentLiveStats = (targetStudent: Student, nextSubsMap: Record<string, WeeklySubmission[]>) => {
@@ -1227,6 +1252,27 @@ export default function App() {
                 }}
                 onDeleteSubmission={handleDeleteSubmission}
                 onDeleteSupervision={handleDeleteSupervision}
+                teachingReports={teachingReports}
+                onTeachingReportSaved={handleTeachingReportSaved}
+                onNavigateToTeachingReports={(teacherName, weekNumber) => {
+                  setFocusedTeachingReportTarget({ teacherName, weekNumber });
+                  setCurrentView('teaching-reports');
+                }}
+              />
+            )}
+
+            {currentView === 'teaching-reports' && (
+              <WeeklyTeachingReportsView
+                currentUser={currentUser}
+                students={students}
+                form3List={form3List}
+                submissions={submissions}
+                courses={courses}
+                teachers={teachers}
+                teachingReports={teachingReports}
+                initialTeacherFilter={focusedTeachingReportTarget?.teacherName}
+                initialHighlightWeek={focusedTeachingReportTarget?.weekNumber}
+                onTeachingReportSaved={handleTeachingReportSaved}
               />
             )}
 

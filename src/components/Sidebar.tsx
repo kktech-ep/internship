@@ -48,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'form3-record', label: 'บันทึกการนิเทศ', icon: Camera, roles: ['teacher', 'admin'], isSpecial: true },
     { id: 'map', label: 'แผนที่พิกัดสถานประกอบการ', icon: MapPin, roles: ['teacher', 'admin'] },
     { id: 'a4', label: 'สรุปรายงานการนิเทศ', icon: FileText, roles: ['teacher', 'admin'] },
+    { id: 'teaching-reports', label: 'บันทึกรายงานการสอนรายสัปดาห์', icon: BookOpen, roles: ['teacher', 'admin'] },
     { id: 'admin', label: 'ผู้ดูแลระบบ', icon: ShieldCheck, roles: ['admin'] },
   ];
 
