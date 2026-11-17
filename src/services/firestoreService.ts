@@ -10,7 +10,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError, stripUndefinedDeep } from '../firebase';
-import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow, SheetTeacher, TeachingReportRecord } from '../types';
+import { Student, Company, WeeklySubmission, Announcement, Form3SupervisionRecord, CourseDataRow, SheetTeacher, TeachingReportRecord, UserAvatarRecord } from '../types';
 import { getAllLoginSheetStudents } from './sheetAuthService';
 import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
 
@@ -23,7 +23,58 @@ export const COLLECTIONS = {
   COURSES: 'courses',
   TEACHERS: 'teachers',
   TEACHING_REPORTS: 'teaching_reports',
+  USER_AVATARS: 'user_avatars',
 } as const;
+
+export function toSafeUserAvatarId(identifier: string): string {
+  const clean = (identifier || '').trim().toLowerCase();
+  if (!clean) return 'usr-default';
+  const normalized = clean.replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 110);
+  return `usr-${normalized || 'default'}`;
+}
+
+export function normalizeAvatarPersonName(name?: string): string {
+  return (name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(นาย|นางสาว|น\.ส\.|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.|ผศ\.)\s*/g, '')
+    .replace(/\s+/g, '');
+}
+
+export function resolveUserAvatarUrl(
+  avatars: UserAvatarRecord[],
+  queryInfo: { email?: string; studentCode?: string; name?: string }
+): string | undefined {
+  if (!avatars || avatars.length === 0) return undefined;
+  const targetEmail = (queryInfo.email || '').trim().toLowerCase();
+  const targetEmailPrefix = targetEmail.split('@')[0];
+  const targetCode = (queryInfo.studentCode || '').trim().replace(/^s/i, '').toLowerCase();
+  const targetName = normalizeAvatarPersonName(queryInfo.name);
+
+  if (targetEmail) {
+    const byEmail = avatars.find((a) => (a.email || '').trim().toLowerCase() === targetEmail);
+    if (byEmail?.avatarUrl) return byEmail.avatarUrl;
+  }
+  if (targetCode) {
+    const byCode = avatars.find((a) => {
+      const recCode = (a.studentCode || '').trim().replace(/^s/i, '').toLowerCase();
+      const recPrefix = (a.email || '').trim().toLowerCase().split('@')[0].replace(/^s/i, '');
+      return (recCode && recCode === targetCode) || (recPrefix && recPrefix === targetCode);
+    });
+    if (byCode?.avatarUrl) return byCode.avatarUrl;
+  }
+  if (targetEmailPrefix) {
+    const byPrefix = avatars.find(
+      (a) => (a.email || '').trim().toLowerCase().split('@')[0] === targetEmailPrefix
+    );
+    if (byPrefix?.avatarUrl) return byPrefix.avatarUrl;
+  }
+  if (targetName) {
+    const byName = avatars.find((a) => normalizeAvatarPersonName(a.name) === targetName);
+    if (byName?.avatarUrl) return byName.avatarUrl;
+  }
+  return undefined;
+}
 
 function logSubscriptionError(colPath: string, error: unknown, onError?: (err: Error) => void) {
   try {
@@ -237,25 +288,133 @@ export function subscribeTeachers(
 }
 
 /**
- * Save or update a teacher's avatar URL in Firestore /teachers
+ * Save or update a teacher's avatar URL in Firestore /teachers and /user_avatars
  */
 export async function saveTeacherAvatarToFirestore(
   teacher: Partial<SheetTeacher> & { id: string },
   avatarUrl: string
 ): Promise<void> {
   const path = `${COLLECTIONS.TEACHERS}/${teacher.id}`;
+  const nowIso = new Date().toISOString();
   try {
-    await setDoc(
+    const email = (teacher.email || teacher.user || teacher.id).trim();
+    const avatarDocId = toSafeUserAvatarId(email);
+    const batch = writeBatch(db);
+    batch.set(
       doc(db, COLLECTIONS.TEACHERS, teacher.id),
       stripUndefinedDeep({
         ...teacher,
         avatarUrl,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
       }),
       { merge: true }
     );
+    batch.set(
+      doc(db, COLLECTIONS.USER_AVATARS, avatarDocId),
+      stripUndefinedDeep({
+        id: avatarDocId,
+        email,
+        name: teacher.name || email,
+        role: teacher.role || 'teacher',
+        avatarUrl,
+        updatedAt: nowIso,
+      }),
+      { merge: true }
+    );
+    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Save or update a user's avatar photo in dedicated /user_avatars collection (plus profile doc sync)
+ */
+export async function saveUserAvatarToFirestore(params: {
+  email: string;
+  name: string;
+  role: 'student' | 'teacher' | 'admin';
+  avatarUrl: string;
+  studentCode?: string;
+  studentDocId?: string;
+  teacherDocId?: string;
+}): Promise<UserAvatarRecord> {
+  const email = (params.email || params.studentCode || params.name).trim();
+  const avatarDocId = toSafeUserAvatarId(email);
+  const path = `${COLLECTIONS.USER_AVATARS}/${avatarDocId}`;
+  const nowIso = new Date().toISOString();
+  const record: UserAvatarRecord = {
+    id: avatarDocId,
+    email,
+    name: params.name,
+    role: params.role,
+    ...(params.studentCode ? { studentCode: params.studentCode } : {}),
+    avatarUrl: params.avatarUrl,
+    updatedAt: nowIso,
+  };
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, COLLECTIONS.USER_AVATARS, avatarDocId), stripUndefinedDeep(record), { merge: true });
+    if (params.role === 'student' && params.studentDocId) {
+      batch.set(
+        doc(db, COLLECTIONS.STUDENTS, params.studentDocId),
+        stripUndefinedDeep({ avatarUrl: params.avatarUrl, updatedAt: nowIso }),
+        { merge: true }
+      );
+    } else if ((params.role === 'teacher' || params.role === 'admin') && params.teacherDocId) {
+      batch.set(
+        doc(db, COLLECTIONS.TEACHERS, params.teacherDocId),
+        stripUndefinedDeep({
+          id: params.teacherDocId,
+          email,
+          name: params.name,
+          avatarUrl: params.avatarUrl,
+          updatedAt: nowIso,
+        }),
+        { merge: true }
+      );
+    }
+    await batch.commit();
+    return record;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Listen for real-time changes to the User Avatars collection
+ */
+export function subscribeUserAvatars(
+  onData: (avatars: UserAvatarRecord[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.USER_AVATARS;
+  return onSnapshot(
+    collection(db, colPath),
+    (snapshot) => {
+      const items: UserAvatarRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push(docSnap.data() as UserAvatarRecord);
+      });
+      onData(items);
+    },
+    (error) => {
+      logSubscriptionError(colPath, error, onError);
+    }
+  );
+}
+
+/**
+ * Fetch all user avatars once from Firestore
+ */
+export async function getUserAvatarsFromFirestore(): Promise<UserAvatarRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.USER_AVATARS));
+    const items: UserAvatarRecord[] = [];
+    snap.forEach((docSnap) => items.push(docSnap.data() as UserAvatarRecord));
+    return items;
+  } catch {
+    return [];
   }
 }
 

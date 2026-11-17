@@ -46,6 +46,10 @@ service cloud.firestore {
       allow read, write, delete: if isValidId(reportId);
     }
 
+    match /user_avatars/{avatarId} {
+      allow read, write, delete: if isValidId(avatarId);
+    }
+
     // Default deny for unlisted collections
     match /{document=**} {
       allow read, write: if false;

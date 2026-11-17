@@ -1486,6 +1486,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             {courses.map((c, i) => (
               <div key={c.id}>
                 {i + 1}. รหัสวิชา <span className="font-bold">{c.subjectCode}</span> รายวิชา <span className="font-bold">{c.subjectName}</span>
+                {c.room?.trim() ? (
+                  <>
+                    {' '}กลุ่ม <span className="font-bold">{c.room.trim()}</span>
+                  </>
+                ) : null}
               </div>
             ))}
           </div>

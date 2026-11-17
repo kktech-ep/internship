@@ -168,7 +168,18 @@ export interface AuthUser {
   initials: string;
   department: string;
   studentId?: string;
+  avatarUrl?: string;
   provider: 'google' | 'sso';
+}
+
+export interface UserAvatarRecord {
+  id: string;
+  email: string;
+  name: string;
+  role: 'student' | 'teacher' | 'admin';
+  studentCode?: string;
+  avatarUrl: string;
+  updatedAt: string;
 }
 
 export interface SheetTeacher {

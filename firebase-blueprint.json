@@ -212,6 +212,21 @@
         "updatedAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "teacherKey", "reporterName", "weekNumber", "updatedAt"]
+    },
+    "UserAvatar": {
+      "title": "UserAvatar",
+      "description": "Dedicated user profile photo record for supervisors, admins, and student interns",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 150 },
+        "name": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "maxLength": 30 },
+        "studentCode": { "type": "string", "maxLength": 30 },
+        "avatarUrl": { "type": "string", "maxLength": 300000 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "email", "name", "role", "avatarUrl", "updatedAt"]
     }
   },
   "firestore": {
@@ -226,6 +241,10 @@
     "/users/{userId}": {
       "schema": "UserAccount",
       "description": "Unified login account directory synced from Google Sheet login tab"
+    },
+    "/user_avatars/{avatarId}": {
+      "schema": "UserAvatar",
+      "description": "Persistent user avatar image directory for teachers and students displayed on login"
     },
     "/companies/{companyId}": {
       "schema": "Company",

@@ -27,7 +27,7 @@ import {
   ChevronUp,
   FileSpreadsheet
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow, Form3SupervisionRecord, SheetTeacher } from '../types';
+import { Student, Company, WeeklySubmission, AuthUser, CourseDataRow, Form3SupervisionRecord, SheetTeacher, UserAvatarRecord } from '../types';
 import { LOGIN_SHEET_CONFIG } from '../services/sheetAuthService';
 import { 
   DATA_SHEET_CONFIG,
@@ -37,7 +37,7 @@ import {
   getAllRoomsFromData,
   getCoursesByRoom
 } from '../services/courseDataService';
-import { saveTeacherAvatarToFirestore } from '../services/firestoreService';
+import { saveUserAvatarToFirestore, resolveUserAvatarUrl } from '../services/firestoreService';
 import { getStudentEvaluationSummary } from '../utils/dataUnifier';
 
 interface TeacherViewProps {
@@ -47,7 +47,9 @@ interface TeacherViewProps {
   form3List?: Form3SupervisionRecord[];
   courses?: CourseDataRow[];
   teachers?: SheetTeacher[];
+  userAvatars?: UserAvatarRecord[];
   currentUser?: AuthUser | null;
+  onUpdateTeacherAvatar?: (dataUrl: string) => Promise<void> | void;
   onOpenForm3: (studentId?: string) => void;
   onNavigateA4: (studentId?: string) => void;
   onOpenSheetsModal: () => void;
@@ -61,7 +63,9 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   form3List = [],
   courses: propCourses,
   teachers: propTeachers = [],
+  userAvatars = [],
   currentUser,
+  onUpdateTeacherAvatar,
   onOpenForm3,
   onNavigateA4,
   onOpenLookerModal,
@@ -83,10 +87,11 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Teacher avatar handling (persisted to Firestore /teachers + localStorage)
+  // Teacher avatar handling (persisted to Firestore /user_avatars + /teachers + localStorage)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const teacherEmail = currentUser?.email || 'thaksinso@kktech.ac.th';
   const teacherStorageKey = `kktech_teacher_avatar_${teacherEmail}`;
+  const [avatarSavedBadge, setAvatarSavedBadge] = useState(false);
   const matchedTeacherDoc = useMemo(
     () =>
       propTeachers.find(
@@ -97,8 +102,17 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
     [propTeachers, teacherEmail, currentUser?.name]
   );
 
+  const cloudTeacherAvatar = useMemo(
+    () =>
+      resolveUserAvatarUrl(userAvatars, {
+        email: teacherEmail,
+        name: currentUser?.name || matchedTeacherDoc?.name,
+      }) || matchedTeacherDoc?.avatarUrl,
+    [userAvatars, teacherEmail, currentUser?.name, matchedTeacherDoc?.name, matchedTeacherDoc?.avatarUrl]
+  );
+
   const [teacherAvatar, setTeacherAvatar] = useState<string | null>(() => {
-    if (matchedTeacherDoc?.avatarUrl) return matchedTeacherDoc.avatarUrl;
+    if (cloudTeacherAvatar) return cloudTeacherAvatar;
     if (typeof localStorage !== 'undefined') {
       return localStorage.getItem(teacherStorageKey) || null;
     }
@@ -106,15 +120,15 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
   });
 
   useEffect(() => {
-    if (matchedTeacherDoc?.avatarUrl) {
-      setTeacherAvatar(matchedTeacherDoc.avatarUrl);
+    if (cloudTeacherAvatar) {
+      setTeacherAvatar(cloudTeacherAvatar);
       return;
     }
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(`kktech_teacher_avatar_${teacherEmail}`);
       setTeacherAvatar(saved || null);
     }
-  }, [teacherEmail, matchedTeacherDoc?.avatarUrl]);
+  }, [teacherEmail, cloudTeacherAvatar]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,7 +140,7 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
       if (!dataUrl) return;
 
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
         const maxDim = 320;
         let { width, height } = img;
@@ -146,26 +160,32 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
           setTeacherAvatar(compressed);
           try {
             localStorage.setItem(teacherStorageKey, compressed);
           } catch (err) {
             console.warn('LocalStorage teacher avatar save note:', err);
           }
-          const cleanUserId = (matchedTeacherDoc?.user || teacherEmail).replace(/[^a-zA-Z0-9_-]/g, '_');
-          const targetTchId = matchedTeacherDoc?.id || `tch-${cleanUserId}`;
-          saveTeacherAvatarToFirestore(
-            {
-              id: targetTchId,
-              name: matchedTeacherDoc?.name || currentUser?.name || teacherEmail,
-              email: teacherEmail,
-              user: matchedTeacherDoc?.user || teacherEmail,
-            },
-            compressed
-          ).catch((err) => {
+          try {
+            if (onUpdateTeacherAvatar) {
+              await onUpdateTeacherAvatar(compressed);
+            } else {
+              const cleanUserId = (matchedTeacherDoc?.user || teacherEmail).replace(/[^a-zA-Z0-9_-]/g, '_');
+              const targetTchId = matchedTeacherDoc?.id || `tch-${cleanUserId}`;
+              await saveUserAvatarToFirestore({
+                email: teacherEmail,
+                name: matchedTeacherDoc?.name || currentUser?.name || teacherEmail,
+                role: currentUser?.role === 'admin' ? 'admin' : 'teacher',
+                avatarUrl: compressed,
+                teacherDocId: targetTchId,
+              });
+            }
+            setAvatarSavedBadge(true);
+            setTimeout(() => setAvatarSavedBadge(false), 3000);
+          } catch (err) {
             console.error('Failed to save teacher avatar to Firestore:', err);
-          });
+          }
         }
       };
       img.src = dataUrl;
@@ -377,6 +397,14 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
               >
                 <Camera className="w-3.5 h-3.5" />
               </button>
+              {avatarSavedBadge && (
+                <span
+                  title="บันทึกรูปประจำตัวลงฐานข้อมูลออนไลน์แล้ว"
+                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-emerald-500 text-white shadow-md border-2 border-white animate-bounce"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                </span>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"

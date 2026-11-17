@@ -47,7 +47,7 @@ import {
   BookOpen,
   UserCheck
 } from 'lucide-react';
-import { Student, Company, WeeklySubmission, Form3SupervisionRecord, Form3Photo, AuthUser, CourseDataRow, SheetTeacher } from '../types';
+import { Student, Company, WeeklySubmission, Form3SupervisionRecord, Form3Photo, AuthUser, CourseDataRow, SheetTeacher, UserAvatarRecord } from '../types';
 import { StudentAvatar } from '../components/StudentAvatar';
 import {
   getAllLoginSheetTeachers,
@@ -59,6 +59,7 @@ import {
   getCoursesByTeacher,
   getRoomsByTeacher
 } from '../services/courseDataService';
+import { resolveUserAvatarUrl } from '../services/firestoreService';
 import { getCurrentWeekInfo } from '../data/weeksData';
 import {
   buildUnifiedCompanies,
@@ -77,6 +78,7 @@ interface MobileSimViewProps {
   form3List?: Form3SupervisionRecord[];
   courses?: CourseDataRow[];
   teachers?: SheetTeacher[];
+  userAvatars?: UserAvatarRecord[];
   onOpenForm1: () => void;
   onOpenForm2: () => void;
   onOpenForm3: (studentId?: string) => void;
@@ -197,6 +199,7 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
   form3List = [],
   courses: propCourses,
   teachers: propTeachers,
+  userAvatars = [],
   onOpenForm1,
   onOpenForm2,
   onOpenForm3,
@@ -331,10 +334,11 @@ export const MobileSimView: React.FC<MobileSimViewProps> = ({
       rooms,
       courses: teacherCourses,
       subjects,
-      avatarUrl: matched?.avatarUrl,
+      avatarUrl:
+        resolveUserAvatarUrl(userAvatars, { email, name }) || matched?.avatarUrl,
       isSimulatedFromStudent: !isStaffUser
     };
-  }, [currentUser, student.supervisorTeacher, courseRows, propTeachers]);
+  }, [currentUser, student.supervisorTeacher, courseRows, propTeachers, userAvatars]);
 
   // Sync teacher avatar from Firestore teachers prop or localStorage fallback
   useEffect(() => {

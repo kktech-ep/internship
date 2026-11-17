@@ -27,6 +27,7 @@ import {
   Announcement,
   CourseDataRow,
   SheetTeacher,
+  UserAvatarRecord,
 } from './types';
 import { WEEKS_1_TO_18, getCurrentWeekInfo } from './data/weeksData';
 import { getStoredAuthUser, saveAuthUser, signOutKktechUser, getCachedAccessToken } from './services/authService';
@@ -61,9 +62,12 @@ import {
   subscribeForm3Supervisions,
   subscribeCourses,
   subscribeTeachers,
+  subscribeUserAvatars,
   saveStudentToFirestore,
   saveSubmissionToFirestore,
   saveSubmissionsBatchToFirestore,
+  saveUserAvatarToFirestore,
+  resolveUserAvatarUrl,
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
 } from './services/firestoreService';
@@ -109,12 +113,15 @@ export default function App() {
   const [form3List, setForm3List] = useState<Form3SupervisionRecord[]>(() => getLocalForm3Rows());
   const [courses, setCourses] = useState<CourseDataRow[]>(() => getCachedCourses());
   const [teachers, setTeachers] = useState<SheetTeacher[]>(() => getAllLoginSheetTeachers());
+  const [userAvatars, setUserAvatars] = useState<UserAvatarRecord[]>([]);
 
   const hasCloudSubsRef = React.useRef<boolean>(false);
   const hasCloudForm3Ref = React.useRef<boolean>(false);
   const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
   const submissionsRef = React.useRef<Record<string, WeeklySubmission[]>>(submissions);
   submissionsRef.current = submissions;
+  const userAvatarsRef = React.useRef<UserAvatarRecord[]>(userAvatars);
+  userAvatarsRef.current = userAvatars;
 
   // Initial active student id based on logged in user or first student from login sheet
   const [activeStudentId, setActiveStudentId] = useState<string>(() => {
@@ -152,8 +159,46 @@ export default function App() {
     if (!target) {
       target = students.find((s) => s.id === activeStudentId) || students[0];
     }
-    return target ? normalizeStudentAcademicInfo(target) : students[0];
-  }, [students, activeStudentId, currentUser]);
+    const normalized = target ? normalizeStudentAcademicInfo(target) : students[0];
+    if (normalized) {
+      const dbAvatar = resolveUserAvatarUrl(userAvatars, {
+        email: normalized.email,
+        studentCode: normalized.studentCode,
+        name: normalized.name,
+      });
+      if (dbAvatar && normalized.avatarUrl !== dbAvatar) {
+        return { ...normalized, avatarUrl: dbAvatar };
+      }
+    }
+    return normalized;
+  }, [students, activeStudentId, currentUser, userAvatars]);
+
+  const currentUserAvatarUrl = useMemo(() => {
+    if (!currentUser) return null;
+    const fromAvatars = resolveUserAvatarUrl(userAvatars, {
+      email: currentUser.email,
+      studentCode: currentUser.studentId,
+      name: currentUser.name,
+    });
+    if (fromAvatars) return fromAvatars;
+
+    if (currentUser.role === 'student') {
+      return currentStudent?.avatarUrl || null;
+    }
+
+    const cleanEmail = (currentUser.email || '').trim().toLowerCase();
+    const matchedTeacher = teachers.find(
+      (t) =>
+        (t.email && t.email.toLowerCase() === cleanEmail) ||
+        (currentUser.name && t.name === currentUser.name)
+    );
+    if (matchedTeacher?.avatarUrl) return matchedTeacher.avatarUrl;
+
+    if (typeof localStorage !== 'undefined' && currentUser.email) {
+      return localStorage.getItem(`kktech_teacher_avatar_${currentUser.email}`) || null;
+    }
+    return null;
+  }, [currentUser, userAvatars, currentStudent?.avatarUrl, teachers]);
 
   // Derived live companies synced identically across Map, A4, Teacher, Admin, Looker, Mobile
   const effectiveCompanies = useMemo(() => {
@@ -267,6 +312,11 @@ export default function App() {
                   localStorage.getItem(`kktech_avatar_std-${rs.studentCode}`))) ||
               undefined;
             const prev = mergedMap.get(rs.id);
+            const fromUserAvatars = resolveUserAvatarUrl(userAvatarsRef.current, {
+              email: prev?.email || rs.email,
+              studentCode: prev?.studentCode || rs.studentCode,
+              name: rs.name || prev?.name,
+            });
             mergedMap.set(
               rs.id,
               normalizeStudentAcademicInfo({
@@ -274,7 +324,7 @@ export default function App() {
                 ...rs,
                 email: prev?.email || rs.email || '',
                 studentCode: prev?.studentCode || rs.studentCode || '',
-                avatarUrl: rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
+                avatarUrl: fromUserAvatars || rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
               } as Student)
             );
           });
@@ -315,19 +365,58 @@ export default function App() {
           const remoteById = new Map(remoteTeachers.map((rt) => [rt.id, rt]));
           const merged = sheetTeachers.map((st) => {
             const rt = remoteById.get(st.id) || remoteByEmail.get(st.email.toLowerCase());
+            const fromUserAvatars = resolveUserAvatarUrl(userAvatarsRef.current, {
+              email: rt?.email || st.email,
+              name: rt?.name || st.name,
+            });
             return rt
               ? {
                   ...st,
                   ...rt,
+                  ...(fromUserAvatars ? { avatarUrl: fromUserAvatars } : {}),
                   rooms: st.rooms?.length ? st.rooms : rt.rooms,
                   subjects: st.subjects?.length ? st.subjects : rt.subjects,
                 }
-              : st;
+              : {
+                  ...st,
+                  ...(fromUserAvatars ? { avatarUrl: fromUserAvatars } : {}),
+                };
           });
           setTeachers(merged);
         }
       },
       (err) => console.warn('Teachers firestore stream note:', err)
+    );
+
+    // 7b. Real-time subscription to dedicated User Avatars database (/user_avatars)
+    const unsubUserAvatars = subscribeUserAvatars(
+      (avatars) => {
+        const list = avatars || [];
+        userAvatarsRef.current = list;
+        setUserAvatars(list);
+        if (list.length > 0) {
+          setStudents((prev) =>
+            prev.map((s) => {
+              const av = resolveUserAvatarUrl(list, {
+                email: s.email,
+                studentCode: s.studentCode,
+                name: s.name,
+              });
+              return av && av !== s.avatarUrl ? { ...s, avatarUrl: av } : s;
+            })
+          );
+          setTeachers((prev) =>
+            prev.map((t) => {
+              const av = resolveUserAvatarUrl(list, {
+                email: t.email,
+                name: t.name,
+              });
+              return av && av !== t.avatarUrl ? { ...t, avatarUrl: av } : t;
+            })
+          );
+        }
+      },
+      (err) => console.warn('User avatars firestore stream note:', err)
     );
 
     // 8. Real-time authoritative subscription to Weekly Submissions collection
@@ -379,6 +468,7 @@ export default function App() {
       unsubCompanies();
       unsubCourses();
       unsubTeachers();
+      unsubUserAvatars();
       unsubSubmissions();
       unsubAnnouncements();
       unsubForm3();
@@ -474,7 +564,7 @@ export default function App() {
     return syncResult;
   };
 
-  // Callback to update student avatar photo
+  // Callback to update student avatar photo (persists to /user_avatars + /students)
   const handleUpdateStudentAvatar = async (dataUrl: string) => {
     setStudents((prev) => prev.map((s) => (s.id === currentStudent.id ? { ...s, avatarUrl: dataUrl } : s)));
 
@@ -486,12 +576,58 @@ export default function App() {
     }
 
     try {
-      await saveStudentToFirestore({
-        ...currentStudent,
+      const studentEmail = currentStudent.email || `s${currentStudent.studentCode}@kktech.ac.th`;
+      await saveUserAvatarToFirestore({
+        email: studentEmail,
+        name: currentStudent.name,
+        role: 'student',
+        studentCode: currentStudent.studentCode,
         avatarUrl: dataUrl,
+        studentDocId: currentStudent.id,
       });
     } catch (err) {
-      console.warn('Firestore avatar save note:', err);
+      console.error('Firestore student avatar save failed:', err);
+    }
+  };
+
+  // Callback to update teacher/admin avatar photo (persists to /user_avatars + /teachers)
+  const handleUpdateTeacherAvatar = async (dataUrl: string) => {
+    const email = currentUser?.email || 'thaksinso@kktech.ac.th';
+    const name = currentUser?.name || email;
+    const role = currentUser?.role === 'admin' ? 'admin' : 'teacher';
+    const cleanUserId = email.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const matchedTeacher = teachers.find(
+      (t) =>
+        (t.email && t.email.toLowerCase() === email.toLowerCase()) ||
+        (name && t.name === name)
+    );
+    const teacherDocId = matchedTeacher?.id || `tch-${cleanUserId}`;
+
+    setTeachers((prev) =>
+      prev.map((t) =>
+        t.id === teacherDocId || t.email.toLowerCase() === email.toLowerCase()
+          ? { ...t, avatarUrl: dataUrl }
+          : t
+      )
+    );
+
+    try {
+      localStorage.setItem(`kktech_teacher_avatar_${email}`, dataUrl);
+    } catch (e) {
+      console.warn('LocalStorage teacher avatar cache note:', e);
+    }
+
+    try {
+      await saveUserAvatarToFirestore({
+        email,
+        name,
+        role,
+        avatarUrl: dataUrl,
+        teacherDocId,
+      });
+    } catch (err) {
+      console.error('Firestore teacher avatar save failed:', err);
+      throw err;
     }
   };
 
@@ -919,6 +1055,7 @@ export default function App() {
         onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
         onOpenLookerModal={() => setIsLookerModalOpen(true)}
         currentUser={currentUser}
+        userAvatarUrl={currentUserAvatarUrl}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onSignOut={handleSignOut}
       />
@@ -937,6 +1074,7 @@ export default function App() {
               form3List={form3List}
               courses={courses}
               teachers={teachers}
+              userAvatars={userAvatars}
               onOpenForm1={() => setIsForm1Open(true)}
               onOpenForm2={() => setIsForm2Open(true)}
               onOpenForm3={(stdId) => {
@@ -1039,7 +1177,9 @@ export default function App() {
                 form3List={form3List}
                 courses={courses}
                 teachers={teachers}
+                userAvatars={userAvatars}
                 currentUser={currentUser}
+                onUpdateTeacherAvatar={handleUpdateTeacherAvatar}
                 onOpenForm3={(stdId) => {
                   setTargetStudentForForm3(stdId);
                   setIsForm3Open(true);

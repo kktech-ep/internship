@@ -24,6 +24,7 @@ interface HeaderProps {
   onOpenSheetsModal?: () => void;
   onOpenLookerModal: () => void;
   currentUser: AuthUser | null;
+  userAvatarUrl?: string | null;
   onOpenAuthModal: () => void;
   onSignOut: () => void;
 }
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   onChangeRole,
   onOpenLookerModal,
   currentUser,
+  userAvatarUrl,
   onOpenAuthModal,
   onSignOut,
 }) => {
@@ -112,9 +114,17 @@ export const Header: React.FC<HeaderProps> = ({
                   className="flex items-center gap-1.5 sm:gap-2 text-slate-200 hover:text-white transition py-1 px-2 sm:px-2.5 rounded-lg hover:bg-slate-800 border border-slate-700/60 cursor-pointer"
                   title={userRole === 'admin' ? 'คลิกเพื่อสลับบทบาทหรือจัดการบัญชี' : 'คลิกเพื่อจัดการบัญชีผู้ใช้'}
                 >
-                  <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full text-[11px] sm:text-[12.5px] font-bold flex items-center justify-center text-white shrink-0 ${accountAvatarClass}`}>
-                    {currentUser.initials}
-                  </span>
+                  {userAvatarUrl || currentUser.avatarUrl ? (
+                    <img
+                      src={userAvatarUrl || currentUser.avatarUrl}
+                      alt={currentUser.name}
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full object-cover shrink-0 border border-white/40"
+                    />
+                  ) : (
+                    <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full text-[11px] sm:text-[12.5px] font-bold flex items-center justify-center text-white shrink-0 ${accountAvatarClass}`}>
+                      {currentUser.initials}
+                    </span>
+                  )}
                   <span className="text-[12px] sm:text-[14.5px] font-medium max-w-[90px] sm:max-w-[220px] truncate">
                     {currentUser.email}
                   </span>
@@ -130,21 +140,34 @@ export const Header: React.FC<HeaderProps> = ({
                   onMouseLeave={() => setRoleMenuOpen(false)}
                 >
                   {/* Account Header */}
-                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 rounded-t-xl">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-slate-900 text-[15px]">{currentUser.name}</span>
-                      <span className={`px-2 py-0.5 rounded text-[11.5px] font-bold shrink-0 ${
-                        userRole === 'teacher'
-                          ? 'bg-indigo-100 text-indigo-800'
-                          : userRole === 'admin'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-sky-100 text-sky-800'
-                      }`}>
-                        {accountRoleLabel}
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 rounded-t-xl flex items-center gap-3">
+                    {userAvatarUrl || currentUser.avatarUrl ? (
+                      <img
+                        src={userAvatarUrl || currentUser.avatarUrl}
+                        alt={currentUser.name}
+                        className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 shadow-2xs"
+                      />
+                    ) : (
+                      <span className={`w-10 h-10 rounded-full text-sm font-bold flex items-center justify-center text-white shrink-0 ${accountAvatarClass}`}>
+                        {currentUser.initials}
                       </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 text-[15px] truncate">{currentUser.name}</span>
+                        <span className={`px-2 py-0.5 rounded text-[11.5px] font-bold shrink-0 ${
+                          userRole === 'teacher'
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : userRole === 'admin'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-sky-100 text-sky-800'
+                        }`}>
+                          {accountRoleLabel}
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-slate-500 font-mono mt-0.5 truncate">{currentUser.email}</p>
+                      <p className="text-[12px] text-slate-400 mt-0.5 truncate">{currentUser.department}</p>
                     </div>
-                    <p className="text-[14px] text-slate-500 font-mono mt-0.5">{currentUser.email}</p>
-                    <p className="text-[12.5px] text-slate-400 mt-0.5">{currentUser.department}</p>
                   </div>
 
                   {/* Switch Role Section - Only for Admin */}

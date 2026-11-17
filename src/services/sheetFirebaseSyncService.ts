@@ -25,9 +25,10 @@ import {
   mapStatusToRole,
   LOGIN_SHEET_CONFIG
 } from './sheetAuthService';
-import { Student, Form3SupervisionRecord, SheetTeacher } from '../types';
+import { Student, Form3SupervisionRecord, SheetTeacher, UserAvatarRecord } from '../types';
 import { fetchDataSheetCourses } from './courseDataService';
 import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
+import { getUserAvatarsFromFirestore, resolveUserAvatarUrl } from './firestoreService';
 
 export interface SyncSummary {
   success: boolean;
@@ -111,7 +112,8 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
     }
 
-    // Load existing Firestore /teachers to preserve uploaded avatars
+    // Load existing Firestore /teachers and /user_avatars to preserve uploaded avatars
+    const existingAvatars: UserAvatarRecord[] = await getUserAvatarsFromFirestore();
     const existingTeachersAvatarMap = new Map<string, string>();
     try {
       const existingTeachersSnap = await getDocs(collection(db, 'teachers'));
@@ -187,6 +189,13 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
           existing.companyName !== 'ยังไม่ระบุสถานประกอบการ'
         );
 
+        const persistedStudentAvatar =
+          resolveUserAvatarUrl(existingAvatars, {
+            email: userEmail,
+            studentCode: student.studentCode,
+            name: student.name,
+          }) || existing?.avatarUrl;
+
         const mergedStudent: Student & Record<string, unknown> = {
           ...student,
           companyName: keepExistingForm1 && existing ? existing.companyName : student.companyName,
@@ -196,7 +205,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             ? existing.companyRegistration
             : student.companyRegistration,
           ...(keepExistingForm1 && existing?.lastSyncSource ? { lastSyncSource: existing.lastSyncSource } : {}),
-          ...(existing?.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
+          ...(persistedStudentAvatar ? { avatarUrl: persistedStudentAvatar } : {}),
           ...(typeof existing?.accumulatedHours === 'number' && existing.accumulatedHours !== 320
             ? { accumulatedHours: existing.accumulatedHours }
             : {}),
@@ -235,7 +244,10 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       } else {
         const mappedRole = mapStatusToRole(row.status || '');
         const tchId = `tch-${cleanUserId}`;
-        const preservedAvatar = existingTeachersAvatarMap.get(tchId) || existingTeachersAvatarMap.get(userEmail.toLowerCase());
+        const preservedAvatar =
+          resolveUserAvatarUrl(existingAvatars, { email: userEmail, name }) ||
+          existingTeachersAvatarMap.get(tchId) ||
+          existingTeachersAvatarMap.get(userEmail.toLowerCase());
         validTeacherIds.add(tchId);
         validUserIds.add(cleanUserId);
 
@@ -517,6 +529,9 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
   const seenTeachers = new Set<string>();
   const detectedCompanies = new Map<string, Student[]>();
 
+  // Load persistent /user_avatars so profile pictures survive account resets
+  const persistedAvatars: UserAvatarRecord[] = await getUserAvatarsFromFirestore();
+
   // Get enriched teacher map from sheetAuthService (which reads exclusively from current login + data sheets)
   const enrichedTeachers = getAllLoginSheetTeachers();
   const enrichedByEmail = new Map(enrichedTeachers.map(t => [t.email.toLowerCase(), t]));
@@ -563,13 +578,20 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
         detectedCompanies.get(compName)!.push(studentDoc);
       }
 
+      const preservedStudentAvatar = resolveUserAvatarUrl(persistedAvatars, {
+        email: userEmail,
+        studentCode: studentDoc.studentCode,
+        name: studentDoc.name,
+      });
+
       insertOps.push((batch) => {
-        batch.set(doc(db, 'students', studentDoc.id), {
+        batch.set(doc(db, 'students', studentDoc.id), stripUndefinedDeep({
           ...studentDoc,
+          ...(preservedStudentAvatar ? { avatarUrl: preservedStudentAvatar } : {}),
           syncedFromSheet: true,
           sheetRowNumber: row.rowNumber,
           lastSyncAt: startTimeISO
-        });
+        }));
         batch.set(doc(db, 'users', cleanUserId), {
           email: userEmail,
           name: name,
@@ -593,8 +615,12 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
       const enriched = enrichedByEmail.get(userEmail.toLowerCase());
       if (!seenTeachers.has(tchId)) {
         seenTeachers.add(tchId);
+        const preservedTchAvatar = resolveUserAvatarUrl(persistedAvatars, {
+          email: userEmail,
+          name,
+        });
         insertOps.push((batch) => {
-          batch.set(doc(db, 'teachers', tchId), {
+          batch.set(doc(db, 'teachers', tchId), stripUndefinedDeep({
             id: tchId,
             name: name,
             user: userRaw,
@@ -606,8 +632,9 @@ export async function wipeAndReplaceFirebaseWithSheetData(): Promise<{
             room: row.room || '',
             rooms: enriched?.rooms || [],
             subjects: enriched?.subjects || [],
+            ...(preservedTchAvatar ? { avatarUrl: preservedTchAvatar } : {}),
             updatedAt: startTimeISO
-          });
+          }));
         });
         insertedTeachers++;
       }
