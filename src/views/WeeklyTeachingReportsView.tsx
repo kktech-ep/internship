@@ -738,23 +738,6 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
               แสดงข้อมูลการรายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ รายสัปดาห์ที่บันทึกไว้ สถานะการบันทึก และเปิดดู/แก้ไขเอกสาร
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() =>
-                openEditorForReport(
-                  selectedTeacherFilter === 'all' ? defaultTeacher : selectedTeacherFilter,
-                  currentWeekNumber,
-                  false
-                )
-              }
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white font-bold text-sm shadow-md transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>บันทึกรายงานสัปดาห์ปัจจุบัน (สัปดาห์ที่ {currentWeekNumber})</span>
-            </button>
-          </div>
         </div>
 
         {/* Filter Controls */}

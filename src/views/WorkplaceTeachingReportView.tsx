@@ -321,10 +321,63 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return () => unsub();
   }, [propTeachingReports === undefined]);
 
-  // Reload teacher courses whenever selected teacher changes (unless overridden by saved Firestore report)
+  // Find the teacher's most recently saved teaching report that has courses
+  const latestSavedTeacherReport = useMemo(() => {
+    const cleanTarget = (reporterName || '')
+      .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+      .trim()
+      .toLowerCase();
+    const candidates = Object.values(remoteReportsMap).filter((rec) => {
+      if (!rec || !rec.courses || rec.courses.length === 0) return false;
+      const recReporter = (rec.reporterName || '')
+        .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+        .trim()
+        .toLowerCase();
+      const recKey = (rec.teacherKey || '')
+        .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+        .trim()
+        .toLowerCase();
+      return Boolean(cleanTarget && (recReporter === cleanTarget || recKey === cleanTarget));
+    });
+    if (candidates.length === 0) return null;
+    return [...candidates].sort((a, b) => {
+      const timeDiff =
+        (new Date(b.updatedAt || 0).getTime() || 0) -
+        (new Date(a.updatedAt || 0).getTime() || 0);
+      if (timeDiff !== 0) return timeDiff;
+      return (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0);
+    })[0];
+  }, [remoteReportsMap, reporterName]);
+
+  const prevCourseDocIdRef = useRef<string>('');
+
+  // Load courses from current week's saved report, or fall back to the most recent saved week first, then sheet defaults
   useEffect(() => {
+    const docChanged = prevCourseDocIdRef.current !== reportDocId;
+    prevCourseDocIdRef.current = reportDocId;
+
     const savedRemote = remoteReportsMap[reportDocId];
     if (savedRemote && savedRemote.courses && savedRemote.courses.length > 0) {
+      return;
+    }
+
+    if (!docChanged && hasPendingUserEditRef.current) {
+      return;
+    }
+
+    const defaultDate = new Date().toISOString().slice(0, 10);
+
+    if (latestSavedTeacherReport && latestSavedTeacherReport.courses.length > 0) {
+      setCourses(
+        latestSavedTeacherReport.courses.map((c, idx) => ({
+          id: String(c.id || `crs-${idx + 1}-${c.subjectCode}`),
+          subjectCode: String(c.subjectCode || '').trim(),
+          subjectName: String(c.subjectName || '').trim(),
+          room: String(c.room || '').trim(),
+          teachDate: String(c.teachDate || defaultDate).trim(),
+          teachTime: String(c.teachTime || '').trim(),
+        }))
+      );
       return;
     }
 
@@ -332,8 +385,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       reporterName,
       propCourses && propCourses.length > 0 ? propCourses : undefined
     );
-    const defaultDate = new Date().toISOString().slice(0, 10);
-    
+
     if (rawCourses && rawCourses.length > 0) {
       // Group unique subject codes and aggregate rooms
       const map = new Map<string, { code: string; name: string; rooms: Set<string> }>();
@@ -376,7 +428,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         }
       ]);
     }
-  }, [reporterName, reportDocId]);
+  }, [reporterName, reportDocId, remoteReportsMap, latestSavedTeacherReport, propCourses]);
 
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncMsg, setCourseSyncMsg] = useState<string | null>(null);
@@ -2165,7 +2217,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               style={{ width: `${Math.round((savedWeekNumbersSet.size / 18) * 100)}%` }}
             />
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-9 gap-1.5">
+          <div className="flex flex-nowrap items-center gap-1 overflow-x-auto py-1 px-0.5">
             {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => {
               const isWeekSaved = savedWeekNumbersSet.has(w);
               const isSelected = w === selectedWeek;
@@ -2179,7 +2231,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                       ? `สัปดาห์ที่ ${w}: บันทึกแล้ว (คลิกเพื่อดู/แก้ไข)`
                       : `สัปดาห์ที่ ${w}: ยังไม่บันทึก (คลิกเพื่อเลือก)`
                   }
-                  className={`inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium border transition cursor-pointer whitespace-nowrap ${
+                  className={`flex-1 min-w-fit shrink-0 inline-flex items-center justify-center gap-0.5 px-1.5 py-1 rounded-lg text-[10.5px] sm:text-[11px] font-medium border transition cursor-pointer whitespace-nowrap ${
                     isWeekSaved
                       ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800 hover:bg-emerald-100/80'
                       : 'bg-white border-slate-200/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
@@ -2190,7 +2242,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   }`}
                 >
                   <span>สัปดาห์ที่ {w}</span>
-                  {isWeekSaved && <Check className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  {isWeekSaved && <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" />}
                 </button>
               );
             })}
@@ -2294,10 +2346,17 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         {/* Course dynamic table */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
-              <span>ข้อมูลรายวิชาสอนในสถานประกอบการ</span>
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>ข้อมูลรายวิชาสอนในสถานประกอบการ</span>
+              </span>
+              {!remoteReportsMap[reportDocId]?.courses?.length && latestSavedTeacherReport && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                  นำข้อมูลที่บันทึกล่าสุดจากสัปดาห์ที่ {latestSavedTeacherReport.weekNumber} มาแสดง
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSyncCoursesFromSheets}
