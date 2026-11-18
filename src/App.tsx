@@ -52,6 +52,7 @@ import {
 import { fetchDataSheetCourses, getCachedCourses } from './services/courseDataService';
 import {
   saveAndSyncStudentBothWays,
+  syncAllLoginSheetRowsToFirebase,
   syncDerivedCompaniesToFirestore,
 } from './services/sheetFirebaseSyncService';
 import {
@@ -93,6 +94,8 @@ import {
   buildUnifiedCompanies,
   toFirestoreCompanies,
 } from './utils/dataUnifier';
+
+let hasRunStartupSheetSync = false;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
@@ -260,16 +263,16 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Initialize and subscribe to Firebase Firestore (project: internship2-2569) & Google Sheets (read-only; writes only on button clicks)
+  // Initialize and subscribe to Firebase Firestore (project: internship2-2569) & auto-sync Google Sheets on startup
   useEffect(() => {
-    // 1. Refresh courses catalog from Google Sheet 'data' tab
-    fetchDataSheetCourses()
+    // 1. Refresh courses catalog live from Google Sheet 'data' tab
+    fetchDataSheetCourses(true)
       .then((crs) => {
         if (crs && crs.length > 0) setCourses(crs);
       })
       .catch(() => {});
 
-    // 2. Read Google Sheet login accounts locally without triggering automatic Firestore writes
+    // 2. Apply Google Sheet login accounts into local state
     const applyFreshSheetUsers = () => {
       const freshSheetStudents = getAllLoginSheetStudents().map(normalizeStudentAcademicInfo);
       if (freshSheetStudents.length > 0) {
@@ -311,6 +314,28 @@ export default function App() {
     fetchSheetLoginAccounts(false)
       .then(() => applyFreshSheetUsers())
       .catch(() => {});
+
+    // 3. Automatically sync Google Sheet (login + data tabs) -> Firebase Firestore on web open
+    if (!hasRunStartupSheetSync) {
+      hasRunStartupSheetSync = true;
+      syncAllLoginSheetRowsToFirebase()
+        .then((summary) => {
+          applyFreshSheetUsers();
+          const freshCourses = getCachedCourses();
+          if (freshCourses && freshCourses.length > 0) {
+            setCourses(freshCourses);
+          }
+          if (!summary.success && summary.message) {
+            console.warn('Startup Google Sheet -> Firestore sync note:', summary.message);
+          }
+        })
+        .catch((err) => {
+          console.warn(
+            'Startup Google Sheet -> Firestore sync note:',
+            formatThaiErrorMessage(err, 'ไม่สามารถซิงค์ข้อมูลอัตโนมัติในขณะนี้')
+          );
+        });
+    }
 
     // 4. Real-time subscription to Students collection anchored strictly to current Google Sheet students
     const unsubStudents = subscribeStudents(

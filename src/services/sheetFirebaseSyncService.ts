@@ -29,12 +29,14 @@ import { Student, Form3SupervisionRecord, SheetTeacher, UserAvatarRecord } from 
 import { fetchDataSheetCourses } from './courseDataService';
 import { buildUnifiedCompanies, toFirestoreCompanies } from '../utils/dataUnifier';
 import { getUserAvatarsFromFirestore, resolveUserAvatarUrl } from './firestoreService';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
 export interface SyncSummary {
   success: boolean;
   totalSynced: number;
   studentsCount: number;
   deletedCount?: number;
+  writtenCount?: number;
   timestamp: string;
   sourceSpreadsheetId: string;
   targetFirebaseProject: string;
@@ -42,6 +44,54 @@ export interface SyncSummary {
 }
 
 const STORAGE_LAST_SYNC_KEY = 'kktech_sheet_firebase_last_sync_info_v2';
+const VOLATILE_SYNC_KEYS = new Set(['lastSync', 'lastSyncAt', 'updatedAt', 'syncedAt']);
+
+let activeSyncPromise: Promise<SyncSummary> | null = null;
+
+function areValuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
+    return false;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!areValuesEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const objA = a as Record<string, unknown>;
+  const objB = b as Record<string, unknown>;
+  const keysA = Object.keys(objA).filter((k) => objA[k] !== undefined);
+  const keysB = Object.keys(objB).filter((k) => objB[k] !== undefined);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(objB, key)) return false;
+    if (!areValuesEqual(objA[key], objB[key])) return false;
+  }
+  return true;
+}
+
+function hasDocChanged(
+  existing: Record<string, unknown> | undefined,
+  nextPayload: Record<string, unknown>
+): boolean {
+  if (!existing) return true;
+  const cleanNext = stripUndefinedDeep(nextPayload);
+  const existingKeys = Object.keys(existing).filter(
+    (k) => existing[k] !== undefined && !VOLATILE_SYNC_KEYS.has(k)
+  );
+  const nextKeys = Object.keys(cleanNext).filter(
+    (k) => cleanNext[k] !== undefined && !VOLATILE_SYNC_KEYS.has(k)
+  );
+  if (existingKeys.length !== nextKeys.length) return true;
+  for (const key of nextKeys) {
+    if (!Object.prototype.hasOwnProperty.call(existing, key)) return true;
+    if (!areValuesEqual(existing[key], cleanNext[key])) return true;
+  }
+  return false;
+}
 
 /**
  * Commit Firestore write/delete operations in safe chunks of 400
@@ -49,6 +99,7 @@ const STORAGE_LAST_SYNC_KEY = 'kktech_sheet_firebase_last_sync_info_v2';
 async function commitBatchOperations(
   operations: Array<(batch: WriteBatch) => void>
 ): Promise<void> {
+  if (operations.length === 0) return;
   const CHUNK_SIZE = 400;
   for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
     const chunk = operations.slice(i, i + CHUNK_SIZE);
@@ -72,18 +123,33 @@ export function getLastSyncInfo(): SyncSummary | null {
 }
 
 /**
- * Synchronize every row from Google Sheet (login tab) into Firebase Firestore (internship2-2569)
- * AND automatically delete stale/old users & students that are no longer in the Google Sheet.
+ * Synchronize every row from Google Sheet (login + data tabs) into Firebase Firestore (internship2-2569)
+ * Uses diff-based writes so unchanged documents consume 0 Firestore writes,
+ * and deletes stale/old users & students that are no longer in the Google Sheet.
  */
 export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
-  console.log('[SyncEngine] Starting authoritative sync: Google Sheet login -> Firebase (internship2-2569)...');
+  if (activeSyncPromise) {
+    return activeSyncPromise;
+  }
+
+  activeSyncPromise = runSyncAllLoginSheetRowsToFirebase().finally(() => {
+    activeSyncPromise = null;
+  });
+
+  return activeSyncPromise;
+}
+
+async function runSyncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
+  console.log('[SyncEngine] Starting authoritative sync: Google Sheet (login + data) -> Firebase (internship2-2569)...');
 
   const startTime = new Date();
+  const startTimeIso = startTime.toISOString();
   const summary: SyncSummary = {
     success: false,
     totalSynced: 0,
     studentsCount: 0,
     deletedCount: 0,
+    writtenCount: 0,
     timestamp: startTime.toLocaleString('th-TH'),
     sourceSpreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
     targetFirebaseProject: 'internship2-2569',
@@ -99,37 +165,53 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
       return summary;
     }
 
-    // Load existing Firestore /students to preserve Form 1 updates and uploaded avatars for current students
-    const existingStudentsMap = new Map<string, Student & { lastSyncSource?: string }>();
-    const existingStudentDocRefs = new Map<string, ReturnType<typeof doc>>();
-    try {
-      const existingSnap = await getDocs(collection(db, 'students'));
-      existingSnap.forEach((docSnap) => {
-        existingStudentsMap.set(docSnap.id, docSnap.data() as Student & { lastSyncSource?: string });
-        existingStudentDocRefs.set(docSnap.id, docSnap.ref);
-      });
-    } catch (readErr) {
-      console.warn('[SyncEngine] Notice reading existing Firestore students:', readErr);
-    }
+    // Load existing Firestore snapshots once per collection for diffing & stale cleanup
+    const loadCollectionSnapshot = async (colName: string) => {
+      const dataMap = new Map<string, Record<string, unknown>>();
+      const refMap = new Map<string, ReturnType<typeof doc>>();
+      let ok = false;
+      try {
+        const snap = await getDocs(collection(db, colName));
+        snap.forEach((docSnap) => {
+          dataMap.set(docSnap.id, docSnap.data() as Record<string, unknown>);
+          refMap.set(docSnap.id, docSnap.ref);
+        });
+        ok = true;
+      } catch (err) {
+        console.warn(`[SyncEngine] Notice reading existing Firestore ${colName}:`, err);
+      }
+      return { dataMap, refMap, ok };
+    };
 
-    // Load existing Firestore /teachers and /user_avatars to preserve uploaded avatars
-    const existingAvatars: UserAvatarRecord[] = await getUserAvatarsFromFirestore();
+    const [
+      existingStudentsCol,
+      existingTeachersCol,
+      existingUsersCol,
+      existingLoginSheetCol,
+      existingCompaniesCol,
+      existingAvatars,
+    ] = await Promise.all([
+      loadCollectionSnapshot('students'),
+      loadCollectionSnapshot('teachers'),
+      loadCollectionSnapshot('users'),
+      loadCollectionSnapshot('login_sheet'),
+      loadCollectionSnapshot('companies'),
+      getUserAvatarsFromFirestore(),
+    ]);
+
     const existingTeachersAvatarMap = new Map<string, string>();
-    try {
-      const existingTeachersSnap = await getDocs(collection(db, 'teachers'));
-      existingTeachersSnap.forEach((docSnap) => {
-        const data = docSnap.data() as SheetTeacher;
-        if (data.avatarUrl) {
-          existingTeachersAvatarMap.set(docSnap.id, data.avatarUrl);
-          if (data.email) existingTeachersAvatarMap.set(data.email.toLowerCase(), data.avatarUrl);
-        }
-      });
-    } catch (readErr) {
-      console.warn('[SyncEngine] Notice reading existing Firestore teachers:', readErr);
-    }
+    existingTeachersCol.dataMap.forEach((data, docId) => {
+      const avatarUrl = typeof data.avatarUrl === 'string' ? data.avatarUrl : '';
+      const email = typeof data.email === 'string' ? data.email : '';
+      if (avatarUrl) {
+        existingTeachersAvatarMap.set(docId, avatarUrl);
+        if (email) existingTeachersAvatarMap.set(email.toLowerCase(), avatarUrl);
+      }
+    });
 
     let syncedCount = 0;
     let studentRows = 0;
+    let writtenCount = 0;
     const validLoginSheetIds = new Set<string>();
     const validUserIds = new Set<string>();
     const validStudentIds = new Set<string>();
@@ -151,37 +233,40 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
 
       // 2.1 Mirror raw 16-column spreadsheet row into /login_sheet/{userId}
       validLoginSheetIds.add(cleanUserId);
-      batchOps.push((batch) => {
-        batch.set(doc(db, 'login_sheet', cleanUserId), {
-          rowNumber: row.rowNumber,
-          timestamp: row.timestamp || '',
-          user: row.user,
-          pass: row.pass || '',
-          name: name,
-          status: row.status || '',
-          phoneStudent: row.phoneStudent || '',
-          Company: row.Company || '',
-          CompanyID: row.CompanyID || '',
-          CompanyPhone: row.CompanyPhone || '',
-          room: row.room || '',
-          level: row.level || '',
-          department: row.department || '',
-          leader: row.leader || '',
-          leaderPhone: row.leaderPhone || '',
-          GPS: row.GPS || '',
-          delial: row.delial || '',
-          lastSync: startTime.toISOString(),
-          spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
-          sheetTab: LOGIN_SHEET_CONFIG.sheetName
-        });
+      const loginSheetPayload = stripUndefinedDeep({
+        rowNumber: row.rowNumber,
+        timestamp: row.timestamp || '',
+        user: row.user,
+        pass: row.pass || '',
+        name: name,
+        status: row.status || '',
+        phoneStudent: row.phoneStudent || '',
+        Company: row.Company || '',
+        CompanyID: row.CompanyID || '',
+        CompanyPhone: row.CompanyPhone || '',
+        room: row.room || '',
+        level: row.level || '',
+        department: row.department || '',
+        leader: row.leader || '',
+        leaderPhone: row.leaderPhone || '',
+        GPS: row.GPS || '',
+        delial: row.delial || '',
+        lastSync: startTimeIso,
+        spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId,
+        sheetTab: LOGIN_SHEET_CONFIG.sheetName
       });
-
-      let effectiveCompanyName = (row.Company || '').trim();
-      let effectiveStudent: Student | null = null;
+      if (hasDocChanged(existingLoginSheetCol.dataMap.get(cleanUserId), loginSheetPayload)) {
+        batchOps.push((batch) => {
+          batch.set(doc(db, 'login_sheet', cleanUserId), loginSheetPayload);
+        });
+        writtenCount++;
+      }
 
       if (isStudent && name) {
         const student = convertLoginRowToStudent(row);
-        const existing = existingStudentsMap.get(student.id);
+        const existing = existingStudentsCol.dataMap.get(student.id) as
+          | (Student & { lastSyncSource?: string })
+          | undefined;
         const keepExistingForm1 = Boolean(
           existing &&
           existing.lastSyncSource === 'web_portal_form1' &&
@@ -196,7 +281,7 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             name: student.name,
           }) || existing?.avatarUrl;
 
-        const mergedStudent: Student & Record<string, unknown> = {
+        const mergedStudent = stripUndefinedDeep({
           ...student,
           companyName: keepExistingForm1 && existing ? existing.companyName : student.companyName,
           companyId: keepExistingForm1 && existing ? existing.companyId : student.companyId,
@@ -214,32 +299,41 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
             : {}),
           syncedFromSheet: true,
           sheetRowNumber: row.rowNumber,
-          lastSyncAt: startTime.toISOString()
-        };
+          lastSyncAt: startTimeIso
+        }) as Student & Record<string, unknown>;
 
-        effectiveStudent = mergedStudent as Student;
-        syncedStudentsForCompanies.push(effectiveStudent);
+        syncedStudentsForCompanies.push(mergedStudent as Student);
 
         validStudentIds.add(student.id);
         validUserIds.add(cleanUserId);
 
-        batchOps.push((batch) => {
-          batch.set(doc(db, 'students', student.id), stripUndefinedDeep(mergedStudent));
-          batch.set(doc(db, 'users', cleanUserId), stripUndefinedDeep({
-            email: userEmail,
-            name: name,
-            role: 'student',
-            studentId: student.studentCode,
-            status: row.status || 'นักศึกษา',
-            room: effectiveStudent?.room || student.room,
-            level: student.level,
-            department: student.department,
-            phone: row.phoneStudent || '',
-            pass: row.pass || '',
-            companyName: (mergedStudent.companyName || '').trim(),
-            updatedAt: startTime.toISOString()
-          }));
+        if (hasDocChanged(existing as Record<string, unknown> | undefined, mergedStudent)) {
+          batchOps.push((batch) => {
+            batch.set(doc(db, 'students', student.id), mergedStudent);
+          });
+          writtenCount++;
+        }
+
+        const userStudentPayload = stripUndefinedDeep({
+          email: userEmail,
+          name: name,
+          role: 'student',
+          studentId: student.studentCode,
+          status: row.status || 'นักศึกษา',
+          room: mergedStudent.room || student.room,
+          level: student.level,
+          department: student.department,
+          phone: row.phoneStudent || '',
+          pass: row.pass || '',
+          companyName: (mergedStudent.companyName || '').trim(),
+          updatedAt: startTimeIso
         });
+        if (hasDocChanged(existingUsersCol.dataMap.get(cleanUserId), userStudentPayload)) {
+          batchOps.push((batch) => {
+            batch.set(doc(db, 'users', cleanUserId), userStudentPayload);
+          });
+          writtenCount++;
+        }
         studentRows++;
       } else {
         const mappedRole = mapStatusToRole(row.status || '');
@@ -251,31 +345,42 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
         validTeacherIds.add(tchId);
         validUserIds.add(cleanUserId);
 
-        batchOps.push((batch) => {
-          batch.set(doc(db, 'teachers', tchId), {
-            id: tchId,
-            name: name || userRaw,
-            user: userRaw,
-            email: userEmail,
-            status: row.status || 'ครูนิเทศก์',
-            role: mappedRole === 'admin' ? 'admin' : 'teacher',
-            phone: row.phoneStudent || '',
-            department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-            room: row.room || '',
-            ...(preservedAvatar ? { avatarUrl: preservedAvatar } : {}),
-            updatedAt: startTime.toISOString()
-          });
-          batch.set(doc(db, 'users', cleanUserId), {
-            email: userEmail,
-            name: name || userRaw,
-            role: mappedRole,
-            status: row.status || 'ครูนิเทศก์',
-            department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
-            phone: row.phoneStudent || '',
-            pass: row.pass || '',
-            updatedAt: startTime.toISOString()
-          });
+        const teacherPayload = stripUndefinedDeep({
+          id: tchId,
+          name: name || userRaw,
+          user: userRaw,
+          email: userEmail,
+          status: row.status || 'ครูนิเทศก์',
+          role: mappedRole === 'admin' ? 'admin' : 'teacher',
+          phone: row.phoneStudent || '',
+          department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+          room: row.room || '',
+          ...(preservedAvatar ? { avatarUrl: preservedAvatar } : {}),
+          updatedAt: startTimeIso
         });
+        if (hasDocChanged(existingTeachersCol.dataMap.get(tchId), teacherPayload)) {
+          batchOps.push((batch) => {
+            batch.set(doc(db, 'teachers', tchId), teacherPayload);
+          });
+          writtenCount++;
+        }
+
+        const userTeacherPayload = stripUndefinedDeep({
+          email: userEmail,
+          name: name || userRaw,
+          role: mappedRole,
+          status: row.status || 'ครูนิเทศก์',
+          department: row.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น',
+          phone: row.phoneStudent || '',
+          pass: row.pass || '',
+          updatedAt: startTimeIso
+        });
+        if (hasDocChanged(existingUsersCol.dataMap.get(cleanUserId), userTeacherPayload)) {
+          batchOps.push((batch) => {
+            batch.set(doc(db, 'users', cleanUserId), userTeacherPayload);
+          });
+          writtenCount++;
+        }
       }
 
       syncedCount++;
@@ -292,45 +397,39 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     const derivedCompanies = toFirestoreCompanies(buildUnifiedCompanies(syncedStudentsForCompanies, existingForm3));
     for (const comp of derivedCompanies) {
       validCompanyIds.add(comp.id);
-      batchOps.push((batch) => {
-        batch.set(
-          doc(db, 'companies', comp.id),
-          stripUndefinedDeep({
-            ...comp,
-            lastSyncAt: startTime.toISOString()
-          })
-        );
-      });
+      const companyPayload = stripUndefinedDeep({
+        ...comp,
+        lastSyncAt: startTimeIso
+      }) as Record<string, unknown>;
+      if (hasDocChanged(existingCompaniesCol.dataMap.get(comp.id), companyPayload)) {
+        batchOps.push((batch) => {
+          batch.set(doc(db, 'companies', comp.id), companyPayload);
+        });
+        writtenCount++;
+      }
     }
 
-    // 2.5 Delete ALL stale/old documents not in current Google Sheet (students, users, teachers, login_sheet, companies)
+    // 2.5 Delete ALL stale/old documents not in current Google Sheet (only for collections whose read succeeded)
     let deletedCount = 0;
-    existingStudentDocRefs.forEach((ref, docId) => {
-      if (!validStudentIds.has(docId)) {
-        batchOps.push((batch) => batch.delete(ref));
-        deletedCount++;
-      }
-    });
-
-    const cleanupTargets: Array<{ col: string; validSet: Set<string> }> = [
-      { col: 'users', validSet: validUserIds },
-      { col: 'teachers', validSet: validTeacherIds },
-      { col: 'login_sheet', validSet: validLoginSheetIds },
-      { col: 'companies', validSet: validCompanyIds },
+    const staleChecks: Array<{
+      colData: { refMap: Map<string, ReturnType<typeof doc>>; ok: boolean };
+      validSet: Set<string>;
+    }> = [
+      { colData: existingStudentsCol, validSet: validStudentIds },
+      { colData: existingUsersCol, validSet: validUserIds },
+      { colData: existingTeachersCol, validSet: validTeacherIds },
+      { colData: existingLoginSheetCol, validSet: validLoginSheetIds },
+      { colData: existingCompaniesCol, validSet: validCompanyIds },
     ];
 
-    for (const target of cleanupTargets) {
-      try {
-        const snap = await getDocs(collection(db, target.col));
-        snap.forEach((d) => {
-          if (!target.validSet.has(d.id)) {
-            batchOps.push((batch) => batch.delete(d.ref));
-            deletedCount++;
-          }
-        });
-      } catch (err) {
-        console.warn(`[SyncEngine] Notice scanning stale docs in ${target.col}:`, err);
-      }
+    for (const { colData, validSet } of staleChecks) {
+      if (!colData.ok) continue;
+      colData.refMap.forEach((ref, docId) => {
+        if (!validSet.has(docId)) {
+          batchOps.push((batch) => batch.delete(ref));
+          deletedCount++;
+        }
+      });
     }
 
     // Commit all writes + stale deletions in batches
@@ -340,30 +439,33 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     let coursesCount = 0;
     try {
       const courses = await fetchDataSheetCourses(true);
+      const existingCoursesCol = await loadCollectionSnapshot('courses');
       const validCourseIds = new Set<string>();
       const courseOps: Array<(batch: WriteBatch) => void> = [];
       for (const crs of courses) {
         const courseId = `crs-${crs.room}-${crs.subjectCode}`.replace(/[^a-zA-Z0-9_-]/g, '_');
         validCourseIds.add(courseId);
-        courseOps.push((batch) => {
-          batch.set(
-            doc(db, 'courses', courseId),
-            {
-              ...crs,
-              lastSyncAt: startTime.toISOString(),
-              spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId
-            },
-            { merge: true }
-          );
-        });
+        const coursePayload = stripUndefinedDeep({
+          ...crs,
+          lastSyncAt: startTimeIso,
+          spreadsheetId: LOGIN_SHEET_CONFIG.spreadsheetId
+        }) as Record<string, unknown>;
+        if (hasDocChanged(existingCoursesCol.dataMap.get(courseId), coursePayload)) {
+          courseOps.push((batch) => {
+            batch.set(doc(db, 'courses', courseId), coursePayload, { merge: true });
+          });
+          writtenCount++;
+        }
         coursesCount++;
       }
-      const existingCoursesSnap = await getDocs(collection(db, 'courses'));
-      existingCoursesSnap.forEach((d) => {
-        if (!validCourseIds.has(d.id)) {
-          courseOps.push((batch) => batch.delete(d.ref));
-        }
-      });
+      if (existingCoursesCol.ok) {
+        existingCoursesCol.refMap.forEach((ref, docId) => {
+          if (!validCourseIds.has(docId)) {
+            courseOps.push((batch) => batch.delete(ref));
+            deletedCount++;
+          }
+        });
+      }
       await commitBatchOperations(courseOps);
     } catch (courseErr) {
       console.warn('[SyncEngine] Course sync to Firestore notice:', courseErr);
@@ -373,14 +475,15 @@ export async function syncAllLoginSheetRowsToFirebase(): Promise<SyncSummary> {
     summary.totalSynced = syncedCount + coursesCount;
     summary.studentsCount = studentRows;
     summary.deletedCount = deletedCount;
+    summary.writtenCount = writtenCount;
     summary.message = `อัปเดตฐานข้อมูลสำเร็จ: ซิงค์ผู้ใช้ปัจจุบัน ${syncedCount} บัญชี (นักศึกษา ${studentRows} คน, รายวิชา ${coursesCount} วิชา)${deletedCount > 0 ? ` และลบผู้ใช้เก่าออก ${deletedCount} รายการ` : ''} จาก Google Sheet สู่ Firebase เรียบร้อย`;
 
     localStorage.setItem(STORAGE_LAST_SYNC_KEY, JSON.stringify(summary));
-    console.log(`[SyncEngine] ${summary.message}`);
+    console.log(`[SyncEngine] ${summary.message} (Firestore writes: ${writtenCount}, deletes: ${deletedCount})`);
     return summary;
   } catch (error) {
     console.error('[SyncEngine] Error during full sync:', error);
-    summary.message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการเชื่อมโยงฐานข้อมูล';
+    summary.message = formatThaiErrorMessage(error, 'เกิดข้อผิดพลาดในการเชื่อมโยงฐานข้อมูล');
     return summary;
   }
 }

@@ -2390,14 +2390,6 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 <BookOpen className="w-4 h-4 text-indigo-600" />
                 <span>ข้อมูลรายวิชาสอนในสถานประกอบการ</span>
               </span>
-              {!remoteReportsMap[reportDocId]?.courses?.length && latestSavedTeacherReport && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80">
-                  นำข้อมูลจากสัปดาห์ที่ {latestSavedTeacherReport.weekNumber} มาแสดง
-                  {selectedWeek !== Number(latestSavedTeacherReport.weekNumber)
-                    ? ` (ปรับวันที่ ${(selectedWeek - Number(latestSavedTeacherReport.weekNumber)) > 0 ? '+' : ''}${(selectedWeek - Number(latestSavedTeacherReport.weekNumber)) * 7} วัน)`
-                    : ''}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -2588,11 +2580,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
             </span>
           </button>
           <button
+            type="button"
             onClick={() => handleOpenPrintPreview('all')}
-            className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg transition cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-transparent bg-gradient-to-r from-indigo-600 via-blue-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-bold text-sm shadow-md hover:shadow-lg transition cursor-pointer"
             title="เปิดภาพตัวอย่างก่อนพิมพ์ของเอกสารที่ 1 และ 2 ทั้งหมด (ครบ 3 หน้า A4) พร้อมสั่งพิมพ์หรือดาวน์โหลด PDF"
           >
-            <Printer className="w-10 h-10 text-white" />
+            <Printer className="w-4 h-4 text-white" />
             <span>สั่งพิมพ์หรือดาวน์โหลดเอกสาร</span>
           </button>
         </div>
