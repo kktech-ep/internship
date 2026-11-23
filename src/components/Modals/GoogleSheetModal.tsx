@@ -1,821 +1,381 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Table, 
-  Download, 
-  Search, 
-  RefreshCw, 
-  CheckCircle2, 
+import React, { useState } from 'react';
+import {
+  AlertCircle,
+  BookOpen,
+  CheckCircle2,
+  Database,
   ExternalLink,
   FileSpreadsheet,
-  Building,
-  Calendar,
-  KeyRound,
+  RefreshCw,
+  Search,
   Users,
-  BookOpen,
-  Camera
+  X,
 } from 'lucide-react';
-import { Student, CourseDataRow, Form3SupervisionRecord, WeeklySubmission } from '../../types';
-import { 
-  getLocalForm1Rows, 
-  fetchGoogleSheetForm1Rows, 
-  getLocalForm3Rows,
-  GOOGLE_SHEET_CONFIG, 
-  Form1RowData 
-} from '../../services/googleSheetsService';
-import { 
-  fetchSheetLoginAccounts, 
-  SheetLoginAccount,
-} from '../../services/sheetAuthService';
-import { 
-  fetchDataSheetCourses, 
-  getCachedCourses,
-} from '../../services/courseDataService';
-import { syncAllLoginSheetRowsToFirebase } from '../../services/sheetFirebaseSyncService';
-import { getCachedAccessToken, requestGoogleSheetsAccessToken } from '../../services/authService';
-import { getCandidateStudentKeys } from '../../utils/submissionUtils';
+import {
+  CourseDataRow,
+  Form3SupervisionRecord,
+  Student,
+  WeeklySubmission,
+} from '../../types';
+import { GOOGLE_SHEET_CONFIG } from '../../services/googleSheetsService';
+import {
+  syncAllLoginSheetRowsToFirebase,
+  SyncSummary,
+} from '../../services/sheetFirebaseSyncService';
+import { formatThaiErrorMessage } from '../../utils/thaiErrorUtils';
 
 interface GoogleSheetModalProps {
   isOpen: boolean;
   onClose: () => void;
   students: Student[];
-  submissions?: Record<string, WeeklySubmission[]>;
-  form3List?: Form3SupervisionRecord[];
-  courses?: CourseDataRow[];
+  submissions: Record<string, WeeklySubmission[]>;
+  form3List: Form3SupervisionRecord[];
+  courses: CourseDataRow[];
 }
 
 export const GoogleSheetModal: React.FC<GoogleSheetModalProps> = ({
   isOpen,
   onClose,
   students,
-  submissions = {},
-  form3List: propForm3List = [],
-  courses: propCourses,
+  submissions,
+  form3List,
+  courses,
 }) => {
-  const [activeTab, setActiveTab] = useState<'form1' | 'form2' | 'login' | 'data' | 'form3'>('login');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterWeek, setFilterWeek] = useState('all');
-  const [form1Rows, setForm1Rows] = useState<Form1RowData[]>([]);
-  const [loginAccounts, setLoginAccounts] = useState<SheetLoginAccount[]>([]);
-  const [dataCourses, setDataCourses] = useState<CourseDataRow[]>(() => propCourses || getCachedCourses());
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [statusNotice, setStatusNotice] = useState<string | null>(null);
-  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
-  const [firebaseSyncNotice, setFirebaseSyncNotice] = useState<string | null>(null);
-
-  const form3Rows = propForm3List && propForm3List.length > 0 ? propForm3List : getLocalForm3Rows();
-
-  useEffect(() => {
-    if (propCourses && propCourses.length > 0) {
-      setDataCourses(propCourses);
-    }
-  }, [propCourses]);
-
-  const buildDerivedForm1Rows = (): Form1RowData[] => {
-    const local = getLocalForm1Rows();
-    const map = new Map<string, Form1RowData>();
-    students.forEach((s) => {
-      if (!s.companyName || s.companyName === 'ยังไม่ระบุสถานประกอบการ') return;
-      map.set(s.studentCode, {
-        timestamp: s.companyRegistration?.registeredAt || '-',
-        studentCode: s.studentCode,
-        studentName: s.name,
-        level: `${s.level} ${s.department}`,
-        companyName: s.companyName,
-        department: s.companyRegistration?.department || '-',
-        mentorName: s.companyRegistration?.mentorName || '-',
-        mentorPhone: s.companyRegistration?.mentorPhone || '-',
-        emergencyPhone: s.companyRegistration?.emergencyPhone || '-',
-        gpsCoordinates: s.companyRegistration?.gpsCoordinates || '-',
-        notes: s.companyRegistration?.notes || '',
-        status: 'เชื่อมต่อแล้ว',
-      });
-    });
-    local.forEach((lr) => {
-      if (lr.studentCode) map.set(lr.studentCode, lr);
-    });
-    return Array.from(map.values());
-  };
-
-  const handleSyncWithFirebase = async () => {
-    setIsSyncingFirebase(true);
-    setFirebaseSyncNotice('กำลังเชื่อมโยงข้อมูล Google Sheet แผ่นงาน login สู่ Firebase: internship2-2569...');
-    try {
-      const summary = await syncAllLoginSheetRowsToFirebase();
-      setFirebaseSyncNotice(summary.message);
-      const freshAccs = await fetchSheetLoginAccounts(true);
-      setLoginAccounts(freshAccs);
-    } catch (e) {
-      setFirebaseSyncNotice('เกิดข้อผิดพลาดในการเชื่อมโยง: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setIsSyncingFirebase(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setForm1Rows(buildDerivedForm1Rows());
-    fetchSheetLoginAccounts().then(accs => setLoginAccounts(accs));
-    if (!propCourses || propCourses.length === 0) {
-      fetchDataSheetCourses().then(c => setDataCourses(c));
-    }
-  }, [isOpen, students]);
+  const [activeTab, setActiveTab] = useState<'login' | 'form2' | 'form3' | 'data'>('login');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncSummary | null>(null);
 
   if (!isOpen) return null;
 
-  // Build live Form #2 rows directly from authoritative App/Firestore submissions joined with student roster
-  const studentByKey = new Map<string, Student>();
-  students.forEach(s => {
-    getCandidateStudentKeys(s).forEach(k => studentByKey.set(k, s));
-  });
+  const allSubmissions = Object.values(submissions).flat();
+  const q = searchQuery.trim().toLowerCase();
 
-  const seenSubIds = new Set<string>();
-  const liveForm2Rows = Object.entries(submissions)
-    .flatMap(([studentKey, subs]) =>
-      (subs || []).flatMap(sub => {
-        if (!sub || (sub.id && seenSubIds.has(sub.id))) return [];
-        if (sub.id) seenSubIds.add(sub.id);
-        const std =
-          studentByKey.get(sub.studentId) ||
-          studentByKey.get(studentKey) ||
-          studentByKey.get(sub.studentId.replace(/^std-/, ''));
-        return [{
-          timestamp: sub.submittedAt || '-',
-          studentCode: std?.studentCode || sub.studentId.replace(/^std-/, ''),
-          studentName: std?.name || sub.studentSignature || sub.studentId,
-          company: std?.companyName || '-',
-          weekNumber: sub.weekNumber,
-          week: `สัปดาห์ที่ ${sub.weekNumber}`,
-          hours: String(sub.totalHours ?? 40),
-          task: sub.taskTitle || '-',
-          groundResistance: 'ผ่านมาตรฐาน',
-          ppeStatus:
-            sub.safetyChecklist &&
-            sub.safetyChecklist.hardHat &&
-            sub.safetyChecklist.highVoltageGloves &&
-            sub.safetyChecklist.safetyShoes
-              ? 'ผ่าน 100%'
-              : 'ตรวจตามเกณฑ์',
-          mentorScore: String(sub.mentorRating ?? 5.0),
-          teacherScore: String(sub.teacherScore ?? '-'),
-          grade: sub.teacherGrade || '-',
-          inspector: sub.teacherName || std?.supervisorTeacher || '-',
-          status: sub.status === 'graded' ? 'ประเมินแล้ว' : 'รอตรวจประเมิน'
-        }];
-      })
-    )
-    .sort((a, b) => b.weekNumber - a.weekNumber);
+  const filteredStudents = students.filter(
+    (s) =>
+      !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.studentCode.toLowerCase().includes(q) ||
+      s.companyName.toLowerCase().includes(q) ||
+      s.room.toLowerCase().includes(q)
+  );
 
-  // Refresh live rows from Google Sheets API
-  const handleRefreshLive = async () => {
-    setIsRefreshing(true);
-    setStatusNotice(null);
-
-    const accs = await fetchSheetLoginAccounts(true);
-    setLoginAccounts(accs);
-    const crs = await fetchDataSheetCourses(true);
-    setDataCourses(crs);
-
-    let token = getCachedAccessToken();
-    if (!token) {
-      try {
-        token = await requestGoogleSheetsAccessToken();
-      } catch (e) {
-        console.warn('OAuth request note:', e);
-      }
-    }
-
-    if (token) {
-      const res = await fetchGoogleSheetForm1Rows(token);
-      setForm1Rows(res.rows.length > 0 ? res.rows : buildDerivedForm1Rows());
-      setStatusNotice('ซิงค์ข้อมูลล่าสุดจาก Google Sheets (login, data, Form_1) สำเร็จ!');
-    } else {
-      setForm1Rows(buildDerivedForm1Rows());
-      setStatusNotice(`ซิงค์ข้อมูลตาราง login (${accs.length} บัญชี) และ data (${crs.length} วิชา) สำเร็จ`);
-    }
-    setIsRefreshing(false);
-  };
-
-  const filteredLoginRows = loginAccounts.filter((r) => {
-    const q = searchTerm.toLowerCase();
+  const filteredSubmissions = allSubmissions.filter((sub) => {
+    if (!q) return true;
+    const st = students.find((s) => s.id === sub.studentId);
     return (
-      r.user.toLowerCase().includes(q) ||
-      r.name.toLowerCase().includes(q) ||
-      r.status.toLowerCase().includes(q) ||
-      r.pass.includes(q)
+      sub.taskTitle.toLowerCase().includes(q) ||
+      (st?.name || '').toLowerCase().includes(q) ||
+      (st?.studentCode || '').includes(q)
     );
   });
 
-  const filteredDataCourses = dataCourses.filter((c) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      c.room.toLowerCase().includes(q) ||
+  const filteredForm3 = form3List.filter(
+    (r) =>
+      !q ||
+      r.studentName.toLowerCase().includes(q) ||
+      (r.studentCode || '').toLowerCase().includes(q) ||
+      r.companyName.toLowerCase().includes(q) ||
+      r.teacherName.toLowerCase().includes(q)
+  );
+
+  const filteredCourses = courses.filter(
+    (c) =>
+      !q ||
       c.subjectCode.toLowerCase().includes(q) ||
       c.subjectName.toLowerCase().includes(q) ||
-      c.teacherName.toLowerCase().includes(q)
-    );
-  });
+      c.teacherName.toLowerCase().includes(q) ||
+      c.room.toLowerCase().includes(q)
+  );
 
-  const filteredForm1Rows = form1Rows.filter((r) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      r.studentName.toLowerCase().includes(q) ||
-      r.studentCode.includes(q) ||
-      r.companyName.toLowerCase().includes(q) ||
-      r.department.toLowerCase().includes(q) ||
-      r.mentorName.toLowerCase().includes(q)
-    );
-  });
-
-  const filteredForm2Rows = liveForm2Rows.filter((r) => {
-    const q = searchTerm.toLowerCase();
-    const matchesSearch = !q ||
-      r.studentName.toLowerCase().includes(q) ||
-      r.studentCode.toLowerCase().includes(q) ||
-      r.company.toLowerCase().includes(q) ||
-      r.task.toLowerCase().includes(q);
-    const matchesWeek = filterWeek === 'all' || String(r.weekNumber) === filterWeek;
-    return matchesSearch && matchesWeek;
-  });
-
-  const filteredForm3Rows = form3Rows.filter((r) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      r.studentName.toLowerCase().includes(q) ||
-      r.studentCode.toLowerCase().includes(q) ||
-      r.companyName.toLowerCase().includes(q) ||
-      r.teacherName.toLowerCase().includes(q) ||
-      r.mentorName.toLowerCase().includes(q)
-    );
-  });
-
-  const handleExportCSV = () => {
-    if (activeTab === 'login') {
-      const headers = 'user,pass,name,status\n';
-      const csvContent = filteredLoginRows.map(r => 
-        `"${r.user}","${r.pass}","${r.name}","${r.status}"`
-      ).join('\n');
-      
-      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `GoogleSheets_login_accounts_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else if (activeTab === 'data') {
-      const headers = 'room,รหัสวิชา,ชื่อวิชา,ครูนิเทศก์/ประจำวิชา\n';
-      const csvContent = filteredDataCourses.map(c => 
-        `"${c.room}","${c.subjectCode}","${c.subjectName}","${c.teacherName}"`
-      ).join('\n');
-      
-      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `GoogleSheets_data_courses_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else if (activeTab === 'form1') {
-      const headers = 'Timestamp,StudentCode,StudentName,Level,CompanyName,Department,MentorName,MentorPhone,EmergencyPhone,GPS,Notes,Status\n';
-      const csvContent = filteredForm1Rows.map(r => 
-        `"${r.timestamp}","${r.studentCode}","${r.studentName}","${r.level}","${r.companyName}","${r.department}","${r.mentorName}","${r.mentorPhone}","${r.emergencyPhone}","${r.gpsCoordinates}","${r.notes}","${r.status || 'บันทึกสำเร็จ'}"`
-      ).join('\n');
-      
-      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `GoogleSheets_${GOOGLE_SHEET_CONFIG.form1SheetName}_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else if (activeTab === 'form3') {
-      const headers = 'Timestamp,VisitDate,StudentCode,StudentName,Room,Company,Teacher,Mentor,PPE,Score,Grade,Status\n';
-      const csvContent = filteredForm3Rows.map(r =>
-        `"${r.timestamp}","${r.visitDate}","${r.studentCode}","${r.studentName}","${r.studentRoom}","${r.companyName}","${r.teacherName}","${r.mentorName}","${r.safetyPassed ? 'ผ่าน PPE' : 'ปรับปรุง'}","${r.score}","${r.grade}","${r.status}"`
-      ).join('\n');
-
-      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `KKTECH_Internship_Form3_Supervision_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      const headers = 'Timestamp,StudentCode,Name,Company,Week,Hours,Task,GroundResistance,PPE,MentorScore,TeacherScore,Grade,Inspector,Status\n';
-      const csvContent = filteredForm2Rows.map(r => 
-        `"${r.timestamp}","${r.studentCode}","${r.studentName}","${r.company}","${r.week}","${r.hours}","${r.task}","${r.groundResistance}","${r.ppeStatus}","${r.mentorScore}","${r.teacherScore}","${r.grade}","${r.inspector}","${r.status}"`
-      ).join('\n');
-      
-      const blob = new Blob(['\uFEFF' + headers + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'KKTECH_Internship_Form2_Reports.csv');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await syncAllLoginSheetRowsToFirebase(true);
+      setSyncResult(res);
+    } catch (err) {
+      setSyncResult({
+        success: false,
+        message: formatThaiErrorMessage(err, 'ซิงค์ข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
+        studentsCount: 0,
+        teachersCount: 0,
+        coursesCount: 0,
+        companiesCount: 0,
+        syncedAt: new Date().toISOString(),
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="bg-emerald-900 text-white p-4 px-6 flex items-center justify-between border-b border-emerald-800">
+        <div className="bg-slate-900 text-white p-5 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-xs">
-              <FileSpreadsheet className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-sm text-white">Google Sheets Master Data ⇋ Firebase Unified</span>
-                <span className="font-mono text-[10px] bg-emerald-800/80 px-2 py-0.5 rounded border border-emerald-700 text-emerald-200">
-                  ID: {GOOGLE_SHEET_CONFIG.spreadsheetId}
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                  แผ่นงาน: login & Form_1
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/30 text-amber-200 border border-amber-400/40 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                  Firebase: internship2-2569
-                </span>
-              </div>
-              <p className="text-[11px] text-emerald-200 mt-0.5">
-                ฐานข้อมูลเดียวกัน: เชื่อมโยงบัญชีและข้อมูลสถานประกอบการจากแผ่นงาน login สู่ Firebase Firestore แบบเรียลไทม์
+              <h3 className="text-base font-bold">
+                ฐานข้อมูลเชื่อมโยง Google Sheets ⇋ Firebase Firestore
+              </h3>
+              <p className="text-xs text-slate-300 font-mono">
+                Sheet ID: {GOOGLE_SHEET_CONFIG.spreadsheetId}
               </p>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             <button
-              onClick={handleSyncWithFirebase}
-              disabled={isSyncingFirebase}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-xs shadow-xs transition cursor-pointer disabled:opacity-50"
-              title="ซิงค์ข้อมูลแถวทั้งหมดจาก Google Sheet แผ่นงาน login เข้าสู่ Firebase: internship2-2569"
+              type="button"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-60"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFirebase ? 'animate-spin' : ''}`} />
-              <span>{isSyncingFirebase ? 'กำลังซิงค์ Firebase...' : 'ซิงค์สด Sheet ⇋ Firebase'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'กำลังซิงค์...' : 'ซิงค์จาก Sheet เดี๋ยวนี้'}</span>
             </button>
             <a
               href={GOOGLE_SHEET_CONFIG.spreadsheetUrl}
               target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-medium text-xs shadow-xs transition"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition"
             >
+              <span>เปิด Google Sheets</span>
               <ExternalLink className="w-3.5 h-3.5" />
-              <span>เปิดชีตจริง</span>
             </a>
             <button
+              type="button"
               onClick={onClose}
-              className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Sync Result Notice Banner */}
-        {firebaseSyncNotice && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-xs text-amber-900 animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="font-medium">{firebaseSyncNotice}</span>
-            </div>
-            <button 
-              onClick={() => setFirebaseSyncNotice(null)} 
-              className="text-amber-700 hover:text-amber-900 text-[11px] font-bold"
-            >
-              ✕ ปิด
-            </button>
-          </div>
-        )}
-
-        {/* Tab Selector */}
-        <div className="bg-emerald-950/20 border-b border-slate-200 px-6 pt-2 flex items-center justify-between flex-wrap gap-2">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('login')}
-              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-b-2 cursor-pointer ${
-                activeTab === 'login'
-                  ? 'bg-white text-emerald-800 border-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-              }`}
-            >
-              <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
-              <span>แผ่นงาน: login (user, pass, name, status)</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800">
-                {loginAccounts.length} บัญชี
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('data')}
-              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-b-2 cursor-pointer ${
-                activeTab === 'data'
-                  ? 'bg-white text-emerald-800 border-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 text-sky-600" />
-              <span>แผ่นงาน: data (room, รหัสวิชา, ชื่อวิชา, ครูนิเทศก์)</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 text-sky-800 font-mono">
-                {dataCourses.length} รายการ
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('form1')}
-              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-b-2 cursor-pointer ${
-                activeTab === 'form1'
-                  ? 'bg-white text-emerald-800 border-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-              }`}
-            >
-              <Building className="w-3.5 h-3.5 text-emerald-600" />
-              <span>แผ่นงาน: Form_1 (ข้อมูลสถานประกอบการ)</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800">
-                {form1Rows.length} รายการ
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('form2')}
-              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-b-2 cursor-pointer ${
-                activeTab === 'form2'
-                  ? 'bg-white text-emerald-800 border-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5 text-sky-600" />
-              <span>แผ่นงาน: Form_2 (รายงานประจำสัปดาห์)</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 text-sky-800">
-                {liveForm2Rows.length} รายการ
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('form3')}
-              className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-b-2 cursor-pointer ${
-                activeTab === 'form3'
-                  ? 'bg-white text-emerald-800 border-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-100/60'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5 text-emerald-600" />
-              <span>แผ่นงาน: รายงานการนิเทศ & รูปถ่าย 3-4 รูป</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-mono">
-                {form3Rows.length} รายการ
-              </span>
-            </button>
-          </div>
-
-          <a
-            href={GOOGLE_SHEET_CONFIG.spreadsheetUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold underline inline-flex items-center gap-1 py-1"
+        {/* Sync Banner */}
+        {syncResult && (
+          <div
+            className={`px-5 py-3 border-b text-xs flex items-center gap-2 ${
+              syncResult.success
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}
           >
-            <span>docs.google.com/spreadsheets/d/{GOOGLE_SHEET_CONFIG.spreadsheetId}</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-
-        {/* Toolbar */}
-        <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder={
-                  activeTab === 'login'
-                    ? 'ค้นหา user, pass, name, หรือ status...'
-                    : activeTab === 'form1'
-                    ? 'ค้นหาชื่อนักศึกษา, รหัส, สถานประกอบการ, พี่เลี้ยง...'
-                    : 'ค้นหาชื่อ, รหัสนักศึกษา, หรืองาน...'
-                }
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-              />
-            </div>
-
-            {activeTab === 'form2' && (
-              <select
-                value={filterWeek}
-                onChange={(e) => setFilterWeek(e.target.value)}
-                className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-              >
-                <option value="all">ทุกสัปดาห์</option>
-                {Array.from({ length: 18 }, (_, i) => i + 1).map(w => (
-                  <option key={w} value={String(w)}>สัปดาห์ที่ {w}</option>
-                ))}
-              </select>
+            {syncResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefreshLive}
-              disabled={isRefreshing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>ซิงค์ดึงข้อมูลสด</span>
-            </button>
-            <button
-              onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-medium text-xs shadow-xs transition cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>ส่งออก CSV</span>
-            </button>
-          </div>
-        </div>
-
-        {statusNotice && (
-          <div className="bg-emerald-50 text-emerald-800 px-5 py-2 text-xs flex items-center justify-between border-b border-emerald-200">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              {statusNotice}
-            </span>
-            <button onClick={() => setStatusNotice(null)} className="text-emerald-600 hover:text-emerald-900 cursor-pointer">
-              <X className="w-3 h-3" />
-            </button>
+            <span className="font-medium">{syncResult.message}</span>
           </div>
         )}
+
+        {/* Tabs & Search */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('login')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'login'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>แผ่นงาน login ({students.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('form2')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'form2'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>บันทึกประจำสัปดาห์ ({allSubmissions.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('form3')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'form3'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>แผ่นงาน Form_3 ({form3List.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('data')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'data'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>แผ่นงาน data รายวิชา ({courses.length})</span>
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ค้นหาในตาราง..."
+              className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-sky-500 focus:outline-hidden"
+            />
+          </div>
+        </div>
 
         {/* Table Content */}
-        <div className="flex-1 overflow-auto text-xs">
-          {activeTab === 'login' ? (
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-100 text-slate-700 text-[11px] font-semibold sticky top-0 border-b border-slate-200 z-10">
-                <tr>
-                  <th className="p-2.5 pl-4 w-12 text-center">#</th>
-                  <th className="p-2.5">user (ชื่อผู้ใช้ / รหัส / อีเมล)</th>
-                  <th className="p-2.5">pass (รหัสผ่าน)</th>
-                  <th className="p-2.5">name (ชื่อ-นามสกุล)</th>
-                  <th className="p-2.5 pr-4">status (บทบาท)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredLoginRows.map((row, i) => {
-                  const isAdmin = row.status.toLowerCase().includes('admin');
-                  const isTeacher = row.status.toLowerCase().includes('teacher') || row.status.includes('ครู');
-                  return (
-                    <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                      <td className="p-2.5 pl-4 text-slate-400 font-mono text-center">{i + 1}</td>
-                      <td className="p-2.5 font-bold font-mono text-slate-900">{row.user}</td>
-                      <td className="p-2.5 font-mono text-slate-600">
-                        <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          {row.pass}
-                        </span>
-                      </td>
-                      <td className="p-2.5 font-medium whitespace-nowrap text-slate-900">{row.name}</td>
-                      <td className="p-2.5 pr-4 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                          isAdmin 
-                            ? 'bg-slate-100 text-slate-800 border-slate-300'
-                            : isTeacher
-                            ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                            : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        }`}>
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : activeTab === 'data' ? (
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-100 text-slate-700 text-[11px] font-semibold sticky top-0 border-b border-slate-200 z-10">
-                <tr>
-                  <th className="p-2.5 pl-4 w-12 text-center">#</th>
-                  <th className="p-2.5 font-mono">กลุ่มเรียน (room)</th>
-                  <th className="p-2.5 font-mono">รหัสวิชา</th>
-                  <th className="p-2.5">ชื่อวิชา</th>
-                  <th className="p-2.5">ครูนิเทศก์ / ประจำวิชา</th>
-                  <th className="p-2.5 pr-4 text-center">จำนวน นศ. ในห้อง (login)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredDataCourses.map((row, i) => {
-                  const studentCount = students.filter(s => s.room === row.room).length;
-                  return (
-                    <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                      <td className="p-2.5 pl-4 text-slate-400 font-mono text-center">{i + 1}</td>
-                      <td className="p-2.5">
-                        <span className="font-mono font-bold text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded border border-sky-200 text-xs">
-                          {row.room}
-                        </span>
-                      </td>
-                      <td className="p-2.5 font-mono font-bold text-slate-900">{row.subjectCode}</td>
-                      <td className="p-2.5 font-medium text-slate-900">{row.subjectName}</td>
-                      <td className="p-2.5 font-semibold text-emerald-800">{row.teacherName}</td>
-                      <td className="p-2.5 pr-4 text-center font-mono font-bold text-slate-700">
-                        {studentCount} คน
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : activeTab === 'form1' ? (
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-100 text-slate-700 text-[11px] font-semibold sticky top-0 border-b border-slate-200 z-10">
-                <tr>
-                  <th className="p-2.5 pl-4">วัน-เวลาบันทึก</th>
+        <div className="flex-1 overflow-auto p-4">
+          {activeTab === 'login' && (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
                   <th className="p-2.5">รหัสนักศึกษา</th>
-                  <th className="p-2.5">ชื่อ-นามสกุล</th>
-                  <th className="p-2.5">ระดับชั้น/แผนก</th>
+                  <th className="p-2.5">ชื่อ-สกุล</th>
+                  <th className="p-2.5">ห้อง/ระดับ</th>
                   <th className="p-2.5">สถานประกอบการ</th>
-                  <th className="p-2.5">หน่วยงาน/แผนก</th>
-                  <th className="p-2.5">ชื่อพี่เลี้ยง</th>
-                  <th className="p-2.5">เบอร์ติดต่อ</th>
+                  <th className="p-2.5">พี่เลี้ยง</th>
                   <th className="p-2.5">พิกัด GPS</th>
-                  <th className="p-2.5">จุดสังเกต/หมายเหตุ</th>
-                  <th className="p-2.5 pr-4">สถานะชีต</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredForm1Rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                    <td className="p-2.5 pl-4 text-slate-500 whitespace-nowrap font-mono">{row.timestamp}</td>
-                    <td className="p-2.5 font-bold text-slate-900 font-mono">{row.studentCode}</td>
-                    <td className="p-2.5 font-medium whitespace-nowrap">{row.studentName}</td>
-                    <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.level}</td>
-                    <td className="p-2.5 font-semibold text-slate-900 max-w-xs">{row.companyName}</td>
-                    <td className="p-2.5 text-slate-700">{row.department}</td>
-                    <td className="p-2.5 text-slate-800 whitespace-nowrap">{row.mentorName}</td>
-                    <td className="p-2.5 text-sky-700 font-mono whitespace-nowrap">{row.mentorPhone}</td>
-                    <td className="p-2.5 text-emerald-700 font-mono whitespace-nowrap">{row.gpsCoordinates}</td>
-                    <td className="p-2.5 text-slate-500 max-w-xs truncate">{row.notes || '-'}</td>
-                    <td className="p-2.5 pr-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 inline-flex items-center gap-1 border border-emerald-200">
-                        <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                        Form_1 ซิงค์แล้ว
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : activeTab === 'form2' ? (
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-100 text-slate-700 text-[11px] font-semibold sticky top-0 border-b border-slate-200 z-10">
-                <tr>
-                  <th className="p-2.5 pl-4">Timestamp</th>
-                  <th className="p-2.5">รหัสนักศึกษา</th>
-                  <th className="p-2.5">ชื่อ-นามสกุล</th>
-                  <th className="p-2.5">สถานประกอบการ</th>
-                  <th className="p-2.5">งวด/สัปดาห์</th>
-                  <th className="p-2.5">ชม.</th>
-                  <th className="p-2.5">หัวข้องาน</th>
-                  <th className="p-2.5">มาตรฐาน</th>
-                  <th className="p-2.5">PPE</th>
-                  <th className="p-2.5">คะแนน/20</th>
-                  <th className="p-2.5 pr-4">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredForm2Rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="p-8 text-center text-slate-400">
-                      ยังไม่มีบันทึกส่งงานประจำสัปดาห์ในระบบ Firestore (เมื่อนักศึกษาส่งฟอร์ม #2 จะแสดงผลแบบเรียลไทม์ทันที)
-                    </td>
-                  </tr>
-                ) : (
-                  filteredForm2Rows.map((row, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                      <td className="p-2.5 pl-4 text-slate-500 whitespace-nowrap font-mono">{row.timestamp}</td>
-                      <td className="p-2.5 font-bold text-slate-900 font-mono">{row.studentCode}</td>
-                      <td className="p-2.5 font-medium whitespace-nowrap">{row.studentName}</td>
-                      <td className="p-2.5 text-slate-600 max-w-xs truncate">{row.company}</td>
-                      <td className="p-2.5 whitespace-nowrap">{row.week}</td>
-                      <td className="p-2.5">{row.hours}</td>
-                      <td className="p-2.5 text-slate-700 max-w-xs truncate">{row.task}</td>
-                      <td className="p-2.5 text-sky-700 font-mono">{row.groundResistance}</td>
-                      <td className="p-2.5 text-emerald-700">{row.ppeStatus}</td>
-                      <td className="p-2.5 font-bold text-sky-700">{row.teacherScore} ({row.grade})</td>
-                      <td className="p-2.5 pr-4 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          ) : null}
-
-          {/* Tab 5: รายงานการนิเทศ & รูปถ่าย 3-4 รูป */}
-          {activeTab === 'form3' && (
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-100/90 text-slate-700 text-[10px] uppercase font-bold sticky top-0 z-10 border-b border-slate-200">
-                <tr>
-                  <th className="p-2.5 pl-4 whitespace-nowrap">ประทับเวลา</th>
-                  <th className="p-2.5 whitespace-nowrap">วันและเวลานิเทศก์</th>
-                  <th className="p-2.5 whitespace-nowrap">รหัสนักศึกษา</th>
-                  <th className="p-2.5 whitespace-nowrap">ชื่อ-สกุล</th>
-                  <th className="p-2.5 whitespace-nowrap">กลุ่ม (room)</th>
-                  <th className="p-2.5 whitespace-nowrap">สถานประกอบการ</th>
-                  <th className="p-2.5 whitespace-nowrap">ครูนิเทศก์</th>
-                  <th className="p-2.5 whitespace-nowrap">พี่เลี้ยง</th>
-                  <th className="p-2.5 whitespace-nowrap">ความปลอดภัย PPE</th>
-                  <th className="p-2.5 whitespace-nowrap">คะแนน /20</th>
-                  <th className="p-2.5 whitespace-nowrap">รูปการนิเทศ (3-4 รูป)</th>
-                  <th className="p-2.5 pr-4 whitespace-nowrap">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredForm3Rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition text-[11px]">
-                    <td className="p-2.5 pl-4 text-slate-500 whitespace-nowrap font-mono">{row.timestamp}</td>
-                    <td className="p-2.5 font-semibold text-slate-800 whitespace-nowrap">{row.visitDate}</td>
-                    <td className="p-2.5 font-bold text-sky-800 font-mono">{row.studentCode}</td>
-                    <td className="p-2.5 font-medium whitespace-nowrap">{row.studentName}</td>
-                    <td className="p-2.5 whitespace-nowrap font-mono text-[10px] text-indigo-700 font-bold">{row.studentRoom}</td>
-                    <td className="p-2.5 text-slate-700 max-w-xs truncate" title={row.companyName}>{row.companyName}</td>
-                    <td className="p-2.5 text-slate-700 whitespace-nowrap">{row.teacherName}</td>
-                    <td className="p-2.5 text-slate-600 whitespace-nowrap">{row.mentorName}</td>
-                    <td className="p-2.5">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                        row.safetyPassed ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {row.safetyPassed ? 'ผ่าน PPE 100%' : 'ต้องปรับปรุง'}
-                      </span>
-                    </td>
-                    <td className="p-2.5 font-bold text-sky-700">
-                      {row.score.toFixed(1)} <span className="text-[10px] text-slate-500">({row.grade})</span>
-                    </td>
-                    <td className="p-2.5">
-                      <div className="flex items-center gap-1.5">
-                        {row.photos && row.photos.length > 0 ? (
-                          row.photos.map((photo, pIdx) => (
-                            <a
-                              key={pIdx}
-                              href={photo.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-emerald-500 transition block shrink-0"
-                              title={`${photo.title}: ${photo.caption || ''}`}
-                            >
-                              <img src={photo.url} alt={photo.title} className="w-full h-full object-cover" />
-                            </a>
-                          ))
-                        ) : (
-                          <span className="text-slate-400 text-[10px]">- ไม่มีรูป -</span>
-                        )}
-                        <span className="text-[10px] text-slate-500 font-mono ml-1">
-                          ({row.photos?.length || 0}/4 รูป)
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-2.5 pr-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                        {row.status}
-                      </span>
+              <tbody className="divide-y divide-slate-100">
+                {filteredStudents.slice(0, 100).map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-semibold text-slate-800">{s.studentCode}</td>
+                    <td className="p-2.5 font-semibold text-slate-900">{s.name}</td>
+                    <td className="p-2.5 text-slate-600">{s.room} ({s.level})</td>
+                    <td className="p-2.5 text-slate-700">{s.companyName}</td>
+                    <td className="p-2.5 text-slate-600">{s.companyRegistration?.mentorName || '-'}</td>
+                    <td className="p-2.5 font-mono text-[11px] text-slate-500">
+                      {s.companyRegistration?.gpsCoordinates || '-'}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>
-              Google Sheets: <strong className="font-mono text-slate-800">1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28</strong> • แผ่นงาน <strong className="text-emerald-800">login</strong> & <strong className="text-emerald-800">Form_1</strong>
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={GOOGLE_SHEET_CONFIG.spreadsheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-700 hover:text-emerald-900 font-semibold underline inline-flex items-center gap-1"
-            >
-              <span>เปิดสเปรดชีต Google Drive</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-            <button
-              onClick={onClose}
-              className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 font-medium transition cursor-pointer"
-            >
-              ปิดหน้าต่าง
-            </button>
-          </div>
+          {activeTab === 'form2' && (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th className="p-2.5">สัปดาห์</th>
+                  <th className="p-2.5">นักศึกษา</th>
+                  <th className="p-2.5">หัวข้องาน</th>
+                  <th className="p-2.5">ชั่วโมง</th>
+                  <th className="p-2.5">สถานะ</th>
+                  <th className="p-2.5">คะแนน</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredSubmissions.slice(0, 100).map((sub) => {
+                  const st = students.find((s) => s.id === sub.studentId);
+                  return (
+                    <tr key={sub.id} className="hover:bg-slate-50">
+                      <td className="p-2.5 font-bold text-sky-700">ส.{sub.weekNumber}</td>
+                      <td className="p-2.5 font-semibold text-slate-900">
+                        {st ? `${st.name} (${st.studentCode})` : sub.studentId}
+                      </td>
+                      <td className="p-2.5 text-slate-700">{sub.taskTitle}</td>
+                      <td className="p-2.5 font-mono">{sub.totalHours} ชม.</td>
+                      <td className="p-2.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            sub.status === 'graded'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {sub.status === 'graded' ? 'ตรวจแล้ว' : 'รอตรวจ'}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-mono font-bold">
+                        {sub.status === 'graded' ? `${sub.teacherScore}/20 (${sub.teacherGrade})` : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'form3' && (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th className="p-2.5">วันที่นิเทศ</th>
+                  <th className="p-2.5">นักศึกษา</th>
+                  <th className="p-2.5">สถานประกอบการ</th>
+                  <th className="p-2.5">ครูนิเทศก์</th>
+                  <th className="p-2.5">คะแนน</th>
+                  <th className="p-2.5">รูปถ่าย</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredForm3.slice(0, 100).map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 text-slate-600">{r.visitDate || r.timestamp}</td>
+                    <td className="p-2.5 font-semibold text-slate-900 max-w-xs">
+                      <div>{r.studentName}</div>
+                      <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                        {r.studentCode}
+                        {(r.studentCount || r.studentNames?.length || 1) > 1 && (
+                          <span className="ml-1 text-sky-700 font-bold">
+                            ({r.studentCount || r.studentNames?.length} คน)
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-2.5 text-slate-700">{r.companyName}</td>
+                    <td className="p-2.5 text-slate-600">{r.teacherName}</td>
+                    <td className="p-2.5 font-bold text-emerald-700">
+                      {r.score}/20 ({r.grade})
+                    </td>
+                    <td className="p-2.5 font-mono text-slate-500">{r.photos?.length || 0} รูป</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'data' && (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th className="p-2.5">กลุ่มห้อง</th>
+                  <th className="p-2.5">รหัสวิชา</th>
+                  <th className="p-2.5">ชื่อรายวิชา</th>
+                  <th className="p-2.5">ครูผู้สอน / นิเทศก์</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredCourses.map((c, idx) => (
+                  <tr key={`${c.room}-${c.subjectCode}-${idx}`} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-semibold text-sky-700">{c.room}</td>
+                    <td className="p-2.5 font-mono text-slate-700">{c.subjectCode}</td>
+                    <td className="p-2.5 font-medium text-slate-900">{c.subjectName}</td>
+                    <td className="p-2.5 text-slate-700">{c.teacherName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

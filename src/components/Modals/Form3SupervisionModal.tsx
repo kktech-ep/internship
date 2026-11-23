@@ -37,14 +37,13 @@ import { getAllLoginSheetStudents, getAllLoginSheetTeachers, normalizeTeacherKey
 import { StudentAvatar } from '../StudentAvatar';
 import { 
   appendForm3ToGoogleSheet,
-  appendBatchForm3ToGoogleSheet, 
   GOOGLE_SHEET_CONFIG,
-  getLocalForm3Rows,
   clearForm3PendingIds
 } from '../../services/googleSheetsService';
-import { saveForm3SupervisionsBatchToFirestore } from '../../services/firestoreService';
+import { saveForm3SupervisionToFirestore } from '../../services/firestoreService';
 import { getCachedAccessToken } from '../../services/authService';
 import { normalizeCompanyNameKey, normalizeStudentAcademicInfo } from '../../utils/dataUnifier';
+import { formatThaiErrorMessage } from '../../utils/thaiErrorUtils';
 
 interface Form3SupervisionModalProps {
   isOpen: boolean;
@@ -66,7 +65,7 @@ interface Form3SupervisionModalProps {
     visitDate?: string;
     record?: Form3SupervisionRecord;
     records?: Form3SupervisionRecord[];
-  }) => void;
+  }) => Promise<void> | void;
   onOpenSheetsModal?: () => void;
 }
 
@@ -167,37 +166,15 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
   // Selection Mode: 'company' (เลือกตามสถานประกอบการ) or 'individual' (ค้นหารายบุคคล)
   const [selectionMode, setSelectionMode] = useState<'company' | 'individual'>('company');
 
-  // Multi-Student Selection State: Array of selected student IDs
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>(() => {
-    const initId = selectedStudentId || (students[0]?.id) || 'std-68301040105';
-    return [initId];
-  });
+  // Multi-Student Selection State: Array of selected student IDs (empty by default unless opened for a specific student)
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>(() =>
+    selectedStudentId ? [selectedStudentId] : []
+  );
 
-  // Active Company Filter / Selection for Company mode
+  // Active Company Filter / Selection for Company mode (empty by default unless opened for a specific student)
   const [activeCompanyName, setActiveCompanyName] = useState<string>('');
-
-  // Keep selected students in sync when selectedStudentId changes from outside
-  useEffect(() => {
-    if (selectedStudentId) {
-      setSelectedStudentIds(prev => {
-        if (prev.includes(selectedStudentId)) return prev;
-        return [selectedStudentId, ...prev];
-      });
-
-      const matchedStd = allStudents.find(s => s.id === selectedStudentId || s.studentCode === selectedStudentId);
-      if (matchedStd?.companyName) {
-        setActiveCompanyName(matchedStd.companyName);
-      }
-    }
-  }, [selectedStudentId, isOpen, allStudents]);
-
-  // Initialize active company once data is loaded
-  useEffect(() => {
-    if (!activeCompanyName && companyGroups.length > 0) {
-      const firstValidComp = companyGroups.find(c => c.name !== 'ยังไม่ระบุสถานประกอบการ') || companyGroups[0];
-      setActiveCompanyName(firstValidComp.name);
-    }
-  }, [companyGroups, activeCompanyName]);
+  const wasOpenRef = useRef<boolean>(false);
+  const prevSelectedStudentPropRef = useRef<string | undefined>(selectedStudentId);
 
   // List of full Student objects for all currently selected student IDs
   const selectedStudents = useMemo(() => {
@@ -208,8 +185,8 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
 
   // Current primary student (for default display)
   const primaryStudent = useMemo(() => {
-    return selectedStudents[0] || allStudents[0];
-  }, [selectedStudents, allStudents]);
+    return selectedStudents[0] || null;
+  }, [selectedStudents]);
 
   // Students in currently active company
   const currentCompanyStudents = useMemo(() => {
@@ -236,16 +213,27 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
     if (activeCompanyName && activeCompanyName !== 'ยังไม่ระบุสถานประกอบการ') {
       const grp = companyGroups.find(c => c.name === activeCompanyName);
       setCompanyName(activeCompanyName);
-      if (grp?.department) setCompanyDepartment(grp.department);
-      if (grp?.mentorName) setMentorName(grp.mentorName);
-      if (grp?.mentorPhone) setMentorPhone(grp.mentorPhone);
+      setCompanyDepartment(grp?.department || '');
+      setMentorName(grp?.mentorName || '');
+      setMentorPhone(grp?.mentorPhone || '');
     } else if (primaryStudent) {
-      setCompanyName(primaryStudent.companyName || 'การไฟฟ้าส่วนภูมิภาค สาขาขอนแก่น (PEA)');
-      setCompanyDepartment(primaryStudent.companyRegistration?.department || 'แผนกติดตั้งและบำรุงรักษาระบบไฟฟ้า');
-      setMentorName(primaryStudent.companyRegistration?.mentorName && primaryStudent.companyRegistration.mentorName !== '-' 
-        ? primaryStudent.companyRegistration.mentorName 
-        : 'วิศวกรผู้ควบคุมงาน');
-      setMentorPhone(primaryStudent.companyRegistration?.mentorPhone || '081-987-6543');
+      setCompanyName(primaryStudent.companyName || '');
+      setCompanyDepartment(primaryStudent.companyRegistration?.department || '');
+      setMentorName(
+        primaryStudent.companyRegistration?.mentorName && primaryStudent.companyRegistration.mentorName !== '-'
+          ? primaryStudent.companyRegistration.mentorName
+          : ''
+      );
+      setMentorPhone(
+        primaryStudent.companyRegistration?.mentorPhone && primaryStudent.companyRegistration.mentorPhone !== '-'
+          ? primaryStudent.companyRegistration.mentorPhone
+          : ''
+      );
+    } else {
+      setCompanyName('');
+      setCompanyDepartment('');
+      setMentorName('');
+      setMentorPhone('');
     }
   }, [activeCompanyName, companyGroups, primaryStudent]);
 
@@ -375,8 +363,47 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
 
   const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [savedRecords, setSavedRecords] = useState<Form3SupervisionRecord[] | null>(null);
+  const [savedRecord, setSavedRecord] = useState<Form3SupervisionRecord | null>(null);
+  const [savedStudentsSnapshot, setSavedStudentsSnapshot] = useState<Student[]>([]);
   const [sheetSyncStatus, setSheetSyncStatus] = useState<string>('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Initialize / reset Form 3 cleanly when modal opens without pre-selecting any default company or student unless selectedStudentId was explicitly passed
+  useEffect(() => {
+    const justOpened = isOpen && !wasOpenRef.current;
+    const targetChangedWhileOpen = isOpen && prevSelectedStudentPropRef.current !== selectedStudentId;
+    wasOpenRef.current = isOpen;
+    prevSelectedStudentPropRef.current = selectedStudentId;
+
+    if (!justOpened && !targetChangedWhileOpen) return;
+
+    setSavedRecord(null);
+    setSavedStudentsSnapshot([]);
+    setSubmitError(null);
+    setSheetSyncStatus('');
+
+    if (selectedStudentId) {
+      setSelectedStudentIds([selectedStudentId]);
+      const matchedStd = allStudents.find(
+        (s) => s.id === selectedStudentId || s.studentCode === selectedStudentId
+      );
+      if (matchedStd?.companyName) {
+        const matchedGroup = companyGroups.find(
+          (c) => normalizeCompanyNameKey(c.name) === normalizeCompanyNameKey(matchedStd.companyName)
+        );
+        setActiveCompanyName(matchedGroup?.name || matchedStd.companyName);
+      } else {
+        setActiveCompanyName('');
+      }
+    } else {
+      setSelectedStudentIds([]);
+      setActiveCompanyName('');
+      setCompanyName('');
+      setCompanyDepartment('');
+      setMentorName('');
+      setMentorPhone('');
+    }
+  }, [isOpen, selectedStudentId, allStudents, companyGroups]);
 
   // Available room groups from student data
   const availableRooms = useMemo(() => {
@@ -565,14 +592,15 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
 
     if (selectedStudents.length === 0) {
-      alert('กรุณาเลือกนักศึกษาอย่างน้อย 1 คน เพื่อบันทึกผลการนิเทศ');
+      setSubmitError('กรุณาเลือกนักศึกษาอย่างน้อย 1 คน เพื่อบันทึกผลการนิเทศ');
       return;
     }
 
     if (selectedTeachers.length === 0) {
-      alert('กรุณาเลือกครูนิเทศก์หรือครูประจำวิชาอย่างน้อย 1 คน');
+      setSubmitError('กรุณาเลือกครูนิเทศก์หรือครูประจำวิชาอย่างน้อย 1 คน');
       return;
     }
 
@@ -580,23 +608,54 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
 
     const formattedVisitDateTime = getThaiDateFormatted(selectedDate, selectedTime);
     const activePhotosList: Form3Photo[] = Object.values(photos).filter(Boolean) as Form3Photo[];
+    const leadStudent = selectedStudents[0];
+    const resolvedCompanyName = companyName.trim() || leadStudent?.companyName || 'ยังไม่ระบุ';
+    const resolvedCompanyDept =
+      companyDepartment.trim() ||
+      leadStudent?.companyRegistration?.department ||
+      'แผนกปฏิบัติการระบบไฟฟ้า';
+    const resolvedMentorName =
+      mentorName.trim() || leadStudent?.companyRegistration?.mentorName || 'วิศวกรผู้ควบคุมงาน';
 
-    // Construct a Form3SupervisionRecord for each selected student
-    const recordsToSave: Form3SupervisionRecord[] = selectedStudents.map((std, idx) => ({
-      id: `f3-${std.studentCode || 'std'}-${Date.now()}-${idx}`,
+    const allStudentIds = selectedStudents.map((s) => s.id).filter(Boolean);
+    const allStudentCodes = selectedStudents.map((s) => (s.studentCode || '').trim()).filter(Boolean);
+    const allStudentNames = selectedStudents.map((s) => (s.name || '').trim()).filter(Boolean);
+    const uniqueRooms = Array.from(
+      new Set(selectedStudents.map((s) => (s.room || '').trim()).filter(Boolean))
+    );
+    const uniqueLevelDepts = Array.from(
+      new Set(
+        selectedStudents.map((s) =>
+          `${s.level || 'ปวส.2'} ${s.department || 'แผนกช่างไฟฟ้ากำลัง'}`.trim()
+        )
+      )
+    );
+
+    const safeJoinedCodes = allStudentCodes.join(', ').slice(0, 1000);
+    const safeJoinedNames = allStudentNames.join(', ').slice(0, 2000);
+    const safeJoinedRooms = (uniqueRooms.join(', ') || 'สอฟ.2/8').slice(0, 500);
+    const safeTeacherNames = (combinedTeacherNames.trim() || teacherName).slice(0, 500);
+
+    // Construct a SINGLE Form3SupervisionRecord per workplace supervision visit (1 ครั้ง ต่อ 1 สถานประกอบการ)
+    const recordToSave: Form3SupervisionRecord = {
+      id: `f3-visit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: new Date().toLocaleString('th-TH'),
       visitDate: formattedVisitDateTime,
       visitTime: selectedTime,
-      studentId: std.id,
-      studentCode: std.studentCode || '',
-      studentName: std.name || '',
-      studentRoom: std.room || 'สอฟ.2/8',
-      levelDepartment: `${std.level || 'ปวส.2'} ${std.department || 'แผนกช่างไฟฟ้ากำลัง'}`,
-      companyName: companyName.trim() || std.companyName || 'ยังไม่ระบุ',
-      companyDepartment: companyDepartment.trim() || std.companyRegistration?.department || 'แผนกปฏิบัติการระบบไฟฟ้า',
-      teacherName: combinedTeacherNames.trim() || teacherName,
+      studentId: leadStudent.id,
+      studentIds: allStudentIds,
+      studentCode: safeJoinedCodes,
+      studentCodes: allStudentCodes,
+      studentName: safeJoinedNames,
+      studentNames: allStudentNames,
+      studentRoom: safeJoinedRooms,
+      studentCount: selectedStudents.length,
+      levelDepartment: uniqueLevelDepts.join(' / '),
+      companyName: resolvedCompanyName.slice(0, 300),
+      companyDepartment: resolvedCompanyDept,
+      teacherName: safeTeacherNames,
       teacherEmail: combinedTeacherEmails.trim() || teacherEmail,
-      mentorName: mentorName.trim() || std.companyRegistration?.mentorName || 'วิศวกรผู้ควบคุมงาน',
+      mentorName: resolvedMentorName,
       mentorFeedback: mentorFeedback.trim(),
       safetyPassed: safetyPassed,
       score: score,
@@ -604,50 +663,57 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
       teacherComment: comment.trim(),
       photos: activePhotosList,
       status: 'บันทึกสำเร็จ'
-    }));
+    };
 
     try {
-      // 1. Save immediately and atomically to online Firebase Firestore first for real-time visibility
-      await saveForm3SupervisionsBatchToFirestore(recordsToSave);
-      clearForm3PendingIds(recordsToSave.map((r) => r.id));
+      // 1. Save 1 supervision record atomically to online Firebase Firestore
+      await saveForm3SupervisionToFirestore(recordToSave);
+      clearForm3PendingIds([recordToSave.id]);
 
-      // 2. Trigger parent callback immediately to update student weekly submissions & /companies
+      // 2. Trigger parent callback to update all selected students' weekly evaluations & /companies
       if (onSaveEvaluation) {
         await onSaveEvaluation({
-          studentIds: recordsToSave.map(r => r.studentId),
-          studentId: recordsToSave[0]?.studentId,
+          studentIds: allStudentIds,
+          studentId: leadStudent.id,
           score: score,
           grade: grade,
           comment: comment.trim(),
           mentorFeedback: mentorFeedback.trim(),
           safetyPassed: safetyPassed,
           visitDate: formattedVisitDateTime,
-          records: recordsToSave,
-          record: recordsToSave[0]
+          records: [recordToSave],
+          record: recordToSave
         });
       }
 
-      // 3. Also sync to Google Sheets Form_3 tab & Local Storage
+      // 3. Sync 1 single row to Google Sheets Form_3 tab & Local Storage
       const token = getCachedAccessToken();
       try {
-        const sheetResult = await appendBatchForm3ToGoogleSheet(recordsToSave, token);
-        clearForm3PendingIds(recordsToSave.map((r) => r.id));
-        setSheetSyncStatus(`บันทึกลงฐานข้อมูลออนไลน์ (Real-time) แล้ว • ${sheetResult.message}`);
+        const sheetResult = await appendForm3ToGoogleSheet(recordToSave, token);
+        clearForm3PendingIds([recordToSave.id]);
+        setSheetSyncStatus(`บันทึกรายงานการนิเทศ 1 รายการ (1 สถานประกอบการ • นักศึกษา ${selectedStudents.length} คน) แล้ว • ${sheetResult.message}`);
       } catch {
-        setSheetSyncStatus(`บันทึกข้อมูลนักศึกษา ${recordsToSave.length} คน ลงฐานข้อมูลออนไลน์ (Real-time) เรียบร้อยแล้ว`);
+        setSheetSyncStatus(`บันทึกรายงานการนิเทศ 1 รายการ (${resolvedCompanyName} • ครอบคลุมนักศึกษา ${selectedStudents.length} คน) ลงฐานข้อมูลออนไลน์เรียบร้อยแล้ว`);
       }
 
-      setSavedRecords(recordsToSave);
+      setSavedStudentsSnapshot(selectedStudents);
+      setSavedRecord(recordToSave);
     } catch (err) {
-      console.error('Error saving Form 3 supervision batch:', err);
-      setSheetSyncStatus(`ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('Error saving Form 3 supervision record:', err);
+      const thaiErr = formatThaiErrorMessage(
+        err,
+        'ไม่สามารถบันทึกรายงานการนิเทศลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง'
+      );
+      setSubmitError(thaiErr);
+      setSheetSyncStatus(thaiErr);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleResetForNewRecord = () => {
-    setSavedRecords(null);
+    setSavedRecord(null);
+    setSavedStudentsSnapshot([]);
     setPhotos({ 1: null, 2: null, 3: null, 4: null });
   };
 
@@ -691,7 +757,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        {savedRecords && savedRecords.length > 0 ? (
+        {savedRecord ? (
           <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 text-center animate-in fade-in duration-200">
             <div className="inline-flex p-3 rounded-2xl bg-emerald-100 text-emerald-600 ring-8 ring-emerald-50">
               <CheckCircle2 className="w-12 h-12" />
@@ -699,42 +765,49 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
 
             <div>
               <h3 className="text-xl font-bold text-slate-900">
-                บันทึกผลการนิเทศและรูปถ่ายลงระบบสำเร็จ!
+                บันทึกผลการนิเทศ (1 รายการ / สถานประกอบการ) สำเร็จ!
               </h3>
               <p className="text-xs text-slate-600 max-w-lg mx-auto mt-1 leading-relaxed">
-                {sheetSyncStatus || `บันทึกข้อมูลนักศึกษาทั้งหมด ${savedRecords.length} คน พร้อมรูปถ่ายการนิเทศ ${savedRecords[0]?.photos.length || 0} รูปลงใน Google Spreadsheet และบันทึกข้อมูลเรียบร้อยแล้ว`}
+                {sheetSyncStatus || `บันทึกรายงานการนิเทศ 1 รายการสำหรับ ${savedRecord.companyName} (ครอบคลุมนักศึกษา ${savedRecord.studentCount || savedStudentsSnapshot.length || 1} คน) พร้อมรูปถ่าย ${savedRecord.photos.length || 0} รูป เรียบร้อยแล้ว`}
               </p>
             </div>
 
-            {/* Saved Summary Card: List of all evaluated students */}
+            {/* Saved Summary Card: 1 Workplace Supervision Record covering all selected students */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 text-left max-w-2xl mx-auto space-y-4 text-xs">
               <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
                 <div className="flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-emerald-600" />
                   <span className="font-bold text-slate-800 text-xs">
-                    นักศึกษาที่ได้รับการประเมินนิเทศ ({savedRecords.length} คน):
+                    บันทึก 1 รายการ • ครอบคลุมนักศึกษา ({savedStudentsSnapshot.length || savedRecord.studentCount || 1} คน):
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-emerald-600 text-sm">{savedRecords[0]?.score.toFixed(1)} / 20</span>
+                  <span className="font-bold text-emerald-600 text-sm">{savedRecord.score.toFixed(1)} / 20</span>
                   <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                    {savedRecords[0]?.grade}
+                    {savedRecord.grade}
                   </span>
                 </div>
               </div>
 
-              {/* List of saved students */}
+              {/* List of covered students inside this 1 company supervision record */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                {savedRecords.map((r, i) => (
+                {(savedStudentsSnapshot.length > 0
+                  ? savedStudentsSnapshot.map((std) => ({
+                      name: std.name,
+                      code: std.studentCode,
+                      room: std.room || 'สอฟ.2/8',
+                    }))
+                  : [{ name: savedRecord.studentName, code: savedRecord.studentCode, room: savedRecord.studentRoom }]
+                ).map((item, i) => (
                   <div key={i} className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/90 shadow-2xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                         {i + 1}
                       </span>
                       <div className="min-w-0">
-                        <div className="font-bold text-slate-900 truncate">{r.studentName}</div>
+                        <div className="font-bold text-slate-900 truncate">{item.name}</div>
                         <div className="text-[10px] text-slate-500 font-mono">
-                          {r.studentCode} • กลุ่ม {r.studentRoom}
+                          {item.code} • กลุ่ม {item.room}
                         </div>
                       </div>
                     </div>
@@ -748,36 +821,36 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-slate-600 text-[11px] pt-2 border-t border-slate-200/80">
                 <div>
                   <span className="text-slate-400 block">สถานประกอบการ:</span>
-                  <strong className="text-slate-800">{savedRecords[0]?.companyName}</strong>
+                  <strong className="text-slate-800">{savedRecord.companyName}</strong>
                 </div>
                 <div>
                   <span className="text-slate-400 block">วันและเวลานิเทศก์:</span>
-                  <strong className="text-slate-800">{savedRecords[0]?.visitDate}</strong>
+                  <strong className="text-slate-800">{savedRecord.visitDate}</strong>
                 </div>
                 <div>
                   <span className="text-slate-400 block">ครูนิเทศก์ผู้ประเมิน:</span>
-                  <strong className="text-slate-800">{savedRecords[0]?.teacherName}</strong>
-                  {savedRecords[0]?.teacherEmail && (
+                  <strong className="text-slate-800">{savedRecord.teacherName}</strong>
+                  {savedRecord.teacherEmail && (
                     <span className="block text-[10px] text-slate-500 font-mono">
-                      {savedRecords[0].teacherEmail}
+                      {savedRecord.teacherEmail}
                     </span>
                   )}
                 </div>
                 <div>
                   <span className="text-slate-400 block">พี่เลี้ยงสถานประกอบการ:</span>
-                  <strong className="text-slate-800">{savedRecords[0]?.mentorName}</strong>
+                  <strong className="text-slate-800">{savedRecord.mentorName}</strong>
                 </div>
               </div>
 
               {/* Photos Gallery Preview */}
-              {savedRecords[0]?.photos && savedRecords[0].photos.length > 0 && (
+              {savedRecord.photos && savedRecord.photos.length > 0 && (
                 <div className="pt-3 border-t border-slate-200/80 space-y-2">
                   <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5 text-sky-600" />
-                    <span>รูปถ่ายการนิเทศที่บันทึกร่วมกัน ({savedRecords[0].photos.length} รูป):</span>
+                    <span>รูปถ่ายการนิเทศที่บันทึก ({savedRecord.photos.length} รูป):</span>
                   </span>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {savedRecords[0].photos.map((p, idx) => (
+                    {savedRecord.photos.map((p, idx) => (
                       <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs group relative">
                         <img src={p.url} alt={p.title} className="w-full h-20 object-cover" />
                         <div className="p-1.5 text-[9px] text-slate-600 truncate bg-white font-medium">
@@ -829,6 +902,12 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 text-xs">
+            {submitError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
             
             {/* 1. STUDENT MULTI-SELECTION & WORKPLACE GROUPING */}
             <div className="rounded-2xl border-2 border-sky-500/20 bg-slate-50/70 p-4 space-y-3.5">
@@ -902,6 +981,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                           onChange={(e) => setActiveCompanyName(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-slate-50/70 focus:bg-white focus:ring-2 focus:ring-sky-500 cursor-pointer"
                         >
+                          <option value="">-- กรุณาเลือกสถานประกอบการ --</option>
                           {companyGroups.map(c => (
                             <option key={c.name} value={c.name}>
                               🏢 {c.name} ({c.count} คน)
@@ -958,7 +1038,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                           <span>นักศึกษาที่ฝึกงานในสถานที่เดียวกัน ({currentCompanyStudents.length} คน):</span>
                         </span>
                         <span className="font-mono text-[10px] text-sky-800 bg-sky-100 px-2 py-0.5 rounded-md font-bold">
-                          {activeCompanyName}
+                          {activeCompanyName || 'ยังไม่ได้เลือกสถานประกอบการ'}
                         </span>
                       </div>
 
@@ -967,7 +1047,8 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                         <button
                           type="button"
                           onClick={handleSelectAllAtCurrentCompany}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
+                          disabled={currentCompanyStudents.length === 0}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
                           title="เลือกนักศึกษาทั้งหมดในสถานประกอบการนี้พร้อมกัน"
                         >
                           <CheckSquare className="w-3.5 h-3.5" />
@@ -976,7 +1057,8 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                         <button
                           type="button"
                           onClick={handleDeselectAllAtCurrentCompany}
-                          className="px-2 py-1 rounded-lg text-[10px] font-medium bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition cursor-pointer"
+                          disabled={currentCompanyStudents.length === 0}
+                          className="px-2 py-1 rounded-lg text-[10px] font-medium bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition cursor-pointer disabled:opacity-50"
                         >
                           ยกเลิกในที่นี้
                         </button>
@@ -986,7 +1068,9 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                     {/* Students Grid at this company */}
                     {currentCompanyStudents.length === 0 ? (
                       <p className="text-slate-500 text-center py-3 text-xs">
-                        ไม่พบข้อมูลนักศึกษาที่ระบุสถานประกอบการนี้
+                        {activeCompanyName
+                          ? 'ไม่พบข้อมูลนักศึกษาที่ระบุสถานประกอบการนี้'
+                          : 'กรุณาเลือกสถานประกอบการจากช่องด้านบน เพื่อแสดงรายชื่อนักศึกษาในสถานที่นั้น'}
                       </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1904,6 +1988,13 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
               />
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <span className="text-[11px] text-slate-500 max-w-md truncate">
@@ -1921,14 +2012,14 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || selectedStudents.length === 0 || selectedTeachers.length === 0}
+                  disabled={isSubmitting}
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>
-                    {isSubmitting 
-                      ? 'กำลังบันทึกข้อมูลและรูปภาพ...' 
-                      : `บันทึกรายงานการนิเทศ (${selectedStudents.length} คน)`}
+                    {isSubmitting
+                      ? 'กำลังบันทึกข้อมูลและรูปภาพ...'
+                      : `บันทึกรายงานการนิเทศ (1 รายการ • นศ. ${selectedStudents.length} คน)`}
                   </span>
                 </button>
               </div>

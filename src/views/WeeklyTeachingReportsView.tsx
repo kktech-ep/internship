@@ -1,26 +1,12 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   BookOpen,
-  Calendar,
   Camera,
   CheckCircle2,
-  Clock,
-  Database,
-  Edit3,
-  Eye,
-  FileText,
-  Filter,
-  Image as ImageIcon,
-  Layers,
-  Plus,
-  Printer,
-  Search,
-  Sparkles,
-  User,
+  ClipboardCheck,
+  Loader2,
   UserCheck,
-  Users,
-  AlertCircle,
-  X,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -32,20 +18,15 @@ import {
   UserAvatarRecord,
   WeeklySubmission,
 } from '../types';
-import { getWeekDates, getCurrentWeekInfo } from '../data/weeksData';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
-import { getAllTeachersFromData, getCachedCourses } from '../services/courseDataService';
-import {
-  subscribeTeachingReports,
-  resolveUserAvatarUrl,
-  saveUserAvatarToFirestore,
-} from '../services/firestoreService';
-import { getLocalTeachingReports } from '../utils/teachingReportCache';
-import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
+import { resolveUserAvatarUrl } from '../services/firestoreService';
+import { compressImageFile } from '../components/StudentAvatar';
+import { getCurrentWeekInfo } from '../data/weeksData';
 import {
   WorkplaceTeachingReportView,
   toSafeTeachingReportId,
 } from './WorkplaceTeachingReportView';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
 interface WeeklyTeachingReportsViewProps {
   currentUser?: AuthUser | null;
@@ -56,53 +37,11 @@ interface WeeklyTeachingReportsViewProps {
   teachers?: SheetTeacher[];
   userAvatars?: UserAvatarRecord[];
   onUpdateTeacherAvatar?: (dataUrl: string) => Promise<void> | void;
-  teachingReports?: TeachingReportRecord[];
+  teachingReports: TeachingReportRecord[];
   cloudLoadError?: string | null;
   initialTeacherFilter?: string;
   initialHighlightWeek?: number;
   onTeachingReportSaved?: (report: TeachingReportRecord) => void;
-}
-
-const THAI_MONTHS_FULL = [
-  'มกราคม',
-  'กุมภาพันธ์',
-  'มีนาคม',
-  'เมษายน',
-  'พฤษภาคม',
-  'มิถุนายน',
-  'กรกฎาคม',
-  'สิงหาคม',
-  'กันยายน',
-  'ตุลาคม',
-  'พฤศจิกายน',
-  'ธันวาคม',
-];
-
-function formatThaiDateFull(dateStr?: string): string {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return `${d.getDate()} ${THAI_MONTHS_FULL[d.getMonth()]} ${d.getFullYear() + 543}`;
-}
-
-function formatThaiDateTime(isoStr?: string): string {
-  if (!isoStr) return '-';
-  const d = new Date(isoStr);
-  if (Number.isNaN(d.getTime())) return isoStr;
-  return d.toLocaleString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function normalizeTeacherName(name?: string): string {
-  return (name || '')
-    .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
-    .trim()
-    .toLowerCase();
 }
 
 export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps> = ({
@@ -110,1281 +49,290 @@ export const WeeklyTeachingReportsView: React.FC<WeeklyTeachingReportsViewProps>
   students,
   form3List,
   submissions,
-  courses: propCourses,
+  courses = [],
   teachers: propTeachers,
   userAvatars = [],
   onUpdateTeacherAvatar,
-  teachingReports: propTeachingReports,
+  teachingReports,
   cloudLoadError,
   initialTeacherFilter,
   initialHighlightWeek,
   onTeachingReportSaved,
 }) => {
-  const courses = propCourses && propCourses.length > 0 ? propCourses : getCachedCourses();
-  const [reports, setReports] = useState<TeachingReportRecord[]>(() =>
-    propTeachingReports && propTeachingReports.length > 0
-      ? propTeachingReports
-      : getLocalTeachingReports()
-  );
-  const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [dismissedCloudError, setDismissedCloudError] = useState<boolean>(false);
-
-  useEffect(() => {
-    setDismissedCloudError(false);
-  }, [cloudLoadError]);
-
-  // Keep synced with App-level teachingReports (instant updates right after saving)
-  useEffect(() => {
-    if (!propTeachingReports) return;
-    setReports((prev) => {
-      const map = new Map<string, TeachingReportRecord>();
-      prev.forEach((r) => {
-        if (r && r.id) map.set(r.id, r);
-      });
-      propTeachingReports.forEach((r) => {
-        if (r && r.id) map.set(r.id, r);
-      });
-      return Array.from(map.values());
-    });
-    setIsLoadingReports(false);
-  }, [propTeachingReports]);
-
-  // Only open a standalone Firestore listener if parent App.tsx did not supply teachingReports
-  useEffect(() => {
-    if (propTeachingReports !== undefined) return;
-    setIsLoadingReports(true);
-    const unsub = subscribeTeachingReports(
-      (items) => {
-        setReports((prev) => {
-          const map = new Map<string, TeachingReportRecord>();
-          prev.forEach((r) => {
-            if (r && r.id) map.set(r.id, r);
-          });
-          items.forEach((r) => {
-            if (r && r.id) map.set(r.id, r);
-          });
-          return Array.from(map.values());
-        });
-        setIsLoadingReports(false);
-        setLoadError(null);
-      },
-      (err) => {
-        setIsLoadingReports(false);
-        setLoadError(
-          formatThaiErrorMessage(
-            err,
-            'ไม่สามารถเชื่อมต่อฐานข้อมูลรายงานการสอนได้ในขณะนี้ กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง'
-          )
-        );
+  const teacherList = useMemo(() => {
+    const base = propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers();
+    const cleanMap = new Map<string, SheetTeacher>();
+    base.forEach((t) => {
+      if (t && t.name && !t.name.includes('สุพรรณี')) {
+        cleanMap.set(t.name.trim(), t);
       }
-    );
-    return () => unsub();
-  }, [propTeachingReports === undefined]);
+    });
+    return Array.from(cleanMap.values());
+  }, [propTeachers]);
 
-  // Build canonical teacher list matching WorkplaceTeachingReportView
-  const allTeachers = useMemo(() => {
-    const list =
-      propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers();
-    const sheetTeacherNames = getAllTeachersFromData(
-      courses && courses.length > 0 ? courses : undefined
-    );
-    const map = new Map<string, string>();
-    const addName = (raw?: string) => {
-      if (!raw) return;
-      raw.split(/[,/]+/).forEach((part) => {
-        const clean = part.trim();
-        if (clean && clean !== '-' && !clean.includes('สุพรรณี')) {
-          map.set(clean, clean);
-        }
-      });
-    };
-    list.forEach((t) => addName(t.name));
-    sheetTeacherNames.forEach((n) => addName(n));
-    form3List.forEach((r) => addName(r.teacherName));
-    reports.forEach((r) => addName(r.reporterName));
-    if (!map.has('นายทักษิณ โสภาปิยะ')) {
-      map.set('นายทักษิณ โสภาปิยะ', 'นายทักษิณ โสภาปิยะ');
-    }
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'th'));
-  }, [propTeachers, courses, form3List, reports]);
-
-  const defaultTeacher = useMemo(() => {
+  const defaultTeacherName = useMemo(() => {
+    if (initialTeacherFilter) return initialTeacherFilter;
     if (currentUser?.name && !currentUser.name.includes('นักศึกษา')) {
-      const cleanCurr = normalizeTeacherName(currentUser.name);
-      const exact = allTeachers.find((t) => {
-        const cleanT = normalizeTeacherName(t);
-        return cleanT === cleanCurr || cleanT.includes(cleanCurr) || cleanCurr.includes(cleanT);
-      });
-      if (exact) return exact;
+      const matched = teacherList.find(
+        (t) => t.name.includes(currentUser.name) || currentUser.name.includes(t.name)
+      );
+      if (matched) return matched.name;
     }
-    return allTeachers.find((t) => t === 'นายทักษิณ โสภาปิยะ') || allTeachers[0] || 'นายทักษิณ โสภาปิยะ';
-  }, [currentUser, allTeachers]);
+    return teacherList[0]?.name || 'นายทักษิณ โสภาปิยะ';
+  }, [initialTeacherFilter, currentUser, teacherList]);
 
-  const currentWeekNumber = useMemo(() => getCurrentWeekInfo().weekNumber || 1, []);
-
-  // Filters & workspace sub-mode ('overview' | 'editor')
-  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<string>(
-    () => initialTeacherFilter || defaultTeacher
+  const [selectedTeacherName, setSelectedTeacherName] = useState<string>(defaultTeacherName);
+  const [selectedWeek, setSelectedWeek] = useState<number>(
+    () => initialHighlightWeek || getCurrentWeekInfo().weekNumber || 1
   );
-  const [statusFilter, setStatusFilter] = useState<'all' | 'saved' | 'unsaved'>('all');
-  const [weekSearch, setWeekSearch] = useState<string>('');
-  const [subMode, setSubMode] = useState<'overview' | 'editor'>('editor');
-  const [highlightedWeek, setHighlightedWeek] = useState<number | undefined>(() => initialHighlightWeek);
-  const [editorState, setEditorState] = useState<{
-    teacherName: string;
-    weekNumber: number;
-    openPreview: boolean;
-    autoPrint: boolean;
-    sessionKey: number;
-  }>(() => ({
-    teacherName: initialTeacherFilter || defaultTeacher,
-    weekNumber: initialHighlightWeek || currentWeekNumber,
-    openPreview: false,
-    autoPrint: false,
-    sessionKey: 0,
-  }));
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync teacher filter & highlighted week when navigated from saved report
-  useEffect(() => {
-    if (initialTeacherFilter) {
-      setSelectedTeacherFilter(initialTeacherFilter);
-    }
-    if (typeof initialHighlightWeek === 'number') {
-      setHighlightedWeek(initialHighlightWeek);
-    }
-  }, [initialTeacherFilter, initialHighlightWeek]);
-
-  // Keep default teacher aligned once user/teachers load if still at initial fallback
-  useEffect(() => {
-    if (selectedTeacherFilter !== 'all' && !allTeachers.includes(selectedTeacherFilter)) {
-      setSelectedTeacherFilter(defaultTeacher);
-    }
-  }, [allTeachers, defaultTeacher, selectedTeacherFilter]);
-
-  // Index saved reports by ID and by normalized teacherKey + weekNumber
-  const reportsById = useMemo(() => {
-    const map = new Map<string, TeachingReportRecord>();
-    reports.forEach((r) => {
-      if (r && r.id) map.set(r.id, r);
-    });
-    return map;
-  }, [reports]);
-
-  const findSavedReport = (teacherName: string, weekNumber: number): TeachingReportRecord | undefined => {
-    const directId = toSafeTeachingReportId(teacherName, weekNumber);
-    const byId = reportsById.get(directId);
-    if (byId) return byId;
-
-    const cleanTarget = normalizeTeacherName(teacherName);
-    return reports.find(
-      (r) =>
-        Number(r.weekNumber) === weekNumber &&
-        (normalizeTeacherName(r.reporterName) === cleanTarget ||
-          normalizeTeacherName(r.teacherKey) === cleanTarget)
-    );
-  };
-
-  // All 18 weeks metadata
-  const weeksMeta = useMemo(() => {
-    return Array.from({ length: 18 }, (_, idx) => {
-      const w = idx + 1;
-      const dates = getWeekDates(w);
-      const start = dates[0];
-      const end = dates[4];
-      return {
-        weekNumber: w,
-        dateRangeLabel: `${start?.dateStr || ''} - ${end?.dateStr || ''}`,
-        fullRangeLabel: `${start?.fullDate || ''} ถึง ${end?.fullDate || ''}`,
-      };
-    });
-  }, []);
-
-  // Per-week status rows when a single teacher is selected
-  const singleTeacherRows = useMemo(() => {
-    if (selectedTeacherFilter === 'all') return [];
-    return weeksMeta.map((meta) => {
-      const saved = findSavedReport(selectedTeacherFilter, meta.weekNumber);
-      return {
-        ...meta,
-        isSaved: Boolean(saved),
-        report: saved,
-      };
-    });
-  }, [selectedTeacherFilter, weeksMeta, reports, reportsById]);
-
-  const filteredSingleTeacherRows = useMemo(() => {
-    const q = weekSearch.trim().toLowerCase();
-    return singleTeacherRows.filter((row) => {
-      if (statusFilter === 'saved' && !row.isSaved) return false;
-      if (statusFilter === 'unsaved' && row.isSaved) return false;
-      if (q) {
-        const courseMatch = (row.report?.courses || []).some(
-          (c) =>
-            c.subjectCode.toLowerCase().includes(q) ||
-            c.subjectName.toLowerCase().includes(q) ||
-            (c.room || '').toLowerCase().includes(q)
-        );
-        const textMatch =
-          `สัปดาห์ที่ ${row.weekNumber}`.includes(q) ||
-          row.dateRangeLabel.toLowerCase().includes(q) ||
-          (row.report?.learningOutcome || '').toLowerCase().includes(q) ||
-          (row.report?.reporterName || '').toLowerCase().includes(q);
-        if (!courseMatch && !textMatch) return false;
+  const activeTeacher = useMemo<SheetTeacher>(() => {
+    return (
+      teacherList.find((t) => t.name === selectedTeacherName) || {
+        id: 'tch-selected',
+        name: selectedTeacherName,
+        user: currentUser?.email || 'thaksinso@kktech.ac.th',
+        email: currentUser?.email || 'thaksinso@kktech.ac.th',
+        status: currentUser?.role === 'admin' ? 'ครูนิเทศก์ / ผู้ดูแลระบบ' : 'ครูนิเทศก์',
+        role: currentUser?.role === 'admin' ? 'admin' : 'teacher',
+        department: 'แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น',
+        rooms: [],
+        subjects: [],
+        avatarUrl: undefined,
       }
-      return true;
-    });
-  }, [singleTeacherRows, statusFilter, weekSearch]);
+    );
+  }, [teacherList, selectedTeacherName, currentUser]);
 
-  // All saved reports list (for "all teachers" filter mode)
-  const filteredAllSavedReports = useMemo(() => {
-    const q = weekSearch.trim().toLowerCase();
-    return [...reports]
-      .filter((r) => {
-        if (!q) return true;
-        const courseMatch = (r.courses || []).some(
-          (c) =>
-            c.subjectCode.toLowerCase().includes(q) ||
-            c.subjectName.toLowerCase().includes(q) ||
-            (c.room || '').toLowerCase().includes(q)
-        );
-        return (
-          (r.reporterName || '').toLowerCase().includes(q) ||
-          `สัปดาห์ที่ ${r.weekNumber}`.includes(q) ||
-          (r.learningOutcome || '').toLowerCase().includes(q) ||
-          courseMatch
-        );
-      })
-      .sort((a, b) => {
-        const timeA = new Date(a.updatedAt || 0).getTime() || 0;
-        const timeB = new Date(b.updatedAt || 0).getTime() || 0;
-        return timeB - timeA;
-      });
-  }, [reports, weekSearch]);
-
-  // Summary KPIs for selected teacher (or department-wide)
-  const activeTeacherForStats =
-    selectedTeacherFilter === 'all' ? defaultTeacher : selectedTeacherFilter;
-  const savedCountForSelected = useMemo(() => {
-    return weeksMeta.filter((m) => Boolean(findSavedReport(activeTeacherForStats, m.weekNumber)))
-      .length;
-  }, [weeksMeta, activeTeacherForStats, reports, reportsById]);
-
-  const latestSavedReport = useMemo(() => {
-    const pool =
-      selectedTeacherFilter === 'all'
-        ? reports
-        : singleTeacherRows.map((r) => r.report).filter((r): r is TeachingReportRecord => Boolean(r));
-    if (pool.length === 0) return null;
-    return [...pool].sort((a, b) => {
-      const tA = new Date(a.updatedAt || 0).getTime() || 0;
-      const tB = new Date(b.updatedAt || 0).getTime() || 0;
-      return tB - tA;
-    })[0];
-  }, [selectedTeacherFilter, reports, singleTeacherRows]);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const teacherEmail = currentUser?.email || 'thaksinso@kktech.ac.th';
-  const teacherStorageKey = `kktech_teacher_avatar_${teacherEmail}`;
-  const [avatarSavedBadge, setAvatarSavedBadge] = useState(false);
-
-  const teacherListSource = useMemo(
-    () => (propTeachers && propTeachers.length > 0 ? propTeachers : getAllLoginSheetTeachers()),
-    [propTeachers]
-  );
-
-  const matchedTeacherDoc = useMemo(
-    () =>
-      teacherListSource.find(
-        (t) =>
-          (t.email && t.email.toLowerCase() === teacherEmail.toLowerCase()) ||
-          (currentUser?.name && t.name === currentUser.name)
-      ),
-    [teacherListSource, teacherEmail, currentUser?.name]
-  );
-
-  const cloudTeacherAvatar = useMemo(
-    () =>
+  const teacherAvatarUrl = useMemo(() => {
+    return (
       resolveUserAvatarUrl(userAvatars, {
-        email: teacherEmail,
-        name: currentUser?.name || matchedTeacherDoc?.name,
-      }) || matchedTeacherDoc?.avatarUrl,
-    [userAvatars, teacherEmail, currentUser?.name, matchedTeacherDoc?.name, matchedTeacherDoc?.avatarUrl]
-  );
+        email: activeTeacher.email,
+        name: activeTeacher.name,
+      }) || activeTeacher.avatarUrl
+    );
+  }, [userAvatars, activeTeacher]);
 
-  const [teacherAvatar, setTeacherAvatar] = useState<string | null>(() => {
-    if (cloudTeacherAvatar) return cloudTeacherAvatar;
-    if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(teacherStorageKey) || null;
-    }
-    return null;
-  });
-
-  useEffect(() => {
-    if (cloudTeacherAvatar) {
-      setTeacherAvatar(cloudTeacherAvatar);
-      return;
-    }
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem(`kktech_teacher_avatar_${teacherEmail}`);
-      setTeacherAvatar(saved || null);
-    }
-  }, [teacherEmail, cloudTeacherAvatar]);
-
-  const handleTeacherAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) return;
-
-      const img = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 320;
-        let { width, height } = img;
-        if (width > height) {
-          if (width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          }
-        } else {
-          if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.82);
-          setTeacherAvatar(compressed);
-          try {
-            localStorage.setItem(teacherStorageKey, compressed);
-          } catch (err) {
-            console.warn('LocalStorage teacher avatar save note:', err);
-          }
-          try {
-            if (onUpdateTeacherAvatar) {
-              await onUpdateTeacherAvatar(compressed);
-            } else {
-              const cleanUserId = (matchedTeacherDoc?.user || teacherEmail).replace(/[^a-zA-Z0-9_-]/g, '_');
-              const targetTchId = matchedTeacherDoc?.id || `tch-${cleanUserId}`;
-              await saveUserAvatarToFirestore({
-                email: teacherEmail,
-                name: matchedTeacherDoc?.name || currentUser?.name || teacherEmail,
-                role: currentUser?.role === 'admin' ? 'admin' : 'teacher',
-                avatarUrl: compressed,
-                teacherDocId: targetTchId,
-              });
-            }
-            setAvatarSavedBadge(true);
-            setTimeout(() => setAvatarSavedBadge(false), 3000);
-          } catch (err) {
-            console.error('Failed to save teacher avatar to Firestore:', err);
-          }
-        }
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const displayTeacherName =
-    currentUser?.name || matchedTeacherDoc?.name || defaultTeacher || 'นายทักษิณ โสภาปิยะ';
-  const displayTeacherInitials =
-    currentUser?.initials ||
-    displayTeacherName
+  const savedWeeksSet = useMemo(() => {
+    const cleanTarget = activeTeacher.name
       .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
-      .slice(0, 2) ||
-    'ทส';
-  const displayTeacherDepartment =
-    currentUser?.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น';
-
-  const teacherAssignedCourses = useMemo(() => {
-    const cleanTarget = normalizeTeacherName(displayTeacherName);
-    if (!cleanTarget) return [];
-    return courses.filter((c) => {
-      const cleanC = normalizeTeacherName(c.teacherName);
-      return cleanC && (cleanC.includes(cleanTarget) || cleanTarget.includes(cleanC));
+      .trim()
+      .toLowerCase();
+    const set = new Set<number>();
+    for (let w = 1; w <= 18; w++) {
+      const id = toSafeTeachingReportId(activeTeacher.name, w);
+      if (teachingReports.some((r) => r.id === id)) {
+        set.add(w);
+      }
+    }
+    teachingReports.forEach((r) => {
+      const recTeacher = (r.reporterName || r.teacherKey || '')
+        .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+        .trim()
+        .toLowerCase();
+      if (recTeacher && cleanTarget && recTeacher === cleanTarget && r.weekNumber >= 1 && r.weekNumber <= 18) {
+        set.add(Number(r.weekNumber));
+      }
     });
-  }, [courses, displayTeacherName]);
+    return set;
+  }, [teachingReports, activeTeacher.name]);
 
-  const teacherAssignedRooms = useMemo(() => {
-    const set = new Set<string>();
-    teacherAssignedCourses.forEach((c) => {
-      if (c.room && c.room.trim()) set.add(c.room.trim());
-    });
-    (matchedTeacherDoc?.rooms || []).forEach((r) => {
-      if (r && r.trim()) set.add(r.trim());
-    });
-    return Array.from(set).sort();
-  }, [teacherAssignedCourses, matchedTeacherDoc]);
+  const progressPct = Math.round((savedWeeksSet.size / 18) * 100);
 
-  const openEditorForReport = (
-    teacherName: string,
-    weekNumber: number,
-    openPreview: boolean,
-    autoPrint: boolean = false
-  ) => {
-    setEditorState((prev) => ({
-      teacherName,
-      weekNumber,
-      openPreview,
-      autoPrint,
-      sessionKey: prev.sessionKey + 1,
-    }));
-    setSubMode('editor');
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const teacherCoursesCount = useMemo(() => {
+    const cleanTarget = activeTeacher.name
+      .replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '')
+      .trim();
+    return courses.filter((c) => cleanTarget && c.teacherName.includes(cleanTarget)).length;
+  }, [courses, activeTeacher.name]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUpdateTeacherAvatar) return;
+    setIsUploadingAvatar(true);
+    setAvatarError(null);
+    setAvatarNotice(null);
+    try {
+      const compressed = await compressImageFile(file, 400, 0.85);
+      await onUpdateTeacherAvatar(compressed);
+      setAvatarNotice('บันทึกรูปภาพประจำตัวลงฐานข้อมูลออนไลน์เรียบร้อยแล้ว');
+      setTimeout(() => setAvatarNotice(null), 3500);
+    } catch (err) {
+      setAvatarError(
+        formatThaiErrorMessage(err, 'ไม่สามารถอัปโหลดรูปประจำตัวได้ กรุณาลองใหม่อีกครั้ง')
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
     }
   };
 
   return (
-    <div className="space-y-5 pb-14 print:space-y-0 print:pb-0 font-['Prompt',sans-serif]">
-      {/* Supervisor Teacher Profile Header Card (Hidden when printing) */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm print:hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="flex items-start sm:items-center gap-4">
-            {/* Teacher Profile Photo / Avatar with Upload Button */}
-            <div className="relative group shrink-0">
-              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-slate-900 via-sky-950 to-indigo-950 p-0.5 shadow-md overflow-hidden flex items-center justify-center">
-                {teacherAvatar ? (
+    <div className="space-y-6 pb-14 print:space-y-0 print:pb-0">
+      {/* Supervisor Teacher Profile Header Card (hidden on print) */}
+      <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-md space-y-5 print:hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            {/* Teacher Avatar */}
+            <div className="relative shrink-0">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-sky-400/60 bg-slate-800 flex items-center justify-center shadow-lg">
+                {teacherAvatarUrl ? (
                   <img
-                    src={teacherAvatar}
-                    alt={displayTeacherName}
-                    className="w-full h-full object-cover rounded-[14px]"
+                    src={teacherAvatarUrl}
+                    alt={activeTeacher.name}
+                    className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white rounded-[14px]">
-                    <span className="font-bold text-xl sm:text-2xl tracking-tight">
-                      {displayTeacherInitials}
-                    </span>
-                    <span className="text-[11px] text-sky-300 font-medium mt-0.5">ครูนิเทศก์</span>
+                  <UserCheck className="w-8 h-8 text-sky-300" />
+                )}
+                {isUploadingAvatar && (
+                  <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-white" />
                   </div>
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="คลิกเพื่ออัปโหลดหรือเปลี่ยนรูปภาพครูนิเทศก์"
-                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center shadow-md transition transform hover:scale-110 cursor-pointer border-2 border-white"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
-              {avatarSavedBadge && (
-                <span
-                  title="บันทึกรูปประจำตัวลงฐานข้อมูลออนไลน์แล้ว"
-                  className="absolute -top-1 -right-1 p-0.5 rounded-full bg-emerald-500 text-white shadow-md border-2 border-white animate-bounce"
-                >
-                  <CheckCircle2 className="w-3 h-3" />
-                </span>
+              {onUpdateTeacherAvatar && (
+                <>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="absolute -bottom-1.5 -right-1.5 p-1.5 rounded-full bg-sky-500 hover:bg-sky-400 text-white border-2 border-slate-900 shadow-md transition cursor-pointer"
+                    title="เปลี่ยนรูปโปรไฟล์ครูนิเทศก์"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </>
               )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleTeacherAvatarUpload}
-                className="hidden"
-              />
             </div>
 
-            {/* Teacher Details */}
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
-                  {displayTeacherName}
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  ครูนิเทศก์ประจำวิชา & ที่ปรึกษา
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  <span>{activeTeacher.status || 'ครูนิเทศก์'}</span>
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
-                  {teacherAssignedCourses.length > 0
-                    ? `${teacherAssignedCourses.length} รายวิชาที่รับผิดชอบ`
-                    : `${courses.length} รายวิชาเชื่อมโยง`}
-                </span>
-                {teacherAssignedRooms.length > 0 && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
-                    กลุ่ม: {teacherAssignedRooms.join(', ')}
-                  </span>
-                )}
-              </div>
-
-              <div className="text-sm text-slate-500 flex flex-wrap items-center gap-2 sm:gap-3">
-                <span className="flex items-center gap-1.5 text-slate-700 font-medium">
-                  <UserCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>สิทธิ์: ครูนิเทศก์ผู้สอน (Teacher/Supervisor)</span>
-                </span>
-                <span className="text-slate-300 hidden sm:inline">•</span>
-                <span className="font-mono text-slate-600">{teacherEmail}</span>
-                <span className="text-slate-300 hidden sm:inline">•</span>
-                <span className="text-slate-600">{displayTeacherDepartment}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Summary Stats matching TeacherView */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-            <div className="text-sm text-slate-600 space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <Database className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  รายวิชาในระบบ: <strong className="font-mono text-sky-700">{courses.length}</strong> • นักศึกษา:{' '}
-                  <strong className="font-mono text-emerald-700">{students.length}</strong>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/20 text-sky-200 border border-sky-400/30">
+                  <BookOpen className="w-3 h-3" />
+                  <span>{teacherCoursesCount} รายวิชา / กลุ่มเรียน</span>
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-[13px] text-slate-500">
-                <BookOpen className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>
-                  บันทึกรายงานแล้ว:{' '}
-                  <strong className="font-mono text-indigo-700">{savedCountForSelected}/18</strong> สัปดาห์
-                </span>
-              </div>
+              <h1 className="text-xl sm:text-2xl font-bold">{activeTeacher.name}</h1>
+              <p className="text-xs sm:text-sm text-slate-300">
+                {activeTeacher.email} • {activeTeacher.department || 'แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น'}
+              </p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Unified Workspace Mode Switcher (Hidden when printing) */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="inline-flex flex-wrap p-1 bg-slate-100 rounded-xl text-xs sm:text-sm font-semibold gap-1">
-          <button
-            type="button"
-            onClick={() => setSubMode('editor')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
-              subMode === 'editor'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles className={`w-4 h-4 ${subMode === 'editor' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>รายงานการจัดการเรียนรู้ในสถานประกอบการ (แบบฟอร์ม & เอกสาร A4)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSubMode('overview')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
-              subMode === 'overview'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <BookOpen className={`w-4 h-4 ${subMode === 'overview' ? 'text-indigo-600' : 'text-slate-400'}`} />
-            <span>สถานะการบันทึกรายสัปดาห์ (สัปดาห์ที่ 1–18)</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                subMode === 'overview'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : 'bg-slate-200 text-slate-700'
-              }`}
-            >
-              {savedCountForSelected}/18
-            </span>
-          </button>
-        </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>บันทึกและเชื่อมโยงฐานข้อมูล Real-time</span>
-        </span>
-      </div>
-
-      {subMode === 'editor' ? (
-        <WorkplaceTeachingReportView
-          key={`editor-${editorState.sessionKey}`}
-          currentUser={currentUser}
-          students={students}
-          form3List={form3List}
-          submissions={submissions}
-          courses={courses}
-          teachers={propTeachers}
-          teachingReports={reports}
-          initialTeacherName={editorState.teacherName}
-          initialWeek={editorState.weekNumber}
-          initialOpenPreview={editorState.openPreview}
-          initialAutoPrint={editorState.autoPrint}
-          onReportSaved={(saved) => {
-            setReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
-            onTeachingReportSaved?.(saved);
-          }}
-          onNavigateToTeachingReports={(teacherName, weekNumber) => {
-            setSelectedTeacherFilter(teacherName);
-            setHighlightedWeek(weekNumber);
-            setSubMode('overview');
-          }}
-        />
-      ) : (
-        <div className="space-y-6">
-          {/* Page Header Card */}
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100">
-                <BookOpen className="w-5 h-5" />
-              </span>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                บันทึกรายงานการสอนรายสัปดาห์
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Real-time Cloud DB
-              </span>
-            </div>
-            <p className="text-sm text-slate-500">
-              แสดงข้อมูลการรายงานการจัดการเรียนการสอนบูรณาการรายวิชาในสถานประกอบการ รายสัปดาห์ที่บันทึกไว้ สถานะการบันทึก และเปิดดู/แก้ไขเอกสาร
-            </p>
-          </div>
-        </div>
-
-        {/* Filter Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-sm">
-          {/* 1. Teacher Selector */}
-          <div className="space-y-1">
-            <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <User className="w-4 h-4 text-indigo-600" />
-              <span>ครูผู้สอน / ผู้รายงาน</span>
-            </label>
-            <select
-              value={selectedTeacherFilter}
-              onChange={(e) => setSelectedTeacherFilter(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="all">
-                ครูนิเทศก์ทั้งหมด ({reports.length} ฉบับที่บันทึกไว้)
-              </option>
-              {allTeachers.map((t) => {
-                const count = weeksMeta.filter((m) => Boolean(findSavedReport(t, m.weekNumber))).length;
-                return (
-                  <option key={t} value={t}>
-                    {t} (บันทึกแล้ว {count}/18 สัปดาห์)
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* 2. Save Status Filter */}
-          <div className="space-y-1">
-            <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <Filter className="w-4 h-4 text-emerald-600" />
-              <span>กรองสถานะการบันทึก</span>
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'saved' | 'unsaved')}
-              disabled={selectedTeacherFilter === 'all'}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              <option value="all">ทั้งหมด (สัปดาห์ที่ 1–18)</option>
-              <option value="saved">เฉพาะสัปดาห์ที่บันทึกแล้ว</option>
-              <option value="unsaved">เฉพาะสัปดาห์ที่ยังไม่บันทึก</option>
-            </select>
-          </div>
-
-          {/* 3. Search */}
-          <div className="space-y-1">
-            <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <Search className="w-4 h-4 text-sky-600" />
-              <span>ค้นหารายวิชา / กลุ่มเรียน / สัปดาห์</span>
-            </label>
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={weekSearch}
-                onChange={(e) => setWeekSearch(e.target.value)}
-                placeholder="เช่น 30000-2005, สอฟ.2/5, สัปดาห์ที่ 3..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {(() => {
-        const effectiveLoadError = loadError || (!dismissedCloudError ? cloudLoadError : null) || null;
-        if (!effectiveLoadError) return null;
-        const isQuotaFallback = isQuotaOrNetworkError(effectiveLoadError);
-        return (
-          <div
-            className={`rounded-2xl p-4 flex items-center justify-between gap-3 text-sm shadow-2xs border ${
-              isQuotaFallback
-                ? 'bg-amber-50 border-amber-200 text-amber-900'
-                : 'bg-rose-50 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-start gap-2.5 min-w-0">
-              <AlertCircle
-                className={`w-5 h-5 shrink-0 mt-0.5 ${
-                  isQuotaFallback ? 'text-amber-600' : 'text-rose-600'
-                }`}
-              />
-              <div className="space-y-0.5 font-medium">
-                <div>
-                  <strong>แจ้งเตือนระบบฐานข้อมูล:</strong> {effectiveLoadError}
-                </div>
-                {isQuotaFallback && (
-                  <div className="text-xs text-amber-800">
-                    คุณสามารถกดปุ่มบันทึก แก้ไข เรียกดู และสั่งพิมพ์จากหน่วยความจำสำรองในเครื่องได้ตามปกติ และเมื่อโควตารีเซ็ตแล้ว กรุณากดปุ่มบันทึกอีกครั้งเพื่อส่งข้อมูลขึ้น Cloud
-                  </div>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setLoadError(null);
-                setDismissedCloudError(true);
-              }}
-              className={`p-1 rounded-lg transition cursor-pointer shrink-0 ${
-                isQuotaFallback
-                  ? 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'
-                  : 'text-rose-600 hover:text-rose-800 hover:bg-rose-100'
-              }`}
-              title="ปิดการแจ้งเตือน"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs sm:text-sm text-slate-500 font-medium">
-              สัปดาห์ที่บันทึกแล้ว ({selectedTeacherFilter === 'all' ? 'ของฉัน' : 'ครูที่เลือก'})
-            </span>
-            <div className="text-2xl font-bold text-emerald-700 mt-1">
-              {savedCountForSelected} / 18
-            </div>
-            <div className="text-xs text-slate-500 mt-0.5">
-              คิดเป็น {Math.round((savedCountForSelected / 18) * 100)}% ของภาคเรียน
-            </div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs sm:text-sm text-slate-500 font-medium">ยังไม่บันทึก</span>
-            <div className="text-2xl font-bold text-amber-600 mt-1">
-              {18 - savedCountForSelected}
-            </div>
-            <div className="text-xs text-slate-500 mt-0.5">สัปดาห์ที่รอดำเนินการ</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs sm:text-sm text-slate-500 font-medium">
-              บันทึกทั้งหมดในฐานข้อมูล
-            </span>
-            <div className="text-2xl font-bold text-indigo-700 mt-1">{reports.length}</div>
-            <div className="text-xs text-slate-500 mt-0.5">ฉบับ (รวมครูนิเทศก์ทุกท่าน)</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <Layers className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div className="min-w-0 pr-2">
-            <span className="text-xs sm:text-sm text-slate-500 font-medium">อัปเดตล่าสุด</span>
-            <div className="text-lg sm:text-xl font-bold text-slate-900 mt-1 truncate">
-              {latestSavedReport ? `สัปดาห์ที่ ${latestSavedReport.weekNumber}` : 'ยังไม่มีข้อมูล'}
-            </div>
-            <div className="text-xs text-slate-500 mt-0.5 truncate">
-              {latestSavedReport ? formatThaiDateTime(latestSavedReport.updatedAt) : '-'}
-            </div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
-            <Calendar className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      {/* Visual Progress Bar (Weeks 1-18) */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs space-y-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm sm:text-base text-slate-900">
-              ความก้าวหน้าการบันทึกรายงานการสอนรายสัปดาห์ (สัปดาห์ที่ 1–18)
-            </span>
-            <span className="text-xs font-semibold text-slate-500">
-              — {activeTeacherForStats}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-              {savedCountForSelected} / 18 สัปดาห์ ({Math.round((savedCountForSelected / 18) * 100)}%)
-            </span>
-          </div>
-        </div>
-        <div className="h-3 w-full rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 transition-all duration-500"
-            style={{ width: `${Math.round((savedCountForSelected / 18) * 100)}%` }}
-          />
-        </div>
-      </div>
-
-      {/* 18-Week Quick Visual Status Matrix (shown when a specific teacher is selected) */}
-      {selectedTeacherFilter !== 'all' && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 shadow-xs space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Teacher Selector + Progress Summary */}
+          <div className="flex flex-col sm:items-end gap-2.5">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-600" />
-              <h2 className="font-bold text-base text-slate-900">
-                สรุปสถานะการบันทึกสัปดาห์ที่ 1–18 ({selectedTeacherFilter})
-              </h2>
+              <label className="text-xs text-slate-300 font-medium">เลือกครูผู้สอน:</label>
+              <select
+                value={selectedTeacherName}
+                onChange={(e) => setSelectedTeacherName(e.target.value)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold text-white cursor-pointer focus:ring-2 focus:ring-sky-500"
+              >
+                {teacherList.map((t) => (
+                  <option key={t.id} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <span>บันทึกแล้ว</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
-                <span>ยังไม่บันทึก</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full ring-2 ring-sky-500 bg-white"></span>
-                <span>สัปดาห์ปัจจุบัน</span>
-              </span>
+
+            <div className="w-full sm:w-64 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-300">ความคืบหน้ารายงานการสอน</span>
+                <span className="font-bold text-emerald-300">
+                  {savedWeeksSet.size}/18 สัปดาห์ ({progressPct}%)
+                </span>
+              </div>
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-9 gap-2">
-            {singleTeacherRows.map((row) => {
-              const isCurr = row.weekNumber === currentWeekNumber;
+        {(avatarNotice || avatarError) && (
+          <div
+            className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2 ${
+              avatarError
+                ? 'bg-rose-500/20 border border-rose-400/40 text-rose-100'
+                : 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-100'
+            }`}
+          >
+            {avatarError ? <AlertCircle className="w-4 h-4 shrink-0" /> : <CheckCircle2 className="w-4 h-4 shrink-0" />}
+            <span>{avatarError || avatarNotice}</span>
+          </div>
+        )}
+
+        {/* Weeks 1-18 Overview Matrix (labeled สัปดาห์ที่ 1 – สัปดาห์ที่ 18) */}
+        <div className="pt-3 border-t border-white/10 space-y-2">
+          <div className="text-xs text-slate-300 font-semibold">
+            ภาพรวมสถานะรายงานการสอนรายสัปดาห์ (คลิกเพื่อเปิดแก้ไข / พิมพ์):
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-9 gap-1.5">
+            {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => {
+              const isSaved = savedWeeksSet.has(w);
+              const isSelected = selectedWeek === w;
               return (
                 <button
-                  key={row.weekNumber}
+                  key={w}
                   type="button"
-                  onClick={() =>
-                    openEditorForReport(selectedTeacherFilter, row.weekNumber, row.isSaved)
-                  }
-                  title={
-                    row.isSaved
-                      ? `สัปดาห์ที่ ${row.weekNumber}: บันทึกแล้ว (คลิกเพื่อเรียกดูหรือแก้ไข)`
-                      : `สัปดาห์ที่ ${row.weekNumber}: ยังไม่บันทึก (คลิกเพื่อสร้างรายงาน)`
-                  }
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    row.isSaved
-                      ? 'bg-emerald-50/90 border-emerald-300 hover:bg-emerald-100 text-emerald-900'
-                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'
-                  } ${isCurr ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
+                  onClick={() => setSelectedWeek(w)}
+                  className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer border ${
+                    isSelected
+                      ? 'bg-sky-500 text-white border-sky-300 shadow-sm ring-2 ring-sky-300/40'
+                      : isSaved
+                      ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30 hover:bg-emerald-500/30'
+                      : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/15'
+                  }`}
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-bold text-xs whitespace-nowrap">สัปดาห์ที่ {row.weekNumber}</span>
-                    {row.isSaved ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    )}
-                  </div>
-                  <div className="text-[11px] mt-1 font-medium truncate">
-                    {row.isSaved ? 'บันทึกแล้ว' : 'ยังไม่บันทึก'}
-                  </div>
+                  <span>สัปดาห์ที่ {w}</span>
+                  {isSaved && <CheckCircle2 className="w-3 h-3 text-emerald-300 shrink-0" />}
                 </button>
               );
             })}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Detailed Weekly Reports Table / Cards */}
-      {selectedTeacherFilter !== 'all' ? (
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/70">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-indigo-600" />
-              <h2 className="font-bold text-base text-slate-900">
-                รายละเอียดรายงานการจัดการเรียนรู้รายสัปดาห์ ({filteredSingleTeacherRows.length} สัปดาห์)
-              </h2>
-            </div>
-            {isLoadingReports && (
-              <span className="text-xs text-slate-500">กำลังโหลดข้อมูลออนไลน์...</span>
-            )}
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {filteredSingleTeacherRows.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 text-sm">
-                ไม่พบรายการสัปดาห์ที่ตรงกับเงื่อนไขการค้นหา
-              </div>
-            ) : (
-              filteredSingleTeacherRows.map((row) => {
-                const rep = row.report;
-                const isCurr = row.weekNumber === currentWeekNumber;
-                const isJustSaved =
-                  Boolean(row.isSaved) &&
-                  typeof highlightedWeek === 'number' &&
-                  row.weekNumber === highlightedWeek;
-                const photosCount =
-                  rep?.photoCount ??
-                  rep?.weekPhotos?.filter((p) => Boolean(p.url)).length ??
-                  0;
-
-                return (
-                  <div
-                    key={row.weekNumber}
-                    className={`p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition ${
-                      isJustSaved
-                        ? 'bg-emerald-50/60 ring-2 ring-inset ring-emerald-400'
-                        : row.isSaved
-                        ? 'bg-white hover:bg-emerald-50/20'
-                        : 'bg-slate-50/40 hover:bg-slate-50'
-                    }`}
-                  >
-                    {/* Left: Week info, Status Badge & Saved Content Summary */}
-                    <div className="space-y-2 flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`px-2.5 py-1 rounded-lg font-bold text-sm ${
-                            row.isSaved
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-200 text-slate-700'
-                          }`}
-                        >
-                          สัปดาห์ที่ {row.weekNumber}
-                        </span>
-                        <span className="text-sm font-medium text-slate-600">
-                          ({row.dateRangeLabel} 2569)
-                        </span>
-                        {isCurr && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200">
-                            สัปดาห์ปัจจุบัน
-                          </span>
-                        )}
-                        {isJustSaved && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-600 text-white">
-                            เพิ่งบันทึกล่าสุด
-                          </span>
-                        )}
-                        {row.isSaved ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                            <span>บันทึกแล้ว (ออนไลน์)</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3.5 h-3.5 text-amber-600" />
-                            <span>ยังไม่บันทึก</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {rep ? (
-                        <div className="space-y-1.5 text-sm text-slate-700">
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                            <span>
-                              วันที่รายงาน:{' '}
-                              <strong className="text-slate-700">
-                                {formatThaiDateFull(rep.reportDate)}
-                              </strong>
-                            </span>
-                            <span>
-                              ตำแหน่ง: <strong className="text-slate-700">{rep.position}</strong>
-                            </span>
-                            <span>
-                              บันทึกล่าสุด:{' '}
-                              <strong className="text-emerald-700 font-mono">
-                                {formatThaiDateTime(rep.updatedAt)}
-                              </strong>
-                            </span>
-                            {photosCount > 0 && (
-                              <span className="inline-flex items-center gap-1 text-purple-700 font-medium">
-                                <ImageIcon className="w-3.5 h-3.5" />
-                                <span>
-                                  {photosCount} ภาพ{rep.hasManualPhotoEdits ? ' (เลือก/แก้ไขเอง)' : ''}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Courses summary */}
-                          <div className="flex flex-wrap gap-1.5 pt-0.5">
-                            {(rep.courses || []).map((c, idx) => (
-                              <span
-                                key={c.id || idx}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-800"
-                              >
-                                <span className="font-mono font-bold text-indigo-700">
-                                  {c.subjectCode}
-                                </span>
-                                <span>{c.subjectName}</span>
-                                {c.room?.trim() && (
-                                  <span className="text-slate-600 font-semibold">
-                                    กลุ่ม {c.room.trim()}
-                                  </span>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-
-                          {/* Learning outcome snippet */}
-                          {rep.learningOutcome && (
-                            <p className="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5">
-                              <strong className="text-slate-700">ผลที่เกิดจากการจัดการเรียนรู้:</strong>{' '}
-                              {rep.learningOutcome}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-500">
-                          ยังไม่มีข้อมูลรายงานการสอนที่บันทึกไว้สำหรับสัปดาห์ที่ {row.weekNumber} ({row.fullRangeLabel})
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Right: Actions */}
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      {row.isSaved ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEditorForReport(selectedTeacherFilter, row.weekNumber, true, false)
-                            }
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs sm:text-sm transition cursor-pointer"
-                            title="เปิดดูเอกสารบันทึกข้อความและรายงาน 3 หน้า A4"
-                          >
-                            <Eye className="w-4 h-4 text-indigo-600" />
-                            <span>เรียกดูเอกสาร</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEditorForReport(selectedTeacherFilter, row.weekNumber, false, false)
-                            }
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-xs transition cursor-pointer"
-                            title="แก้ไขข้อมูลรายวิชา ผลการจัดการเรียนรู้ หรือรูปภาพในรายงานสัปดาห์นี้"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                            <span>แก้ไขเอกสาร</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEditorForReport(selectedTeacherFilter, row.weekNumber, true, true)
-                            }
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-xs transition cursor-pointer"
-                            title="เปิดและสั่งพิมพ์เอกสารรายงานการสอนสัปดาห์นี้ทันที"
-                          >
-                            <Printer className="w-4 h-4" />
-                            <span>สั่งพิมพ์</span>
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openEditorForReport(selectedTeacherFilter, row.weekNumber, false)
-                          }
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs sm:text-sm transition cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4 text-sky-600" />
-                          <span>บันทึกรายงาน</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : (
-        /* All Teachers View: Teacher Completion Summary + All Saved Reports */
-        <div className="space-y-6">
-          {/* Teacher completion summary */}
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2 bg-slate-50/70">
-              <Users className="w-4 h-4 text-indigo-600" />
-              <h2 className="font-bold text-base text-slate-900">
-                สรุปสถานะการบันทึกรายงานการสอนแยกตามครูนิเทศก์
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600 text-xs border-b border-slate-200">
-                    <th className="px-4 py-3 font-bold">ชื่อครูผู้สอน / ครูนิเทศก์</th>
-                    <th className="px-4 py-3 font-bold text-center">จำนวนสัปดาห์ที่บันทึก</th>
-                    <th className="px-4 py-3 font-bold">สัปดาห์ที่บันทึกแล้ว</th>
-                    <th className="px-4 py-3 font-bold text-right">จัดการ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {allTeachers.map((tName) => {
-                    const savedWeeks = weeksMeta
-                      .filter((m) => Boolean(findSavedReport(tName, m.weekNumber)))
-                      .map((m) => m.weekNumber);
-                    return (
-                      <tr key={tName} className="hover:bg-slate-50/80">
-                        <td className="px-4 py-3 font-semibold text-slate-900">{tName}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              savedWeeks.length > 0
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {savedWeeks.length} / 18 สัปดาห์
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {savedWeeks.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {savedWeeks.map((w) => (
-                                <button
-                                  key={w}
-                                  type="button"
-                                  onClick={() => openEditorForReport(tName, w, true)}
-                                  className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold cursor-pointer"
-                                  title={`คลิกเพื่อเรียกดูเอกสาร สัปดาห์ที่ ${w}`}
-                                >
-                                  ส.{w}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">ยังไม่มีการบันทึก</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTeacherFilter(tName)}
-                            className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition cursor-pointer"
-                          >
-                            ดูสถานะ 18 สัปดาห์
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* All Saved Reports List */}
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/70">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-emerald-600" />
-                <h2 className="font-bold text-base text-slate-900">
-                  รายการเอกสารที่บันทึกไว้ทั้งหมด ({filteredAllSavedReports.length} ฉบับ)
-                </h2>
-              </div>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {filteredAllSavedReports.length === 0 ? (
-                <div className="p-10 text-center text-slate-500 text-sm">
-                  ยังไม่มีรายงานการสอนที่บันทึกไว้ในฐานข้อมูล
-                </div>
-              ) : (
-                filteredAllSavedReports.map((rep) => (
-                  <div
-                    key={rep.id}
-                    className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/70 transition"
-                  >
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-bold text-xs">
-                          สัปดาห์ที่ {rep.weekNumber}
-                        </span>
-                        <span className="font-bold text-slate-900 text-sm">
-                          {rep.reporterName}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>บันทึกแล้ว</span>
-                        </span>
-                        <span className="text-xs text-slate-500 font-mono">
-                          อัปเดต: {formatThaiDateTime(rep.updatedAt)}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(rep.courses || []).map((c, idx) => (
-                          <span
-                            key={c.id || idx}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-800"
-                          >
-                            <span className="font-mono font-bold text-indigo-700">
-                              {c.subjectCode}
-                            </span>
-                            <span>{c.subjectName}</span>
-                            {c.room?.trim() && (
-                              <span className="font-semibold text-slate-600">
-                                กลุ่ม {c.room.trim()}
-                              </span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                      {rep.learningOutcome && (
-                        <p className="text-xs text-slate-600 line-clamp-1">
-                          {rep.learningOutcome}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), true, false)
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs transition cursor-pointer"
-                      >
-                        <Eye className="w-4 h-4 text-indigo-600" />
-                        <span>เรียกดูเอกสาร</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), false, false)
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                        <span>แก้ไขเอกสาร</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openEditorForReport(rep.reporterName, Number(rep.weekNumber), true, true)
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
-                        title="เปิดและสั่งพิมพ์เอกสารรายงานการสอนฉบับนี้"
-                      >
-                        <Printer className="w-4 h-4" />
-                        <span>สั่งพิมพ์</span>
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+      {/* Cloud Stream Notice if any */}
+      {cloudLoadError && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm flex items-center gap-2 font-medium print:hidden">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+          <span>{cloudLoadError}</span>
         </div>
       )}
-        </div>
-      )}
+
+      {/* Direct Workplace Teaching Report Form & A4 Preview */}
+      <WorkplaceTeachingReportView
+        currentUser={currentUser}
+        students={students}
+        form3List={form3List}
+        submissions={submissions}
+        courses={courses}
+        teachers={teacherList}
+        teachingReports={teachingReports}
+        initialTeacherName={selectedTeacherName}
+        initialWeek={selectedWeek}
+        onReportSaved={onTeachingReportSaved}
+      />
     </div>
   );
 };

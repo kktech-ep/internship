@@ -251,6 +251,7 @@ export default function App() {
                 companyRegistration: keepExistingForm1
                   ? existing.companyRegistration
                   : freshStudent.companyRegistration || existing.companyRegistration,
+                phone: freshStudent.phone || existing.phone,
                 avatarUrl: existing.avatarUrl || freshStudent.avatarUrl,
               });
               return updated;
@@ -364,6 +365,7 @@ export default function App() {
                 ...rs,
                 email: prev?.email || rs.email || '',
                 studentCode: prev?.studentCode || rs.studentCode || '',
+                phone: rs.phone || prev?.phone,
                 avatarUrl: fromUserAvatars || rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
               } as Student)
             );
@@ -622,9 +624,10 @@ export default function App() {
       syncResult = {
         success: false,
         sheetResult: syncResult.sheetResult || '',
-        firestoreResult:
-          'บันทึกในฐานข้อมูลออนไลน์ไม่สำเร็จ: ' +
-          (syncErr instanceof Error ? syncErr.message : String(syncErr)),
+        firestoreResult: formatThaiErrorMessage(
+          syncErr,
+          'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง'
+        ),
       };
     }
 
@@ -654,6 +657,7 @@ export default function App() {
       });
     } catch (err) {
       console.error('Firestore student avatar save failed:', err);
+      throw err;
     }
   };
 
@@ -806,7 +810,9 @@ export default function App() {
       });
       setForm3List(nextForm3List);
       saveLocalForm3Rows(nextForm3List);
-      syncDerivedCompaniesToFirestore(students, nextForm3List).catch(() => {});
+      syncDerivedCompaniesToFirestore(students, nextForm3List).catch((err) =>
+        console.warn('Derived companies sync note:', err)
+      );
     }
 
     const idsToUpdate =
@@ -867,6 +873,15 @@ export default function App() {
       // Persist all updated evaluations atomically and immediately to Firebase Firestore
       await saveSubmissionsBatchToFirestore(modifiedSubs);
       modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
+
+      for (const sId of idsToUpdate) {
+        const st = students.find(
+          (s) => s.id === sId || s.studentCode === sId || getCandidateStudentKeys(s).includes(sId)
+        );
+        if (st) {
+          syncStudentLiveStats(st, nextSubs);
+        }
+      }
     }
   };
 

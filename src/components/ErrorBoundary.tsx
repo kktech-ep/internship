@@ -1,86 +1,61 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
-interface Props {
+interface ErrorBoundaryProps {
   children: ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  errorMessage: string;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-  };
-
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      errorMessage: formatThaiErrorMessage(
+        error,
+        'เกิดข้อผิดพลาดในการแสดงผลหน้าเว็บ กรุณาลองโหลดหน้าใหม่อีกครั้ง'
+      ),
+    };
   }
 
-  private handleReload = () => {
-    window.location.reload();
-  };
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Uncaught application error:', error, errorInfo);
+  }
 
-  private handleResetStorage = () => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch (e) {
-      console.warn('Storage clear error:', e);
+  handleReload = () => {
+    this.setState({ hasError: false, errorMessage: '' });
+    if (typeof window !== 'undefined') {
+      window.location.reload();
     }
-    window.location.reload();
   };
 
-  public render() {
+  render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-['Prompt',sans-serif]">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-xl border border-slate-200 text-center space-y-4 animate-in fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-8 h-8" />
+          <div className="max-w-md w-full bg-white rounded-2xl border border-rose-200 shadow-xl p-6 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-7 h-7" />
             </div>
-
-            <div className="space-y-1">
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-200">
-                KKTECH Power Portal • การกู้คืนระบบ
-              </span>
-              <h2 className="text-xl font-bold text-slate-900 mt-2">
-                เกิดข้อผิดพลาดในการโหลดหน้าเว็บ
-              </h2>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                ระบบตรวจพบข้อผิดพลาดที่ไม่คาดคิด สามารถกดรีโหลดเพื่อลองใหม่อีกครั้ง
-              </p>
-            </div>
-
-            {this.state.error && (
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-left overflow-x-auto text-[11px] font-mono text-slate-700 max-h-32">
-                {this.state.error.message || String(this.state.error)}
-              </div>
-            )}
-
-            <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center">
-              <button
-                onClick={this.handleReload}
-                className="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>รีโหลดหน้าเว็บใหม่</span>
-              </button>
-
-              <button
-                onClick={this.handleResetStorage}
-                className="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
-              >
-                <span>ล้างแคชและรีเซ็ตระบบ</span>
-              </button>
-            </div>
+            <h2 className="text-lg font-bold text-slate-900">ขออภัย ระบบพบข้อผิดพลาดชั่วคราว</h2>
+            <p className="text-sm text-slate-600 leading-relaxed">{this.state.errorMessage}</p>
+            <button
+              type="button"
+              onClick={this.handleReload}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>โหลดหน้าเว็บใหม่</span>
+            </button>
           </div>
         </div>
       );

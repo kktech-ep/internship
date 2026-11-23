@@ -49,6 +49,7 @@ import {
   buildUnifiedCompanies,
   extractTeacherNames,
   getStudentEvaluationSummary,
+  matchesStudentRecord,
   normalizeStudentAcademicInfo,
 } from '../utils/dataUnifier';
 
@@ -124,6 +125,8 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   const [tableSubView, setTableSubView] = useState<'companies' | 'records'>('companies');
   const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<Form3Photo | null>(null);
+  const [pendingDeleteKey, setPendingDeleteKey] = useState<string | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialWeek && initialWeek >= 1 && initialWeek <= 18) {
@@ -259,7 +262,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       // Room filter
       if (roomFilter !== 'all') {
         const hasRoom = comp.students.some(s => s.room === roomFilter) ||
-          comp.form3Records.some(r => r.studentRoom === roomFilter);
+          comp.form3Records.some(r =>
+            (r.studentRoom || '').split(',').map(x => x.trim()).includes(roomFilter)
+          );
         if (!hasRoom) return false;
       }
 
@@ -298,9 +303,12 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
         if (!match) return false;
       }
       if (roomFilter !== 'all') {
-        if (r.studentRoom !== roomFilter) {
-          const st = allSheetStudents.find(s => s.id === r.studentId || s.studentCode === r.studentCode);
-          if (!st || st.room !== roomFilter) return false;
+        const recordRooms = (r.studentRoom || '').split(',').map(x => x.trim());
+        if (!recordRooms.includes(roomFilter)) {
+          const hasMatchingRoomStudent = allSheetStudents.some(
+            s => s.room === roomFilter && matchesStudentRecord(r, s)
+          );
+          if (!hasMatchingRoomStudent) return false;
         }
       }
       if (teacherFilter !== 'all') {
@@ -1183,17 +1191,39 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                   <FileText className="w-3.5 h-3.5" />
                                 </button>
                                 {currentUser?.role === 'admin' && f3 && onDeleteSupervision && (
-                                  <button
-                                    onClick={async () => {
-                                      if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกรายงานการนิเทศของ ${company.name} (${f3.studentName})? การกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-                                        await onDeleteSupervision(f3.id);
-                                      }
-                                    }}
-                                    className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition"
-                                    title="ลบบันทึกรายงานการนิเทศ (Admin)"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  pendingDeleteKey === `comp-${f3.id}` ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <button
+                                        onClick={async () => {
+                                          setDeletingKey(`comp-${f3.id}`);
+                                          try {
+                                            await onDeleteSupervision(f3.id);
+                                          } finally {
+                                            setDeletingKey(null);
+                                            setPendingDeleteKey(null);
+                                          }
+                                        }}
+                                        disabled={deletingKey === `comp-${f3.id}`}
+                                        className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 cursor-pointer disabled:opacity-50"
+                                      >
+                                        ยืนยัน
+                                      </button>
+                                      <button
+                                        onClick={() => setPendingDeleteKey(null)}
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                                      >
+                                        ยกเลิก
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => setPendingDeleteKey(`comp-${f3.id}`)}
+                                      className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
+                                      title="ลบบันทึกรายงานการนิเทศ (Admin)"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )
                                 )}
                                 <button
                                   onClick={() => setExpandedCompanyId(isExpanded ? null : company.id)}
@@ -1292,7 +1322,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                                   <span>ครูนิเทศก์: {rec.teacherName || '-'}</span>
                                                 </span>
                                                 <span className="text-[13px] font-semibold text-slate-800">
-                                                  นศ.: {rec.studentName} ({rec.studentCode})
+                                                  นศ.{(rec.studentCount || rec.studentNames?.length || 1) > 1 ? ` (${rec.studentCount || rec.studentNames?.length} คน)` : ''}: {rec.studentName} {rec.studentCode ? `(${rec.studentCode})` : ''}
                                                 </span>
                                               </div>
 
@@ -1307,17 +1337,39 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                                   {rec.safetyPassed ? 'PPE ผ่าน' : 'PPE ปรับปรุง'}
                                                 </span>
                                                 {currentUser?.role === 'admin' && onDeleteSupervision && (
-                                                  <button
-                                                    onClick={async () => {
-                                                      if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกรายงานการนิเทศของ ${company.name} (${rec.studentName} โดย ${rec.teacherName})?`)) {
-                                                        await onDeleteSupervision(rec.id);
-                                                      }
-                                                    }}
-                                                    className="p-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
-                                                    title="ลบบันทึกการนิเทศรายการนี้ (Admin)"
-                                                  >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                  </button>
+                                                  pendingDeleteKey === `exp-${rec.id}` ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                      <button
+                                                        onClick={async () => {
+                                                          setDeletingKey(`exp-${rec.id}`);
+                                                          try {
+                                                            await onDeleteSupervision(rec.id);
+                                                          } finally {
+                                                            setDeletingKey(null);
+                                                            setPendingDeleteKey(null);
+                                                          }
+                                                        }}
+                                                        disabled={deletingKey === `exp-${rec.id}`}
+                                                        className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 cursor-pointer disabled:opacity-50"
+                                                      >
+                                                        ยืนยัน
+                                                      </button>
+                                                      <button
+                                                        onClick={() => setPendingDeleteKey(null)}
+                                                        className="px-1.5 py-0.5 rounded bg-white text-slate-700 text-[11px] border border-slate-200 hover:bg-slate-100 cursor-pointer"
+                                                      >
+                                                        ยกเลิก
+                                                      </button>
+                                                    </span>
+                                                  ) : (
+                                                    <button
+                                                      onClick={() => setPendingDeleteKey(`exp-${rec.id}`)}
+                                                      className="p-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
+                                                      title="ลบบันทึกการนิเทศรายการนี้ (Admin)"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  )
                                                 )}
                                               </div>
                                             </div>
@@ -1465,7 +1517,14 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                             )}
                           </td>
                           <td className="py-3 px-2 break-words">
-                            <div className="font-semibold text-slate-900 text-[13px] leading-snug">{rec.studentName}</div>
+                            <div className="font-semibold text-slate-900 text-[13px] leading-snug">
+                              {rec.studentName}
+                              {(rec.studentCount || rec.studentNames?.length || 1) > 1 && (
+                                <span className="ml-1.5 inline-block px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 text-[10px] font-bold">
+                                  {rec.studentCount || rec.studentNames?.length} คน
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11.5px] text-slate-500 font-mono mt-0.5">
                               {rec.studentCode} • {rec.studentRoom || '-'}
                             </div>
@@ -1534,17 +1593,39 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                 </button>
                               )}
                               {currentUser?.role === 'admin' && onDeleteSupervision && (
-                                <button
-                                  onClick={async () => {
-                                    if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกการนิเทศของ ${rec.companyName} (${rec.studentName} โดย ${rec.teacherName})?`)) {
-                                      await onDeleteSupervision(rec.id);
-                                    }
-                                  }}
-                                  className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
-                                  title="ลบบันทึกการนิเทศ (Admin)"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                pendingDeleteKey === `flat-${rec.id}` ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <button
+                                      onClick={async () => {
+                                        setDeletingKey(`flat-${rec.id}`);
+                                        try {
+                                          await onDeleteSupervision(rec.id);
+                                        } finally {
+                                          setDeletingKey(null);
+                                          setPendingDeleteKey(null);
+                                        }
+                                      }}
+                                      disabled={deletingKey === `flat-${rec.id}`}
+                                      className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 cursor-pointer disabled:opacity-50"
+                                    >
+                                      ยืนยัน
+                                    </button>
+                                    <button
+                                      onClick={() => setPendingDeleteKey(null)}
+                                      className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                                    >
+                                      ยกเลิก
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => setPendingDeleteKey(`flat-${rec.id}`)}
+                                    className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
+                                    title="ลบบันทึกการนิเทศ (Admin)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )
                               )}
                             </div>
                           </td>
@@ -1646,18 +1727,43 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                 )}
 
                 {a4SubView === 'individual' && currentUser?.role === 'admin' && foundSub && onDeleteSubmission && (
-                  <button
-                    onClick={async () => {
-                      if (window.confirm(`คุณแน่ใจหรือไม่ที่จะลบบันทึกสัปดาห์ที่ ${selectedWeek} ของ ${currentStudent.name} (${currentStudent.studentCode})? การกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-                        await onDeleteSubmission(foundSub.id, currentStudent.id);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-sm font-semibold transition cursor-pointer"
-                    title="ลบบันทึกสัปดาห์นี้สำหรับนักศึกษาคนนี้ (Admin)"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-600" />
-                    <span>ลบบันทึกสัปดาห์นี้ (Admin)</span>
-                  </button>
+                  pendingDeleteKey === `sub-${foundSub.id}` ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-xs font-semibold text-rose-800">
+                      <span>ยืนยันลบบันทึกสัปดาห์ที่ {selectedWeek}?</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setDeletingKey(`sub-${foundSub.id}`);
+                          try {
+                            await onDeleteSubmission(foundSub.id, currentStudent.id);
+                          } finally {
+                            setDeletingKey(null);
+                            setPendingDeleteKey(null);
+                          }
+                        }}
+                        disabled={deletingKey === `sub-${foundSub.id}`}
+                        className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        ยืนยัน
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteKey(null)}
+                        className="px-2 py-0.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setPendingDeleteKey(`sub-${foundSub.id}`)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-sm font-semibold transition cursor-pointer"
+                      title="ลบบันทึกสัปดาห์นี้สำหรับนักศึกษาคนนี้ (Admin)"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>ลบบันทึกสัปดาห์นี้ (Admin)</span>
+                    </button>
+                  )
                 )}
 
                 {!isStudentRole && (
@@ -1795,7 +1901,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                     {/* Official College Emblem */}
                     <div className="w-16 h-16 rounded-full p-0.5 flex items-center justify-center bg-white shrink-0 overflow-hidden">
                       <img
-                        src="./assets/aistudio/LogoKKTech_f25116a9.jpg"
+                        src={`${import.meta.env.BASE_URL}assets/aistudio/LogoKKTech.jpg`}
                         alt="ตราสัญลักษณ์ทางการ วิทยาลัยเทคนิคขอนแก่น สำนักงานคณะกรรมการการอาชีวศึกษา"
                         className="w-full h-full object-contain drop-shadow-xs"
                       />

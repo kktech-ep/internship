@@ -55,6 +55,7 @@ export interface Student {
   department: string; // แผนกช่างไฟฟ้าและระบบควบคุม
   room: string; // 2/1
   email: string;
+  phone?: string;
   avatarUrl?: string;
   companyId: string;
   companyName: string;
@@ -140,9 +141,13 @@ export interface Form3SupervisionRecord {
   visitDate: string; // Formatted Thai date e.g. 21 ต.ค. 2569 (13:30 น.)
   visitTime?: string;
   studentId: string;
+  studentIds?: string[];
   studentCode: string;
+  studentCodes?: string[];
   studentName: string;
+  studentNames?: string[];
   studentRoom: string;
+  studentCount?: number;
   levelDepartment: string;
   companyId?: string;
   companyName: string;

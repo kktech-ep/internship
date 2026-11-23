@@ -320,6 +320,9 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
   const internshipCourse = roomCourses.find(c => c.subjectName.includes('กิจกรรมในสถานประกอบการ') || c.subjectCode.startsWith('30000'));
   const primarySupervisor = internshipCourse?.teacherName || (roomCourses[0]?.teacherName) || 'นายทักษิณ โสภาปิยะ';
 
+  const cleanStudentPhone = (row.phoneStudent || '').trim();
+  const studentPhone = cleanStudentPhone && cleanStudentPhone !== '-' ? cleanStudentPhone : undefined;
+
   return {
     id: `std-${code}`,
     studentCode: code,
@@ -329,6 +332,7 @@ export function convertLoginRowToStudent(row: LoginSheetFullRow, defaultHours = 
     department: studentDepartment,
     room: room,
     email: userStr.includes('@') ? userStr : `${userStr}@kktech.ac.th`,
+    ...(studentPhone ? { phone: studentPhone } : {}),
     avatarUrl: (typeof localStorage !== 'undefined' ? localStorage.getItem(`kktech_avatar_std-${code}`) : null) || undefined,
     companyId: `comp-${code}`,
     companyName: (row.Company || 'ยังไม่ระบุสถานประกอบการ').trim(),

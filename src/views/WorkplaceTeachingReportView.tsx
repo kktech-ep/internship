@@ -50,6 +50,8 @@ import {
   writeTeachingReportToLocalCache,
 } from '../utils/teachingReportCache';
 import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
+import { matchesStudentRecord } from '../utils/dataUnifier';
+import garudaEmblemImg from '../assets/images/garuda_emblem_1795399952410.jpg';
 
 interface WorkplaceTeachingReportViewProps {
   currentUser?: AuthUser | null;
@@ -818,6 +820,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       const fTeacherClean = (f3.teacherName || '').replace(/^(นาย|นางสาว|นาง|ดร\.)\s*/, '').trim();
       const isOwnOrMatched =
         Boolean(fTeacherClean && cleanTeacher && (fTeacherClean.includes(cleanTeacher) || cleanTeacher.includes(fTeacherClean))) ||
+        matchedStudents.some((st) => matchesStudentRecord(f3, st)) ||
         Boolean(f3.studentId && matchedStudentIds.has(f3.studentId)) ||
         Boolean(f3.studentCode && matchedStudentCodes.has(f3.studentCode));
 
@@ -1478,9 +1481,22 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const currentWeekDates = useMemo(() => getWeekDates(selectedWeek), [selectedWeek]);
   const startDayFull = currentWeekDates[0]?.fullDate || '19 ตุลาคม 2569';
   const endDayFull = currentWeekDates[4]?.fullDate || '23 ตุลาคม 2569';
-  const startDayNum = currentWeekDates[0]?.dateStr.split(' ')[0] || '19';
-  const endDayNum = currentWeekDates[4]?.dateStr.split(' ')[0] || '23';
-  const monthFull = THAI_MONTHS_FULL[9]; // ตุลาคม or derived from dates
+  const page2WeekDateRangeLabel = useMemo(() => {
+    const startParts = startDayFull.trim().split(/\s+/);
+    const endParts = endDayFull.trim().split(/\s+/);
+    if (startParts.length >= 3 && endParts.length >= 3) {
+      const [sDay, sMonth, sYear] = startParts;
+      const [eDay, eMonth, eYear] = endParts;
+      if (sYear === eYear && sMonth === eMonth) {
+        return `ระหว่างวันที่ ${sDay} - ${eDay} ${sMonth} พ.ศ. ${sYear}`;
+      }
+      if (sYear === eYear) {
+        return `ระหว่างวันที่ ${sDay} ${sMonth} - ${eDay} ${eMonth} พ.ศ. ${sYear}`;
+      }
+      return `ระหว่างวันที่ ${sDay} ${sMonth} พ.ศ. ${sYear} - ${eDay} ${eMonth} พ.ศ. ${eYear}`;
+    }
+    return `ระหว่างวันที่ ${startDayFull} ถึงวันที่ ${endDayFull}`;
+  }, [startDayFull, endDayFull]);
 
   // Safe html2canvas capture helper (normalizes Tailwind v4 oklch/oklab/color-mix colors & clamps A4 height)
   const capturePageToCanvas = async (el: HTMLElement) => {
@@ -1713,17 +1729,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           <div>เวลา..........................................................</div>
         </div>
 
-        {/* Garuda Emblem + บันทึกข้อความ (Shifted Garuda down 1cm without affecting text layout) */}
+        {/* Garuda Emblem + บันทึกข้อความ */}
         <div className="flex flex-col items-start pt-0">
           <img 
-            src={`${import.meta.env.BASE_URL}assets/aistudio/pic1_206a0c1e.jpg`} 
+            src={garudaEmblemImg} 
             alt="ตราครุฑ" 
             className="h-auto object-contain mb-1 relative" 
-            style={{ width: '14.4mm', top: '8mm' }}
+            style={{ width: '17.28mm', top: '0mm' }}
           />
         </div>
 
-        <div className="text-center font-bold text-[28pt] tracking-wide -mt-8 mb-2">
+        <div
+          className="text-center font-bold text-[28pt] tracking-wide -mt-8 mb-2 relative"
+          style={{ top: '-8mm' }}
+        >
           บันทึกข้อความ
         </div>
       </div>
@@ -1731,6 +1750,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       {/* Official memo body */}
       <div
         style={{
+          marginTop: '-8mm',
           fontFamily: "'TH SarabunPSK', 'TH Sarabun New', 'Sarabun', sans-serif",
           fontSize: '15pt',
           lineHeight: 1.15
@@ -1895,7 +1915,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
       <div className="border border-black p-3 mb-4 flex items-center gap-4">
         <div className="w-[28mm] flex-shrink-0 flex items-center justify-center pr-2">
           <img 
-            src={`${import.meta.env.BASE_URL}assets/aistudio/LogoKKTech_f25116a9.jpg`}
+            src={`${import.meta.env.BASE_URL}assets/aistudio/LogoKKTech.jpg`}
             alt="ตราวิทยาลัยเทคนิคขอนแก่น" 
             className="w-[24mm] h-auto object-contain"
           />
@@ -2041,7 +2061,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           ประจำภาคเรียนที่ 2 ปีการศึกษา 2569
         </div>
         <div className="font-bold text-[16pt]">
-          สัปดาห์ที่ {selectedWeek} ระหว่างวันที่ {startDayNum} - {endDayNum} {monthFull} พ.ศ. 2569
+          สัปดาห์ที่ {selectedWeek} {page2WeekDateRangeLabel}
         </div>
         <div className="text-[15pt] text-slate-800 pt-0.5">
           <div>

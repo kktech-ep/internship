@@ -345,7 +345,14 @@ export async function appendForm3ToGoogleSheet(
   // 1. Update local storage cache
   markForm3PendingIds([record.id]);
   const currentRows = getLocalForm3Rows();
-  const existingIdx = currentRows.findIndex(r => r.id === record.id || (r.studentCode === record.studentCode && r.visitDate === record.visitDate));
+  const normCompany = (record.companyName || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const existingIdx = currentRows.findIndex(
+    (r) =>
+      r.id === record.id ||
+      ((r.companyName || '').replace(/\s+/g, ' ').trim().toLowerCase() === normCompany &&
+        r.visitDate === record.visitDate &&
+        r.studentCode === record.studentCode)
+  );
   let updatedRows: Form3SupervisionRecord[];
   if (existingIdx >= 0) {
     updatedRows = [...currentRows];
@@ -578,33 +585,50 @@ export async function fetchGoogleSheetForm3Rows(accessToken: string): Promise<{ 
       return { rows: getLocalForm3Rows() };
     }
 
-    const parsed: Form3SupervisionRecord[] = data.values.map((v: any[], idx: number) => ({
-      id: `f3-sheet-row-${idx + 2}`,
-      timestamp: v[0] || '',
-      visitDate: v[1] || '',
-      studentCode: v[2] || '',
-      studentName: v[3] || '',
-      studentRoom: v[4] || '',
-      levelDepartment: v[5] || '',
-      companyName: v[6] || '',
-      companyDepartment: v[7] || '',
-      teacherName: v[8] || '',
-      mentorName: v[9] || '',
-      safetyPassed: !((v[10] || '').includes('ไม่ผ่าน') || (v[10] || '').includes('ปรับปรุง')),
-      score: parseFloat(v[11]) || 18,
-      grade: v[12] || 'ดีเยี่ยม (A)',
-      mentorFeedback: v[13] || '',
-      teacherComment: v[14] || '',
-      photos: [
-        ...(v[15] ? [{ id: 'p1', title: 'รูปถ่ายที่ 1', caption: v[15], url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
-        ...(v[16] ? [{ id: 'p2', title: 'รูปถ่ายที่ 2', caption: v[16], url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
-        ...(v[17] ? [{ id: 'p3', title: 'รูปถ่ายที่ 3', caption: v[17], url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
-        ...(v[18] ? [{ id: 'p4', title: 'รูปถ่ายที่ 4', caption: v[18], url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
-      ],
-      status: v[19] || 'บันทึกสำเร็จ',
-      syncedToGoogleSheet: true,
-      studentId: `std-${v[2] || 'unknown'}`
-    }));
+    const parsed: Form3SupervisionRecord[] = data.values.map((v: any[], idx: number) => {
+      const rawCodes = String(v[2] || '')
+        .split(/[,;\n]+/)
+        .map((c) => c.trim())
+        .filter(Boolean);
+      const rawNames = String(v[3] || '')
+        .split(/[,;\n]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+      const parsedStudentIds = rawCodes.map((c) => `std-${c.replace(/^s/i, '')}`);
+      const primaryStudentId = parsedStudentIds[0] || 'std-unknown';
+
+      return {
+        id: `f3-sheet-row-${idx + 2}`,
+        timestamp: v[0] || '',
+        visitDate: v[1] || '',
+        studentCode: v[2] || '',
+        studentCodes: rawCodes.length > 0 ? rawCodes : undefined,
+        studentName: v[3] || '',
+        studentNames: rawNames.length > 0 ? rawNames : undefined,
+        studentIds: parsedStudentIds.length > 0 ? parsedStudentIds : undefined,
+        studentCount: Math.max(rawCodes.length, rawNames.length, 1),
+        studentRoom: v[4] || '',
+        levelDepartment: v[5] || '',
+        companyName: v[6] || '',
+        companyDepartment: v[7] || '',
+        teacherName: v[8] || '',
+        mentorName: v[9] || '',
+        safetyPassed: !((v[10] || '').includes('ไม่ผ่าน') || (v[10] || '').includes('ปรับปรุง')),
+        score: parseFloat(v[11]) || 18,
+        grade: v[12] || 'ดีเยี่ยม (A)',
+        mentorFeedback: v[13] || '',
+        teacherComment: v[14] || '',
+        photos: [
+          ...(v[15] ? [{ id: 'p1', title: 'รูปถ่ายที่ 1', caption: v[15], url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
+          ...(v[16] ? [{ id: 'p2', title: 'รูปถ่ายที่ 2', caption: v[16], url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
+          ...(v[17] ? [{ id: 'p3', title: 'รูปถ่ายที่ 3', caption: v[17], url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
+          ...(v[18] ? [{ id: 'p4', title: 'รูปถ่ายที่ 4', caption: v[18], url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80', uploadedAt: v[1] }] : []),
+        ],
+        status: v[19] || 'บันทึกสำเร็จ',
+        syncedToGoogleSheet: true,
+        studentId: primaryStudentId,
+      };
+    });
 
     saveLocalForm3Rows(parsed);
     return { rows: parsed };

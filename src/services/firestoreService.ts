@@ -93,7 +93,7 @@ export function subscribeStudents(
 ) {
   const colPath = COLLECTIONS.STUDENTS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(500)),
     (snapshot) => {
       const items: Student[] = [];
       snapshot.forEach((docSnap) => {
@@ -116,7 +116,7 @@ export function subscribeCompanies(
 ) {
   const colPath = COLLECTIONS.COMPANIES;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(300)),
     (snapshot) => {
       const items: Company[] = [];
       snapshot.forEach((docSnap) => {
@@ -139,7 +139,7 @@ export function subscribeSubmissions(
 ) {
   const colPath = COLLECTIONS.SUBMISSIONS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(500)),
     (snapshot) => {
       const items: WeeklySubmission[] = [];
       snapshot.forEach((docSnap) => {
@@ -227,7 +227,7 @@ export function subscribeAnnouncements(
 ) {
   const colPath = COLLECTIONS.ANNOUNCEMENTS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(50)),
     (snapshot) => {
       const items: Announcement[] = [];
       snapshot.forEach((docSnap) => {
@@ -250,7 +250,7 @@ export function subscribeCourses(
 ) {
   const colPath = COLLECTIONS.COURSES;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(300)),
     (snapshot) => {
       const items: CourseDataRow[] = [];
       snapshot.forEach((docSnap) => {
@@ -273,7 +273,7 @@ export function subscribeTeachers(
 ) {
   const colPath = COLLECTIONS.TEACHERS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(100)),
     (snapshot) => {
       const items: SheetTeacher[] = [];
       snapshot.forEach((docSnap) => {
@@ -390,7 +390,7 @@ export function subscribeUserAvatars(
 ) {
   const colPath = COLLECTIONS.USER_AVATARS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(500)),
     (snapshot) => {
       const items: UserAvatarRecord[] = [];
       snapshot.forEach((docSnap) => {
@@ -409,7 +409,7 @@ export function subscribeUserAvatars(
  */
 export async function getUserAvatarsFromFirestore(): Promise<UserAvatarRecord[]> {
   try {
-    const snap = await getDocs(collection(db, COLLECTIONS.USER_AVATARS));
+    const snap = await getDocs(query(collection(db, COLLECTIONS.USER_AVATARS), limit(500)));
     const items: UserAvatarRecord[] = [];
     snap.forEach((docSnap) => items.push(docSnap.data() as UserAvatarRecord));
     return items;
@@ -535,7 +535,7 @@ export function subscribeTeachingReports(
 ) {
   const colPath = COLLECTIONS.TEACHING_REPORTS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(500)),
     (snapshot) => {
       const items: TeachingReportRecord[] = [];
       snapshot.forEach((docSnap) => {
@@ -558,7 +558,7 @@ export function subscribeForm3Supervisions(
 ) {
   const colPath = COLLECTIONS.FORM3_SUPERVISIONS;
   return onSnapshot(
-    collection(db, colPath),
+    query(collection(db, colPath), limit(500)),
     (snapshot) => {
       const items: Form3SupervisionRecord[] = [];
       snapshot.forEach((docSnap) => {

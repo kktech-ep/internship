@@ -24,6 +24,7 @@ import {
   writeSubmissionToLocalCache,
   markSubmissionSyncedToCloud,
 } from '../utils/submissionUtils';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
 interface WeeklyLogReportViewProps {
   student: Student;
@@ -56,10 +57,13 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDeleteWeek, setConfirmDeleteWeek] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevContextKeyRef = useRef<string>('');
+  const hasUserEditedRef = useRef<boolean>(false);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
   const existingSubmission = submissions.find(s => s.weekNumber === selectedWeek);
@@ -70,8 +74,21 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
     }
   }, [initialWeek]);
 
-  // When selectedWeek changes, load submission or load default template for that week
+  // Load submission when student or selectedWeek changes (never wipe saveSuccessMessage or active edits right after saving)
   useEffect(() => {
+    const contextKey = `${student.id}::${selectedWeek}`;
+    const contextChanged = prevContextKeyRef.current !== contextKey;
+    prevContextKeyRef.current = contextKey;
+
+    if (contextChanged) {
+      hasUserEditedRef.current = false;
+      setSaveSuccessMessage(null);
+      setErrorMessage(null);
+      setConfirmDeleteWeek(false);
+    } else if (hasUserEditedRef.current) {
+      return;
+    }
+
     if (existingSubmission) {
       setTaskTitle(existingSubmission.taskTitle);
       setDailyLogs(existingSubmission.dailyLogs || getDefaultDailyLogsForWeek(selectedWeek));
@@ -79,7 +96,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
       if (existingSubmission.safetyChecklist) {
         setSafetyChecklist(existingSubmission.safetyChecklist);
       }
-    } else {
+    } else if (contextChanged) {
       setTaskTitle(currentWeekMeta.defaultTask);
       setDailyLogs(getDefaultDailyLogsForWeek(selectedWeek));
       setPhotos(currentWeekMeta.samplePhotos);
@@ -90,9 +107,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
         lotoProcedure: true,
       });
     }
-    setSaveSuccessMessage(null);
-    setErrorMessage(null);
-  }, [selectedWeek, existingSubmission?.id, existingSubmission?.submittedAt]);
+  }, [student.id, selectedWeek, existingSubmission?.id, existingSubmission?.submittedAt]);
 
   // Handle file uploads and convert to compressed data URLs
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,14 +163,17 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
   };
 
   const handleRemovePhoto = (photoId: string) => {
+    hasUserEditedRef.current = true;
     setPhotos(prev => prev.filter(p => p.id !== photoId));
   };
 
   const handleUpdatePhoto = (photoId: string, field: 'title' | 'caption', value: string) => {
+    hasUserEditedRef.current = true;
     setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, [field]: value } : p));
   };
 
   const handleDailyLogChange = (idx: number, field: keyof DailyLog, value: any) => {
+    hasUserEditedRef.current = true;
     setDailyLogs(prev => {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], [field]: value };
@@ -167,6 +185,7 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
 
   const handleSaveToFirestore = async (e: React.FormEvent) => {
     e.preventDefault();
+    hasUserEditedRef.current = true;
     setIsSaving(true);
     setSaveSuccessMessage(null);
     setErrorMessage(null);
@@ -219,26 +238,32 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
     } catch (err) {
       console.error('Error saving submission to Firestore:', err);
       setIsSaving(false);
-      setErrorMessage('ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ในขณะนี้: ' + (err instanceof Error ? err.message : String(err)));
+      setErrorMessage(
+        formatThaiErrorMessage(
+          err,
+          'ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง'
+        )
+      );
     }
   };
 
   const handleAdminDeleteThisWeek = async () => {
     if (!existingSubmission || !onDeleteSubmission) return;
-    if (!window.confirm(`[ผู้ดูแลระบบ - Admin] คุณต้องการลบบันทึกปฏิบัติงาน สัปดาห์ที่ ${selectedWeek} ของ ${student.name} (${student.studentCode}) ใช่หรือไม่?\n\nข้อมูลและภาพถ่ายของสัปดาห์นี้จะถูกลบออกจากฐานข้อมูล Cloud Firestore ทันที`)) {
-      return;
-    }
     setIsDeleting(true);
+    setConfirmDeleteWeek(false);
     setErrorMessage(null);
     try {
       await onDeleteSubmission(existingSubmission.id);
       setSaveSuccessMessage(`ลบบันทึกปฏิบัติงานสัปดาห์ที่ ${selectedWeek} ของ ${student.name} เรียบร้อยแล้ว`);
       // Reset form to default blank week template
+      hasUserEditedRef.current = false;
       setTaskTitle(currentWeekMeta.title);
       setDailyLogs(getDefaultDailyLogsForWeek(selectedWeek));
       setPhotos([]);
-    } catch (err: any) {
-      setErrorMessage('เกิดข้อผิดพลาดในการลบบันทึก: ' + (err?.message || String(err)));
+    } catch (err) {
+      setErrorMessage(
+        formatThaiErrorMessage(err, 'เกิดข้อผิดพลาดในการลบบันทึก กรุณาลองใหม่อีกครั้ง')
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -269,16 +294,37 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
 
           <div className="flex items-center gap-2 flex-wrap">
             {currentUser?.role === 'admin' && existingSubmission && (
-              <button
-                type="button"
-                onClick={handleAdminDeleteThisWeek}
-                disabled={isDeleting}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-semibold text-sm transition cursor-pointer disabled:opacity-50"
-                title="ลบบันทึกปฏิบัติงานของสัปดาห์นี้ออกจาก Firestore (สิทธิ์ Admin)"
-              >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-                <span>{isDeleting ? 'กำลังลบ...' : `ลบบันทึกสัปดาห์ที่ ${selectedWeek} (Admin)`}</span>
-              </button>
+              confirmDeleteWeek ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs sm:text-sm font-semibold">
+                  <span>ยืนยันลบบันทึกสัปดาห์ที่ {selectedWeek}?</span>
+                  <button
+                    type="button"
+                    onClick={handleAdminDeleteThisWeek}
+                    disabled={isDeleting}
+                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeleting ? 'กำลังลบ...' : 'ยืนยันลบ'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteWeek(false)}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteWeek(true)}
+                  disabled={isDeleting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-semibold text-sm transition cursor-pointer disabled:opacity-50"
+                  title="ลบบันทึกปฏิบัติงานของสัปดาห์นี้ออกจาก Firestore (สิทธิ์ Admin)"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>{`ลบบันทึกสัปดาห์ที่ ${selectedWeek} (Admin)`}</span>
+                </button>
+              )
             )}
             <button
               onClick={() => onNavigateA4(selectedWeek)}

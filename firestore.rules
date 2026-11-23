@@ -1,82 +1,151 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidStudent(data) {
+      return data is map
+        && (!('id' in data) || (data.id is string && data.id.size() <= 128))
+        && (!('studentCode' in data) || (data.studentCode is string && data.studentCode.size() <= 64))
+        && (!('name' in data) || (data.name is string && data.name.size() <= 200))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 64))
+        && (!('accumulatedHours' in data) || (data.accumulatedHours is number && data.accumulatedHours >= 0 && data.accumulatedHours <= 5000))
+        && (!('actualWeeks' in data) || (data.actualWeeks is number && data.actualWeeks >= 0 && data.actualWeeks <= 30));
+    }
+
+    function isValidCompany(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'name'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 300
+        && (!('studentsCount' in data) || (data.studentsCount is number && data.studentsCount >= 0 && data.studentsCount <= 500));
+    }
+
+    function isValidSubmission(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'studentId', 'weekNumber', 'status'])
+        && data.id is string && data.id.size() <= 128
+        && data.studentId is string && data.studentId.size() <= 128
+        && data.weekNumber is number && data.weekNumber >= 1 && data.weekNumber <= 18
+        && data.status in ['pending', 'graded', 'draft']
+        && (!('totalHours' in data) || (data.totalHours is number && data.totalHours >= 0 && data.totalHours <= 168))
+        && (!('teacherScore' in data) || (data.teacherScore is number && data.teacherScore >= 0 && data.teacherScore <= 20))
+        && (!('dailyLogs' in data) || (data.dailyLogs is list && data.dailyLogs.size() <= 14))
+        && (!('photos' in data) || (data.photos is list && data.photos.size() <= 20));
+    }
+
+    function isValidForm3(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'studentId', 'companyName', 'teacherName'])
+        && data.id is string && data.id.size() <= 128
+        && data.studentId is string && data.studentId.size() <= 128
+        && data.companyName is string && data.companyName.size() <= 300
+        && data.teacherName is string && data.teacherName.size() <= 500
+        && (!('studentCode' in data) || (data.studentCode is string && data.studentCode.size() <= 1000))
+        && (!('studentName' in data) || (data.studentName is string && data.studentName.size() <= 2000))
+        && (!('studentRoom' in data) || (data.studentRoom is string && data.studentRoom.size() <= 500))
+        && (!('studentCount' in data) || (data.studentCount is number && data.studentCount >= 0 && data.studentCount <= 200))
+        && (!('studentIds' in data) || (data.studentIds is list && data.studentIds.size() <= 100 && (data.studentIds.size() == 0 || data.studentIds[0] is string)))
+        && (!('studentCodes' in data) || (data.studentCodes is list && data.studentCodes.size() <= 100 && (data.studentCodes.size() == 0 || data.studentCodes[0] is string)))
+        && (!('studentNames' in data) || (data.studentNames is list && data.studentNames.size() <= 100 && (data.studentNames.size() == 0 || data.studentNames[0] is string)))
+        && (!('score' in data) || (data.score is number && data.score >= 0 && data.score <= 20))
+        && (!('photos' in data) || (data.photos is list && data.photos.size() <= 10));
+    }
+
     function isValidTeachingReport(data) {
-      return data.keys().hasAll(['id', 'teacherKey', 'reporterName', 'weekNumber', 'updatedAt'])
-        && data.keys().hasOnly([
-          'id', 'teacherKey', 'reporterName', 'position', 'specialDuty',
-          'reportDate', 'weekNumber', 'courses', 'learningOutcome',
-          'weekPhotos', 'hasManualPhotoEdits', 'photoCount', 'updatedAt'
-        ])
-        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
-        && data.teacherKey is string && data.teacherKey.size() > 0 && data.teacherKey.size() <= 150
+      return data is map
+        && data.keys().hasAll(['id', 'reporterName', 'weekNumber', 'courses'])
+        && data.id is string && data.id.size() <= 128
         && data.reporterName is string && data.reporterName.size() > 0 && data.reporterName.size() <= 150
-        && data.weekNumber is int && data.weekNumber >= 1 && data.weekNumber <= 18
-        && data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 100
-        && (!('position' in data) || (data.position is string && data.position.size() <= 150))
-        && (!('specialDuty' in data) || (data.specialDuty is string && data.specialDuty.size() <= 200))
-        && (!('reportDate' in data) || (data.reportDate is string && data.reportDate.size() <= 50))
-        && (!('learningOutcome' in data) || (data.learningOutcome is string && data.learningOutcome.size() <= 2000))
-        && (!('courses' in data) || (data.courses is list && data.courses.size() <= 30))
-        && (!('weekPhotos' in data) || (data.weekPhotos is list && data.weekPhotos.size() <= 6))
-        && (!('hasManualPhotoEdits' in data) || data.hasManualPhotoEdits is bool)
-        && (!('photoCount' in data) || (data.photoCount is int && data.photoCount >= 0 && data.photoCount <= 10));
+        && data.weekNumber is number && data.weekNumber >= 1 && data.weekNumber <= 18
+        && data.courses is list && data.courses.size() <= 30
+        && (!('weekPhotos' in data) || (data.weekPhotos is list && data.weekPhotos.size() <= 10));
+    }
+
+    function isValidUserAvatar(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'email', 'avatarUrl'])
+        && data.id is string && data.id.size() <= 128
+        && data.email is string && data.email.size() <= 200
+        && data.avatarUrl is string && data.avatarUrl.size() <= 900000;
     }
 
     match /students/{studentId} {
-      allow read, write, delete: if true;
-    }
-
-    match /teachers/{teacherId} {
-      allow read, write, delete: if true;
-    }
-
-    match /users/{userId} {
-      allow read, write, delete: if true;
-    }
-
-    match /login_sheet/{userId} {
-      allow read, write, delete: if true;
+      allow list: if true;
+      allow get: if isValidId(studentId);
+      allow create, update: if isValidId(studentId) && isValidStudent(request.resource.data);
+      allow delete: if isValidId(studentId);
     }
 
     match /companies/{companyId} {
-      allow read, write, delete: if true;
+      allow list: if true;
+      allow get: if isValidId(companyId);
+      allow create, update: if isValidId(companyId) && isValidCompany(request.resource.data);
+      allow delete: if isValidId(companyId);
     }
 
     match /submissions/{submissionId} {
-      allow read, write, delete: if true;
-    }
-
-    match /announcements/{announcementId} {
-      allow read, write, delete: if true;
+      allow list: if true;
+      allow get: if isValidId(submissionId);
+      allow create, update: if isValidId(submissionId) && isValidSubmission(request.resource.data);
+      allow delete: if isValidId(submissionId);
     }
 
     match /form3_supervisions/{recordId} {
-      allow read, write, delete: if true;
-    }
-
-    match /courses/{courseId} {
-      allow read, write, delete: if true;
+      allow list: if true;
+      allow get: if isValidId(recordId);
+      allow create, update: if isValidId(recordId) && isValidForm3(request.resource.data);
+      allow delete: if isValidId(recordId);
     }
 
     match /teaching_reports/{reportId} {
-      allow read: if true;
+      allow list: if true;
+      allow get: if isValidId(reportId);
       allow create, update: if isValidId(reportId) && isValidTeachingReport(request.resource.data);
       allow delete: if isValidId(reportId);
     }
 
     match /user_avatars/{avatarId} {
-      allow read, write, delete: if isValidId(avatarId);
+      allow list: if true;
+      allow get: if isValidId(avatarId);
+      allow create, update: if isValidId(avatarId) && isValidUserAvatar(request.resource.data);
+      allow delete: if isValidId(avatarId);
     }
 
-    // Default deny for unlisted collections
-    match /{document=**} {
-      allow read, write: if false;
+    match /announcements/{announcementId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(announcementId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /courses/{courseId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(courseId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /teachers/{teacherId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(teacherId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /users/{userId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(userId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /login_sheet/{rowId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(rowId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /test/{docId} {
+      allow get: if docId == 'connection';
     }
   }
 }

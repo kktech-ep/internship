@@ -2,281 +2,125 @@
   "entities": {
     "Student": {
       "title": "Student",
-      "description": "Vocational student intern profile and training status for KKTECH",
+      "description": "Dual vocational internship student record synced from Google Sheets and Form 1.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
-        "studentCode": { "type": "string", "maxLength": 20 },
-        "name": { "type": "string", "maxLength": 150 },
-        "initials": { "type": "string", "maxLength": 10 },
-        "level": { "type": "string", "maxLength": 50 },
-        "department": { "type": "string", "maxLength": 150 },
-        "room": { "type": "string", "maxLength": 20 },
-        "email": { "type": "string", "maxLength": 150 },
-        "avatarUrl": { "type": "string", "maxLength": 500 },
-        "companyId": { "type": "string", "maxLength": 128 },
-        "companyName": { "type": "string", "maxLength": 200 },
-        "supervisorTeacher": { "type": "string", "maxLength": 150 },
+        "studentCode": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 200 },
+        "level": { "type": "string", "maxLength": 64 },
+        "department": { "type": "string", "maxLength": 200 },
+        "room": { "type": "string", "maxLength": 64 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "companyName": { "type": "string", "maxLength": 300 },
+        "supervisorTeacher": { "type": "string", "maxLength": 200 },
         "accumulatedHours": { "type": "number" },
         "requiredHours": { "type": "number" },
         "actualWeeks": { "type": "number" },
-        "totalWeeks": { "type": "number" },
-        "currentWeek": { "type": "number" },
-        "updatedAt": { "type": "string" }
+        "totalWeeks": { "type": "number" }
       },
-      "required": ["id", "studentCode", "name", "level", "department", "companyId"]
+      "required": ["id", "studentCode", "name"]
     },
     "Company": {
       "title": "Company",
-      "description": "Internship workplace and enterprise host for electrical students",
+      "description": "Workplace establishment hosting internship students.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
-        "name": { "type": "string", "maxLength": 200 },
-        "shortName": { "type": "string", "maxLength": 100 },
-        "address": { "type": "string", "maxLength": 500 },
-        "zone": { "type": "string", "maxLength": 100 },
-        "distanceKm": { "type": "number" },
-        "sector": { "type": "string", "maxLength": 50 },
-        "sectorLabel": { "type": "string", "maxLength": 100 },
-        "contactPerson": { "type": "string", "maxLength": 150 },
-        "phone": { "type": "string", "maxLength": 50 },
-        "lat": { "type": "number" },
-        "lng": { "type": "number" },
+        "name": { "type": "string", "maxLength": 300 },
         "studentsCount": { "type": "number" },
-        "status": { "type": "string", "maxLength": 50 },
-        "statusText": { "type": "string", "maxLength": 100 },
-        "visitSchedule": { "type": "string", "maxLength": 100 },
-        "assignedTeacher": { "type": "string", "maxLength": 150 },
-        "jobScope": { "type": "string", "maxLength": 500 },
-        "lastScore": { "type": "number" }
+        "status": { "type": "string", "enum": ["completed", "scheduled_today", "scheduled_soon", "pending"] }
       },
-      "required": ["id", "name", "sector", "phone"]
+      "required": ["id", "name"]
     },
     "WeeklySubmission": {
       "title": "WeeklySubmission",
-      "description": "Weekly logbook record submitted by student intern and graded by teachers",
+      "description": "Student weekly internship logbook submission (weeks 1-18).",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
         "studentId": { "type": "string", "maxLength": 128 },
         "weekNumber": { "type": "number" },
-        "dateRange": { "type": "string", "maxLength": 100 },
-        "submittedAt": { "type": "string", "maxLength": 100 },
-        "status": { "type": "string", "maxLength": 30 },
-        "taskTitle": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["pending", "graded", "draft"] },
+        "taskTitle": { "type": "string", "maxLength": 500 },
         "totalHours": { "type": "number" },
-        "mentorRating": { "type": "number" },
-        "mentorComment": { "type": "string", "maxLength": 500 },
-        "mentorName": { "type": "string", "maxLength": 150 },
-        "mentorPosition": { "type": "string", "maxLength": 150 },
-        "teacherScore": { "type": "number" },
-        "teacherGrade": { "type": "string", "maxLength": 10 },
-        "teacherComment": { "type": "string", "maxLength": 500 },
-        "teacherName": { "type": "string", "maxLength": 150 },
-        "studentSignature": { "type": "string", "maxLength": 150 },
-        "mentorSignature": { "type": "string", "maxLength": 150 },
-        "teacherSignature": { "type": "string", "maxLength": 150 },
-        "verifiedHash": { "type": "string", "maxLength": 100 }
+        "teacherScore": { "type": "number" }
       },
-      "required": ["id", "studentId", "weekNumber", "status", "taskTitle"]
+      "required": ["id", "studentId", "weekNumber"]
     },
-    "Announcement": {
-      "title": "Announcement",
-      "description": "Broadcast notifications for students and teachers",
+    "Form3SupervisionRecord": {
+      "title": "Form3SupervisionRecord",
+      "description": "Supervisor teacher workplace visit & evaluation record (Form 3, 1 record per workplace visit).",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
-        "title": { "type": "string", "maxLength": 200 },
-        "content": { "type": "string", "maxLength": 1000 },
-        "date": { "type": "string", "maxLength": 50 },
-        "type": { "type": "string", "maxLength": 50 },
-        "target": { "type": "string", "maxLength": 100 }
-      },
-      "required": ["id", "title", "content", "date", "type"]
-    },
-    "LoginSheetRow": {
-      "title": "LoginSheetRow",
-      "description": "Mirrored row data from Google Sheet 1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28 tab login",
-      "type": "object",
-      "properties": {
-        "user": { "type": "string", "maxLength": 100 },
-        "pass": { "type": "string", "maxLength": 100 },
-        "name": { "type": "string", "maxLength": 150 },
-        "status": { "type": "string", "maxLength": 50 },
-        "phoneStudent": { "type": "string", "maxLength": 50 },
-        "Company": { "type": "string", "maxLength": 200 },
-        "CompanyID": { "type": "string", "maxLength": 100 },
-        "CompanyPhone": { "type": "string", "maxLength": 50 },
-        "room": { "type": "string", "maxLength": 50 },
-        "level": { "type": "string", "maxLength": 50 },
-        "department": { "type": "string", "maxLength": 150 },
-        "leader": { "type": "string", "maxLength": 150 },
-        "leaderPhone": { "type": "string", "maxLength": 50 },
-        "GPS": { "type": "string", "maxLength": 100 },
-        "delial": { "type": "string", "maxLength": 500 },
-        "timestamp": { "type": "string", "maxLength": 100 },
-        "lastSync": { "type": "string", "maxLength": 100 }
-      },
-      "required": ["user", "name"]
-    },
-    "Teacher": {
-      "title": "Teacher",
-      "description": "Supervisor and course instructor profile from Google Sheets login and data tabs",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "name": { "type": "string", "maxLength": 150 },
-        "user": { "type": "string", "maxLength": 100 },
-        "email": { "type": "string", "maxLength": 150 },
-        "status": { "type": "string", "maxLength": 80 },
-        "role": { "type": "string", "maxLength": 30 },
-        "phone": { "type": "string", "maxLength": 50 },
-        "department": { "type": "string", "maxLength": 200 },
-        "room": { "type": "string", "maxLength": 50 },
-        "updatedAt": { "type": "string" }
-      },
-      "required": ["id", "name", "email", "role"]
-    },
-    "UserAccount": {
-      "title": "UserAccount",
-      "description": "Unified login account record synchronized from Google Sheet login tab",
-      "type": "object",
-      "properties": {
-        "email": { "type": "string", "maxLength": 150 },
-        "name": { "type": "string", "maxLength": 150 },
-        "role": { "type": "string", "maxLength": 30 },
-        "studentId": { "type": "string", "maxLength": 50 },
-        "status": { "type": "string", "maxLength": 80 },
-        "room": { "type": "string", "maxLength": 50 },
-        "level": { "type": "string", "maxLength": 50 },
-        "department": { "type": "string", "maxLength": 200 },
-        "phone": { "type": "string", "maxLength": 50 },
-        "companyName": { "type": "string", "maxLength": 200 },
-        "updatedAt": { "type": "string" }
-      },
-      "required": ["email", "name", "role"]
-    },
-    "Form3Supervision": {
-      "title": "Form3Supervision",
-      "description": "On-site supervision evaluation and evidence photos (Form_3)",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "timestamp": { "type": "string", "maxLength": 100 },
-        "visitDate": { "type": "string", "maxLength": 100 },
         "studentId": { "type": "string", "maxLength": 128 },
-        "studentCode": { "type": "string", "maxLength": 30 },
-        "studentName": { "type": "string", "maxLength": 150 },
-        "studentRoom": { "type": "string", "maxLength": 50 },
-        "companyName": { "type": "string", "maxLength": 200 },
-        "teacherName": { "type": "string", "maxLength": 200 },
-        "mentorName": { "type": "string", "maxLength": 150 },
-        "safetyPassed": { "type": "boolean" },
+        "studentIds": { "type": "array", "description": "All covered student IDs in this workplace supervision visit" },
+        "studentCode": { "type": "string", "maxLength": 1000 },
+        "studentCodes": { "type": "array", "description": "All covered student codes" },
+        "studentName": { "type": "string", "maxLength": 2000 },
+        "studentNames": { "type": "array", "description": "All covered student names" },
+        "studentRoom": { "type": "string", "maxLength": 500 },
+        "studentCount": { "type": "number" },
+        "companyName": { "type": "string", "maxLength": 300 },
+        "teacherName": { "type": "string", "maxLength": 500 },
         "score": { "type": "number" },
-        "grade": { "type": "string", "maxLength": 50 },
-        "teacherComment": { "type": "string", "maxLength": 1000 },
-        "status": { "type": "string", "maxLength": 50 }
+        "grade": { "type": "string", "maxLength": 64 }
       },
-      "required": ["id", "studentCode", "studentName", "companyName", "score"]
+      "required": ["id", "studentId", "companyName", "teacherName"]
     },
-    "Course": {
-      "title": "Course",
-      "description": "Subject-room-teacher mapping synchronized from Google Sheet data tab",
-      "type": "object",
-      "properties": {
-        "room": { "type": "string", "maxLength": 50 },
-        "subjectCode": { "type": "string", "maxLength": 50 },
-        "subjectName": { "type": "string", "maxLength": 200 },
-        "teacherName": { "type": "string", "maxLength": 150 },
-        "nites1": { "type": "string", "maxLength": 100 },
-        "nites2": { "type": "string", "maxLength": 100 },
-        "nites3": { "type": "string", "maxLength": 100 },
-        "lastSyncAt": { "type": "string" }
-      },
-      "required": ["room", "subjectCode", "subjectName", "teacherName"]
-    },
-    "TeachingReport": {
-      "title": "TeachingReport",
-      "description": "Weekly workplace teaching report, assigned courses, and photo gallery per teacher and week (1-18)",
+    "TeachingReportRecord": {
+      "title": "TeachingReportRecord",
+      "description": "Weekly workplace teaching report submitted by teachers.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
         "teacherKey": { "type": "string", "maxLength": 150 },
         "reporterName": { "type": "string", "maxLength": 150 },
-        "position": { "type": "string", "maxLength": 150 },
-        "specialDuty": { "type": "string", "maxLength": 200 },
-        "reportDate": { "type": "string", "maxLength": 50 },
         "weekNumber": { "type": "number" },
-        "courses": { "type": "array" },
-        "learningOutcome": { "type": "string", "maxLength": 2000 },
-        "weekPhotos": { "type": "array" },
-        "hasManualPhotoEdits": { "type": "boolean" },
-        "photoCount": { "type": "number" },
-        "updatedAt": { "type": "string", "maxLength": 100 }
+        "learningOutcome": { "type": "string", "maxLength": 2000 }
       },
-      "required": ["id", "teacherKey", "reporterName", "weekNumber", "updatedAt"]
+      "required": ["id", "reporterName", "weekNumber"]
     },
-    "UserAvatar": {
-      "title": "UserAvatar",
-      "description": "Dedicated user profile photo record for supervisors, admins, and student interns",
+    "UserAvatarRecord": {
+      "title": "UserAvatarRecord",
+      "description": "Profile avatar mapping for students, teachers, and admins.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
-        "email": { "type": "string", "maxLength": 150 },
-        "name": { "type": "string", "maxLength": 150 },
-        "role": { "type": "string", "maxLength": 30 },
-        "studentCode": { "type": "string", "maxLength": 30 },
-        "avatarUrl": { "type": "string", "maxLength": 300000 },
-        "updatedAt": { "type": "string", "maxLength": 100 }
+        "email": { "type": "string", "maxLength": 200 },
+        "name": { "type": "string", "maxLength": 200 },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin"] },
+        "avatarUrl": { "type": "string", "maxLength": 900000 }
       },
-      "required": ["id", "email", "name", "role", "avatarUrl", "updatedAt"]
+      "required": ["id", "email", "avatarUrl"]
     }
   },
   "firestore": {
     "/students/{studentId}": {
-      "schema": "Student",
-      "description": "Individual student intern profile and training records"
-    },
-    "/teachers/{teacherId}": {
-      "schema": "Teacher",
-      "description": "Supervisor and course instructor records"
-    },
-    "/users/{userId}": {
-      "schema": "UserAccount",
-      "description": "Unified login account directory synced from Google Sheet login tab"
-    },
-    "/user_avatars/{avatarId}": {
-      "schema": "UserAvatar",
-      "description": "Persistent user avatar image directory for teachers and students displayed on login"
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Student internship profiles"
     },
     "/companies/{companyId}": {
-      "schema": "Company",
-      "description": "Host enterprise training location records and supervision schedule"
+      "schema": { "$ref": "#/entities/Company" },
+      "description": "Unified company directory"
     },
     "/submissions/{submissionId}": {
-      "schema": "WeeklySubmission",
-      "description": "Weekly logbook entries, hours, and evaluation reports"
-    },
-    "/announcements/{announcementId}": {
-      "schema": "Announcement",
-      "description": "Official announcements for academic term 2/2569"
+      "schema": { "$ref": "#/entities/WeeklySubmission" },
+      "description": "Weekly internship logs"
     },
     "/form3_supervisions/{recordId}": {
-      "schema": "Form3Supervision",
-      "description": "Teacher on-site supervision reports, scores, and photos (Form_3)"
-    },
-    "/courses/{courseId}": {
-      "schema": "Course",
-      "description": "Course-room-supervisor mapping synced from Google Sheet data tab"
-    },
-    "/login_sheet/{userId}": {
-      "schema": "LoginSheetRow",
-      "description": "Mirrored rows from Google Spreadsheet login tab"
+      "schema": { "$ref": "#/entities/Form3SupervisionRecord" },
+      "description": "Supervisor evaluation records"
     },
     "/teaching_reports/{reportId}": {
-      "schema": "TeachingReport",
-      "description": "Teacher weekly workplace teaching reports and custom course/photo selections"
+      "schema": { "$ref": "#/entities/TeachingReportRecord" },
+      "description": "Teacher weekly workplace teaching reports"
+    },
+    "/user_avatars/{avatarId}": {
+      "schema": { "$ref": "#/entities/UserAvatarRecord" },
+      "description": "Compressed profile photos"
     }
   }
 }

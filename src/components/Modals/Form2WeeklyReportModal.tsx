@@ -15,6 +15,7 @@ import {
 import { Student, WeeklySubmission, DailyLog, PhotoEvidence } from '../../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../../data/weeksData';
 import { readSubmissionFromLocalCache } from '../../utils/submissionUtils';
+import { formatThaiErrorMessage } from '../../utils/thaiErrorUtils';
 
 interface Form2WeeklyReportModalProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wasOpenRef = useRef<boolean>(false);
+  const prevStudentIdRef = useRef<string>(student.id);
 
   const currentWeekMeta = WEEKS_1_TO_18.find(w => w.weekNumber === selectedWeek) || WEEKS_1_TO_18[7];
 
@@ -76,15 +79,21 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
     }
   };
 
-  // Update fields when selectedWeek or modal open state changes
+  // Initialize fields only when modal transitions open or active student changes (never wipe active edits on background Firestore stream ticks)
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    const studentChangedWhileOpen = isOpen && prevStudentIdRef.current !== student.id;
+    wasOpenRef.current = isOpen;
+    prevStudentIdRef.current = student.id;
+
+    if (justOpened || studentChangedWhileOpen) {
       const targetW = currentWeek || 8;
       setSelectedWeek(targetW);
       setIsSuccess(false);
+      setSubmitError(null);
       loadWeekState(targetW);
     }
-  }, [isOpen, currentWeek, student.id, submissions]);
+  }, [isOpen, currentWeek, student.id]);
 
   // When user switches week dropdown inside modal
   const handleSelectWeek = (weekNum: number) => {
@@ -185,7 +194,9 @@ export const Form2WeeklyReportModal: React.FC<Form2WeeklyReportModalProps> = ({
         }, 1400);
       }
     } catch (err) {
-      setSubmitError('บันทึกลงฐานข้อมูลออนไลน์ไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)));
+      setSubmitError(
+        formatThaiErrorMessage(err, 'ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง')
+      );
     } finally {
       setIsSubmitting(false);
     }

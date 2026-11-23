@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   MapPin, 
@@ -18,6 +18,7 @@ import {
   findStudentInLoginSheet, 
   LoginSheetFullRow 
 } from '../../services/sheetAuthService';
+import { formatThaiErrorMessage } from '../../utils/thaiErrorUtils';
 
 interface Form1CompanyModalProps {
   isOpen: boolean;
@@ -55,9 +56,17 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [showMapPreview, setShowMapPreview] = useState(false);
 
-  // Load and bind student's data directly from login sheet
+  const wasOpenRef = useRef<boolean>(false);
+  const prevStudentIdRef = useRef<string>(student?.id || '');
+
+  // Load and bind student's data directly from login sheet only when modal opens or active student changes
   useEffect(() => {
-    if (isOpen && student) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    const studentChanged = isOpen && prevStudentIdRef.current !== (student?.id || '');
+    wasOpenRef.current = isOpen;
+    prevStudentIdRef.current = student?.id || '';
+
+    if ((justOpened || studentChanged) && student) {
       setSubmitError(null);
       setIsSaved(false);
       setIsLoadingSheet(true);
@@ -144,7 +153,12 @@ export const Form1CompanyModal: React.FC<Form1CompanyModalProps> = ({
       setIsSaved(true);
     } catch (err) {
       console.error('Form1 submit failed:', err);
-      setSubmitError('เกิดข้อผิดพลาดในการบันทึกข้อมูลลงฐานข้อมูลออนไลน์ กรุณาลองใหม่อีกครั้ง');
+      setSubmitError(
+        formatThaiErrorMessage(
+          err,
+          'เกิดข้อผิดพลาดในการบันทึกข้อมูลลงฐานข้อมูลออนไลน์ กรุณาลองใหม่อีกครั้ง'
+        )
+      );
       setIsSubmitting(false);
     }
   };

@@ -1,610 +1,278 @@
-import { DailyLog, PhotoEvidence, WeeklySubmission } from '../types';
+import { DailyLog, PhotoEvidence } from '../types';
 
 export interface WeekMeta {
   weekNumber: number;
-  dateRange: string;
   title: string;
+  dateRange: string;
+  startDateIso: string;
+  endDateIso: string;
   defaultTask: string;
   tools: string;
   samplePhotos: PhotoEvidence[];
 }
 
-export const INTERNSHIP_START_DATE = '19 ต.ค. 2569';
-export const ACADEMIC_TERM = 'ภาคเรียนที่ 2 ปีการศึกษา 2569';
+export interface WeekDayInfo {
+  day: string;
+  dateStr: string;
+  fullDate: string;
+  isoDate: string;
+}
 
-export const WEEKS_1_TO_18: WeekMeta[] = [
-  {
-    weekNumber: 1,
-    dateRange: '19 ต.ค. 2569 - 23 ต.ค. 2569',
-    title: 'ปฐมนิเทศความปลอดภัย & กฎระเบียบโรงงาน',
-    defaultTask: 'ปฐมนิเทศความปลอดภัยโรงงาน เรียนรู้ขั้นตอน Lockout/Tagout (LOTO) และการใช้อุปกรณ์ PPE',
-    tools: 'หมวกนิรภัย, แว่นตานิรภัย, รองเท้าเซฟตี้, ชุดกุญแจ LOTO',
-    samplePhotos: [
-      {
-        id: 'p-w1-1',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: การปฐมนิเทศความปลอดภัย',
-        caption: 'รับฟังการอบรมความปลอดภัยทางวิศวกรรมร่วมกับหัวหน้าฝ่ายความปลอดภัย'
-      },
-      {
-        id: 'p-w1-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจเช็กอุปกรณ์ป้องกันภัย PPE',
-        caption: 'ตรวจสอบความพร้อมของหมวก รองเท้าเซฟตี้ และถุงมือกันกระแสไฟฟ้า'
-      },
-      {
-        id: 'p-w1-3',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: สาธิตขั้นตอน LOTO',
-        caption: 'ฝึกการล็อกและแขวนป้ายเตือนระบบไฟฟ้ากำลัง'
-      }
-    ]
-  },
-  {
-    weekNumber: 2,
-    dateRange: '26 ต.ค. 2569 - 30 ต.ค. 2569',
-    title: 'งานตรวจเช็กเครื่องมือวัดทางไฟฟ้า',
-    defaultTask: 'ตรวจสอบและสอบเทียบเครื่องมือวัดไฟฟ้า มัลติมิเตอร์ แคลมป์มิเตอร์ และเครื่องวัดความเป็นฉนวน',
-    tools: 'Digital Multimeter, Clamp Meter, Insulation Tester',
-    samplePhotos: [
-      {
-        id: 'p-w2-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตรวจสอบความถูกต้องเครื่องวัด',
-        caption: 'เทียบค่าแรงดันไฟฟ้ากับแหล่งจ่ายอ้างอิงมาตรฐาน'
-      },
-      {
-        id: 'p-w2-2',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ใช้แคลมป์มิเตอร์วัดกระแส',
-        caption: 'วัดกระแสโหลดของมอเตอร์ปั๊มน้ำในกระบวนการผลิต'
-      },
-      {
-        id: 'p-w2-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: บันทึกผลการสอบเทียบ',
-        caption: 'ลงบันทึกในแบบฟอร์มตรวจสอบเครื่องมือประจำเดือน'
-      }
-    ]
-  },
-  {
-    weekNumber: 3,
-    dateRange: '2 พ.ย. 2569 - 6 พ.ย. 2569',
-    title: 'งานเดินท่อร้อยสายไฟฟ้า EMT และดัดท่อ',
-    defaultTask: 'ดัดท่อร้อยสายไฟฟ้า EMT ขนาด 1/2" และ 3/4" ด้วย Hickey Bender ร้อยสายไฟ THW สำหรับแสงสว่าง',
-    tools: 'Hickey Bender, Fish Tape, คีมตัดสาย, ระดับน้ำ',
-    samplePhotos: [
-      {
-        id: 'p-w3-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ดัดท่อ EMT โค้ง 90 องศา',
-        caption: 'คำนวณและดัดท่อตามแบบแปลนระบบไฟฟ้าโรงงาน'
-      },
-      {
-        id: 'p-w3-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ยึดแคลมป์ท่อกับผนังคอนกรีต',
-        caption: 'ติดตั้งแคลมป์ประกับจับท่อตามมาตรฐานระยะยึดไม่เกิน 1 เมตร'
-      },
-      {
-        id: 'p-w3-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ดึงสาย THW เข้าท่อ',
-        caption: 'ใช้ฟิชเทปร้อยสายไฟ 3 เส้นเข้าท่ออย่างเรียบร้อย'
-      }
-    ]
-  },
-  {
-    weekNumber: 4,
-    dateRange: '9 พ.ย. 2569 - 13 พ.ย. 2569',
-    title: 'งานติดตั้งโคมไฟ LED High Bay & วงจรสวิตช์',
-    defaultTask: 'ติดตั้งโคมไฟ LED High Bay 150W บนโครงหลังคาโรงงาน พร้อมเดินสายต่อวงจรสวิตช์ควบคุม',
-    tools: 'สว่านไร้สาย, บันไดทรง A, ไขควงลองไฟ, ไขควงหุ้มฉนวน',
-    samplePhotos: [
-      {
-        id: 'p-w4-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ประกอบชุดแขวนโคมไฟ',
-        caption: 'ยึดสายสลิงและขั้วต่อกันน้ำ IP65'
-      },
-      {
-        id: 'p-w4-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ต่อสายเข้ากล่อง Junction Box',
-        caption: 'ต่อสายไฟด้วย Wire Nut และพันเทปละลายกันความชื้น'
-      },
-      {
-        id: 'p-w4-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ทดสอบเปิดใช้งานวงจร',
-        caption: 'ตรวจวัดความสว่างตามเกณฑ์มาตรฐานความปลอดภัย'
-      }
-    ]
-  },
-  {
-    weekNumber: 5,
-    dateRange: '16 พ.ย. 2569 - 20 พ.ย. 2569',
-    title: 'งานประกอบและไวร์ริ่งตู้ Consumer Unit',
-    defaultTask: 'ติดตั้งเมนเบรกเกอร์ 2P และลูกย่อย RCBO สำหรับวงจรเต้ารับและเครื่องปรับอากาศ',
-    tools: 'ไขควงฉนวน VDE, คีมปอกสายไฟ, คีมย้ำหางปลา',
-    samplePhotos: [
-      {
-        id: 'p-w5-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: จัดเรียงลูกย่อยเบรกเกอร์',
-        caption: 'แบ่งบาลานซ์โหลดแต่ละเฟสอย่างเหมาะสม'
-      },
-      {
-        id: 'p-w5-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ย้ำหางปลาขั้วต่อสาย',
-        caption: 'เข้าสายดิน (PE) และสายนิวทรัล (N) แน่นหนา'
-      },
-      {
-        id: 'p-w5-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ตรวจสอบป้ายชื่อวงจร (Directory)',
-        caption: 'ติดป้ายบอกหน้าที่ของลูกย่อยเบรกเกอร์แต่ละตัว'
-      }
-    ]
-  },
-  {
-    weekNumber: 6,
-    dateRange: '23 พ.ย. 2569 - 27 พ.ย. 2569',
-    title: 'งานทดสอบความเป็นฉนวน (Insulation Test)',
-    defaultTask: 'ใช้เครื่องวัดฉนวน Megger 1000V ทดสอบความต้านทานฉนวนระหว่างเฟสและระหว่างเฟสกับกราวด์',
-    tools: 'Insulation Resistance Tester 1000V, ถุงมือยางกันไฟฟ้า',
-    samplePhotos: [
-      {
-        id: 'p-w6-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ต่อสายทดสอบของเมกเกอร์',
-        caption: 'คีบสายวัดเข้ากับขั้วบัสบาร์ของตู้สวิตช์บอร์ด'
-      },
-      {
-        id: 'p-w6-2',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: อ่านค่าความต้านทานฉนวน',
-        caption: 'ได้ค่ามากกว่า 50 Mega-ohms ตามมาตรฐาน วสท.'
-      },
-      {
-        id: 'p-w6-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: บันทึกรายงานการทดสอบฉนวน',
-        caption: 'ลงลายมือชื่อร่วมกับวิศวกรผู้ควบคุม'
-      }
-    ]
-  },
-  {
-    weekNumber: 7,
-    dateRange: '30 พ.ย. 2569 - 4 ธ.ค. 2569',
-    title: 'งานทดสอบความต้านทานดินระบบ Grounding',
-    defaultTask: 'ตอกหมุดวัดค่าความต้านทานหลักดินด้วย Earth Tester ตรวจสอบค่าความต้านทานหม้อแปลง',
-    tools: 'Earth Resistance Tester, หมุดเสริม P และ C, ค้อนตอกหมุด',
-    samplePhotos: [
-      {
-        id: 'p-w7-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตอกหมุดหลักดินเสริมระยะ 5m และ 10m',
-        caption: 'ตั้งหมุดแนวเส้นตรงตามหลักการ Fall-of-Potential'
-      },
-      {
-        id: 'p-w7-2',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: วัดค่าความต้านทานดินได้ 3.84 โอห์ม',
-        caption: 'ผ่านเกณฑ์มาตรฐานการไฟฟ้า (ไม่เกิน 5 โอห์ม)'
-      },
-      {
-        id: 'p-w7-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ตรวจขันจุดเชื่อมต่อสายดินหม้อแปลง',
-        caption: 'ทาน้ำยาป้องกันการกัดกร่อนจุดต่อแท่งกราวด์'
-      }
-    ]
-  },
-  {
-    weekNumber: 8,
-    dateRange: '7 ธ.ค. 2569 - 11 ธ.ค. 2569',
-    title: 'งานติดตั้งตู้ Distribution Board (MDB)',
-    defaultTask: 'งานติดตั้งตู้ Distribution Board (MDB) & Wiring Control สายวงจรไฟฟ้าโรงงาน ขันแน่นบัสบาร์ 400A',
-    tools: 'ประแจปอนด์, เครื่องเป่าลม, โคมไฟส่องตรวจ, Megger Test',
-    samplePhotos: [
-      {
-        id: 'p-w8-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตรวจสอบและขันแน่น Busbar MDB',
-        caption: 'งานบำรุงรักษาเชิงป้องกันตู้ไฟฟ้าหลัก'
-      },
-      {
-        id: 'p-w8-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจวัดค่าความต้านทานดิน',
-        caption: 'Earth Resistance Testing ได้ผล 3.84 Ω'
-      },
-      {
-        id: 'p-w8-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: รับมอบหมายงานและทบทวน LOTO',
-        caption: 'ร่วมกับนายชาญชัย มงคลศรี พี่เลี้ยงประจำสถานประกอบการ'
-      }
-    ]
-  },
-  {
-    weekNumber: 9,
-    dateRange: '14 ธ.ค. 2569 - 18 ธ.ค. 2569',
-    title: 'งานต่อวงจรควบคุมมอเตอร์ Star-Delta',
-    defaultTask: 'ต่อสายวงจรควบคุม Magnetic Contactor 3 ตัว สำหรับการสตาร์ทมอเตอร์ 3 เฟสแบบลดกระแส',
-    tools: 'ไขควงวัดไฟ, คีมย้ำหางปลา, มัลติมิเตอร์, Timer Relay',
-    samplePhotos: [
-      {
-        id: 'p-w9-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ต่อสายวงจรกำลัง Main-Star-Delta',
-        caption: 'เดินสายไฟขนาด 16 sq.mm เข้าแมกเนติกคอนแทกเตอร์'
-      },
-      {
-        id: 'p-w9-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตั้งเวลาทรานซิชัน Timer Relay',
-        caption: 'กำหนดเวลาสลับจาก Star เป็น Delta 5 วินาที'
-      },
-      {
-        id: 'p-w9-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ทดสอบการหมุนของมอเตอร์',
-        caption: 'ตรวจสอบทิศทางการหมุนตามลูกศรกำหนด'
-      }
-    ]
-  },
-  {
-    weekNumber: 10,
-    dateRange: '21 ธ.ค. 2569 - 25 ธ.ค. 2569',
-    title: 'งานติดตั้ง Magnetic & Overload Relay',
-    defaultTask: 'คำนวณและตั้งค่ากระแสตัดวงจรของ Thermal Overload Relay ป้องกันมอเตอร์ไหม้',
-    tools: 'ประแจขัน, ไขควงปรับสเกล, แคลมป์มิเตอร์',
-    samplePhotos: [
-      {
-        id: 'p-w10-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตั้งค่ากระแสพิกัดโอเวอร์โหลด',
-        caption: 'ตั้งค่าที่ 1.15 เท่าของกระแสพิกัด Full Load'
-      },
-      {
-        id: 'p-w10-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ทดสอบการทริปจำลอง (Trip Test)',
-        caption: 'กดปุ่ม Test เพื่อทดสอบกลไกตัดวงจรหน้าสัมผัส NC'
-      },
-      {
-        id: 'p-w10-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ตรวจสอบหลอดไฟแสดงสถานะ Overload',
-        caption: 'ไฟสีเหลืองแสดงสถานะทำงานถูกต้อง'
-      }
-    ]
-  },
-  {
-    weekNumber: 11,
-    dateRange: '28 ธ.ค. 2569 - 1 ม.ค. 2570',
-    title: 'งานเขียนโปรแกรมควบคุม PLC สายพานลำเลียง',
-    defaultTask: 'เขียนบันไดลอจิก (Ladder Logic) เชื่อมต่อ Input/Output เข้ากับบอร์ด PLC และทดสอบการทำงาน',
-    tools: 'โน้ตบุ๊กเขียนโปรแกรม PLC, สาย USB-RS485, ดิจิทัลมัลติมิเตอร์',
-    samplePhotos: [
-      {
-        id: 'p-w11-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ออนไลน์ดาวน์โหลดโปรแกรมลง PLC',
-        caption: 'ต่อสายสื่อสารส่งโค้ดคำสั่งเข้าหน่วยประมวลผล'
-      },
-      {
-        id: 'p-w11-2',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจสัญญาณดิจิทัล Input/Output',
-        caption: 'ทดสอบเซ็นเซอร์จับชิ้นงานบนสายพาน'
-      },
-      {
-        id: 'p-w11-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ซิวมูเลชันการทำงานจริง',
-        caption: 'จำลองสภาวะขัดข้องและตรวจสอบระบบหยุดฉุกเฉิน E-Stop'
-      }
-    ]
-  },
-  {
-    weekNumber: 12,
-    dateRange: '4 ม.ค. 2570 - 8 ม.ค. 2570',
-    title: 'งานติดตั้งเซ็นเซอร์อุตสาหกรรม (Sensors)',
-    defaultTask: 'ติดตั้งเซ็นเซอร์ตรวจจับแบบ Photoelectric และ Inductive Proximity พร้อมตั้งระยะตรวจจับ',
-    tools: 'ประแจปากตาย, ไขควงปรับ Potentiometer, แหล่งจ่าย 24VDC',
-    samplePhotos: [
-      {
-        id: 'p-w12-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ยึดขาจับเซ็นเซอร์ Proximity',
-        caption: 'ตั้งระยะห่างจากชิ้นงานโลหะ 8 มิลลิเมตร'
-      },
-      {
-        id: 'p-w12-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ต่อสายไฟเลี้ยงเซ็นเซอร์ 3 สาย',
-        caption: 'เชื่อมต่อสาย Brown (+), Blue (-), และ Black (Signal)'
-      },
-      {
-        id: 'p-w12-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ปรับแต่งความไวในการตรวจจับ',
-        caption: 'ทดสอบกับชิ้นงานจริงความเร็วรอบปกติ'
-      }
-    ]
-  },
-  {
-    weekNumber: 13,
-    dateRange: '11 ม.ค. 2570 - 15 ม.ค. 2570',
-    title: 'งานตรวจเช็ก Capacitor Bank & Power Factor',
-    defaultTask: 'ตรวจเช็กชุดคาปาซิเตอร์แบงก์ วัดค่ากระแสแต่ละเฟส และตรวจสอบการทำงานของคอนโทรลเลอร์ PF',
-    tools: 'True RMS Clamp Meter, Infrared Thermometer, คีมด้ามฉนวน',
-    samplePhotos: [
-      {
-        id: 'p-w13-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตรวจความร้อนสะสมด้วยกล้องอินฟราเรด',
-        caption: 'ไม่พบจุด Overheating ที่ขั้วต่อสายคาปาซิเตอร์'
-      },
-      {
-        id: 'p-w13-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: วัดกระแสไหลผ่านแต่ละสเต็ป',
-        caption: 'ตรวจสอบค่ากระแสว่าสมดุลทั้ง 3 เฟส'
-      },
-      {
-        id: 'p-w13-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: อ่านค่า Power Factor รวม',
-        caption: 'ได้ค่า 0.96 อยู่ในเกณฑ์มาตรฐานไม่เสียค่าปรับ กฟภ.'
-      }
-    ]
-  },
-  {
-    weekNumber: 14,
-    dateRange: '18 ม.ค. 2570 - 22 ม.ค. 2570',
-    title: 'งานติดตั้งระบบ Solar Rooftop & อินเวอร์เตอร์',
-    defaultTask: 'ตรวจสอบแผงโซลาร์เซลล์ วัดแรงดัน Voc และ Isc เข้าตู้ Combiner Box และอินเวอร์เตอร์ 3 เฟส',
-    tools: 'PV Multimeter, คีมย้ำหัว MC4, ประแจปอนด์ยึดแคลมป์',
-    samplePhotos: [
-      {
-        id: 'p-w14-1',
-        url: 'https://images.unsplash.com/photo-1508873696983-2df57046475b?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตรวจสอบหัวต่อสาย MC4 Connector',
-        caption: 'ย้ำขั้วสายและตรวจสอบการกันน้ำระดับ IP67'
-      },
-      {
-        id: 'p-w14-2',
-        url: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: วัดแรงดันเปิดวงจร Voc แต่ละสตริง',
-        caption: 'วัดแรงดันได้ 680VDC สม่ำเสมอทุกสตริง'
-      },
-      {
-        id: 'p-w14-3',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: สตาร์ทเครื่องอินเวอร์เตอร์ Grid-Tied',
-        caption: 'ตรวจสอบสถานะการขนานไฟเข้าสู่ระบบโรงงาน'
-      }
-    ]
-  },
-  {
-    weekNumber: 15,
-    dateRange: '25 ม.ค. 2570 - 29 ม.ค. 2570',
-    title: 'งานบำรุงรักษาระบบไฟฟ้าโรงงานเชิงป้องกัน (PM)',
-    defaultTask: 'ตรวจเช็กตู้สวิตช์บอร์ด MDB หม้อแปลงไฟฟ้า และบันทึกค่าทางไฟฟ้าในแผนบำรุงรักษาเชิงป้องกัน',
-    tools: 'Thermal Imaging Camera, Power Quality Analyzer, ชุดเครื่องมือช่างหุ้มฉนวน',
-    samplePhotos: [
-      {
-        id: 'p-w15-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: สแกนความร้อนขั้วต่อสายไฟด้วยกล้อง Thermal',
-        caption: 'ตรวจสอบอุณหภูมิหน้าสัมผัสเบรกเกอร์หลักและบัสบาร์'
-      },
-      {
-        id: 'p-w15-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจเช็กระดับน้ำมันและซิลิกาเจลหม้อแปลง',
-        caption: 'บันทึกค่าแรงดันและอุณหภูมิหม้อแปลงจำหน่ายประจำเดือน'
-      },
-      {
-        id: 'p-w15-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: บันทึกแผนการบำรุงรักษาเชิงป้องกัน (PM Plan)',
-        caption: 'ส่งรายงานผลการตรวจสอบให้วิศวกรซ่อมบำรุง'
-      }
-    ]
-  },
-  {
-    weekNumber: 16,
-    dateRange: '1 ก.พ. 2570 - 5 ก.พ. 2570',
-    title: 'งานตรวจสอบระบบไฟฟ้าสำรอง (Generator & ATS/UPS)',
-    defaultTask: 'ตรวจสอบและทดสอบเครื่องกำเนิดไฟฟ้าสำรอง (Generator) สวิตช์สลับแหล่งจ่าย ATS และชุดสำรองไฟ UPS',
-    tools: 'Power Quality Analyzer, Battery Tester, Clamp Meter, หูฟังป้องกันเสียง',
-    samplePhotos: [
-      {
-        id: 'p-w16-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ทดสอบสวิตช์สลับแหล่งจ่ายอัตโนมัติ (ATS)',
-        caption: 'จำลองไฟดับและตรวจจับเวลาสลับจ่ายไฟสำรอง'
-      },
-      {
-        id: 'p-w16-2',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจวัดแรงดันแบตเตอรี่ชุดสำรองไฟ UPS',
-        caption: 'ตรวจสอบความพร้อมของแบตเตอรี่และวงจรชาร์จ'
-      },
-      {
-        id: 'p-w16-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: บันทึกค่าความถี่และแรงดันเครื่องกำเนิดไฟฟ้า',
-        caption: 'ค่าแรงดัน 380V / 50Hz เสถียรตามมาตรฐาน'
-      }
-    ]
-  },
-  {
-    weekNumber: 17,
-    dateRange: '8 ก.พ. 2570 - 12 ก.พ. 2570',
-    title: 'งานระบบควบคุมอัตโนมัติและ IoT / SCADA โรงงาน',
-    defaultTask: 'ตรวจสอบการเชื่อมต่อข้อมูลมิเตอร์ไฟฟ้าดิจิทัลผ่านโปรโตคอล RS-485 เข้าระบบ SCADA และแจ้งเตือน IoT',
-    tools: 'โน้ตบุ๊กทดสอบระบบ, สายสื่อสาร RS-485, Digital Power Meter, มัลติมิเตอร์',
-    samplePhotos: [
-      {
-        id: 'p-w17-1',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: เชื่อมต่อสายสื่อสาร Modbus RS-485',
-        caption: 'ตรวจสอบขั้วสัญญาณ A+/B- ของมิเตอร์พลังงานดิจิทัล'
-      },
-      {
-        id: 'p-w17-2',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: ตรวจสอบหน้าจอแสดงผล SCADA Dashboard',
-        caption: 'อ่านค่า kW, kVA และแจ้งเตือนการใช้พลังงานแบบเรียลไทม์'
-      },
-      {
-        id: 'p-w17-3',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ทดสอบอุปกรณ์ IoT แจ้งเตือนสถานะเบรกเกอร์',
-        caption: 'จำลองสัญญาณทริปและตรวจสอบการแจ้งเตือนผ่านเครือข่าย'
-      }
-    ]
-  },
-  {
-    weekNumber: 18,
-    dateRange: '15 ก.พ. 2570 - 19 ก.พ. 2570',
-    title: 'งานทดสอบระบบไฟฟ้าทั้งระบบ (Commissioning) & สรุปผล',
-    defaultTask: 'ทดสอบการทำงานของระบบไฟฟ้าทั้งหมด สรุปบันทึกเวลาฝึกงานครบ 720 ชม. (18 สัปดาห์) และจัดทำเอกสารส่งมอบ',
-    tools: 'ชุดเครื่องมือวิศวกรรมไฟฟ้าครบชุด, แฟ้มสรุปผลงาน',
-    samplePhotos: [
-      {
-        id: 'p-w18-1',
-        url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 1: ตรวจสอบความเรียบร้อยของตู้ควบคุม',
-        caption: 'ตรวจเช็กจุดต่อสายทุกจุดและทำความสะอาดครั้งสุดท้าย'
-      },
-      {
-        id: 'p-w18-2',
-        url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 2: สรุปผลการประเมินกับพี่เลี้ยง',
-        caption: 'รับฟังคำแนะนำและข้อเสนอแนะในการปฏิบัติงานวิชาชีพ'
-      },
-      {
-        id: 'p-w18-3',
-        url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80',
-        title: 'ภาพที่ 3: ถ่ายภาพความสำเร็จร่วมกับทีมวิศวกร',
-        caption: 'เสร็จสิ้นการฝึกประสบการณ์วิชาชีพ 18 สัปดาห์ (720 ชม.) แผนกวิชาช่างไฟฟ้ากำลัง'
-      }
-    ]
-  }
-];
+const THAI_DAYS = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'] as const;
+const THAI_MONTHS_SHORT = [
+  'ม.ค.',
+  'ก.พ.',
+  'มี.ค.',
+  'เม.ย.',
+  'พ.ค.',
+  'มิ.ย.',
+  'ก.ค.',
+  'ส.ค.',
+  'ก.ย.',
+  'ต.ค.',
+  'พ.ย.',
+  'ธ.ค.',
+] as const;
+const THAI_MONTHS_FULL = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+] as const;
 
-/** @deprecated Use WEEKS_1_TO_18 instead */
-export const WEEKS_1_TO_15: WeekMeta[] = WEEKS_1_TO_18;
+// Semester 2/2569 starts Monday 19 Oct 2026 (19 ต.ค. 2569)
+const SEMESTER_START_UTC = Date.UTC(2026, 9, 19);
 
-/**
- * Computes exact daily dates for each day of the week (Monday - Friday)
- * based on internship start date: 19 ต.ค. 2569 (Monday, October 19, 2026)
- */
-export function getWeekDates(weekNum: number): { day: string; dateStr: string; fullDate: string }[] {
-  // Start date: Monday, October 19, 2026 (Month index 9 is October)
-  const baseStart = new Date(2026, 9, 19);
-  const weekStart = new Date(baseStart.getTime() + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
-  
-  const thaiMonthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const days = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'];
+function formatUtcThaiShort(utcMs: number): string {
+  const d = new Date(utcMs);
+  const day = d.getUTCDate();
+  const month = THAI_MONTHS_SHORT[d.getUTCMonth()];
+  const yearBE = d.getUTCFullYear() + 543;
+  return `${day} ${month} ${yearBE}`;
+}
 
-  return days.map((day, idx) => {
-    const d = new Date(weekStart.getTime() + idx * 24 * 60 * 60 * 1000);
-    const dayNum = d.getDate();
-    const monthStr = thaiMonthsShort[d.getMonth()];
-    const yearBE = d.getFullYear() + 543;
-    const yearShort = (yearBE % 100).toString().padStart(2, '0');
+function formatUtcThaiCompact(utcMs: number): string {
+  const d = new Date(utcMs);
+  const day = d.getUTCDate();
+  const month = THAI_MONTHS_SHORT[d.getUTCMonth()];
+  const yearShortBE = String(d.getUTCFullYear() + 543).slice(-2);
+  return `${day} ${month} ${yearShortBE}`;
+}
+
+function formatUtcThaiFull(utcMs: number): string {
+  const d = new Date(utcMs);
+  const day = d.getUTCDate();
+  const month = THAI_MONTHS_FULL[d.getUTCMonth()];
+  const yearBE = d.getUTCFullYear() + 543;
+  return `${day} ${month} ${yearBE}`;
+}
+
+function formatUtcIso(utcMs: number): string {
+  const d = new Date(utcMs);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function getWeekDates(weekNumber: number): WeekDayInfo[] {
+  const clamped = Math.min(18, Math.max(1, Math.round(Number(weekNumber) || 1)));
+  const weekStartMs = SEMESTER_START_UTC + (clamped - 1) * 7 * 86400000;
+  return THAI_DAYS.map((day, idx) => {
+    const ms = weekStartMs + idx * 86400000;
     return {
       day,
-      dateStr: `${dayNum} ${monthStr} ${yearShort}`,
-      fullDate: `${dayNum} ${monthStr} ${yearBE}`
+      dateStr: formatUtcThaiCompact(ms),
+      fullDate: formatUtcThaiFull(ms),
+      isoDate: formatUtcIso(ms),
     };
   });
 }
 
-export function getDefaultDailyLogsForWeek(weekNum: number): DailyLog[] {
-  const meta = WEEKS_1_TO_18.find(w => w.weekNumber === weekNum) || WEEKS_1_TO_18[0];
-  const dates = getWeekDates(weekNum);
+const WEEK_TOPIC_TEMPLATES: {
+  title: string;
+  defaultTask: string;
+  tools: string;
+}[] = [
+  {
+    title: 'ปฐมนิเทศความปลอดภัยและศึกษาระบบจำหน่ายไฟฟ้าเบื้องต้น',
+    defaultTask: 'อบรมความปลอดภัย PPE มาตรฐานการไฟฟ้า และสำรวจอุปกรณ์หน้างาน',
+    tools: 'หมวกนิรภัย, รองเท้านิรภัย, Digital Multimeter',
+  },
+  {
+    title: 'การตรวจเช็กเครื่องมือวัดและการเตรียมวัสดุอุปกรณ์ไฟฟ้า',
+    defaultTask: 'ตรวจสอบและจัดเตรียมสายไฟ รางเดินสาย และเครื่องมือวัดทางไฟฟ้า',
+    tools: 'Clamp Meter, Insulation Tester, ชุดเครื่องมือช่างไฟฟ้า',
+  },
+  {
+    title: 'การเดินสายไฟฟ้าในท่อ EMT / IMC และราง Wireway',
+    defaultTask: 'ดัดท่อโลหะ ร้อยสายไฟฟ้า THW และติดตั้งราง Wireway ตามแบบ',
+    tools: 'Pipe Bender, Fish Tape, สว่านไร้สาย, Wire Stripper',
+  },
+  {
+    title: 'การติดตั้งอุปกรณ์สวิตช์ เต้ารับ และระบบแสงสว่าง',
+    defaultTask: 'ต่อวงจรแสงสว่าง โคม LED และปลั๊กไฟอุตสาหกรรมพร้อมทดสอบแรงดัน',
+    tools: 'คีมย้ำหางปลา, ไขควงวัดไฟ, Digital Multimeter',
+  },
+  {
+    title: 'การประกอบและเดินสายตู้ย่อยโหลดเซ็นเตอร์ (Load Center)',
+    defaultTask: 'จัดเรียงลูกเซอร์กิตเบรกเกอร์ เข้าหัวสาย และต่อบัสบาร์นิวทรัล/กราวด์',
+    tools: 'ประแจทอร์ค, คีมตัดสายเคเบิล, Thermal Camera',
+  },
+  {
+    title: 'การตรวจสอบระบบสายดิน (Grounding System) และป้องกันฟ้าผ่า',
+    defaultTask: 'ตอกหลักดิน วัดค่าความต้านทานดิน และตรวจสอบจุดเชื่อมบอนดิ้ง',
+    tools: 'Earth Ground Tester, ชุดเชื่อม Cadweld, Clamp Meter',
+  },
+  {
+    title: 'งานบำรุงรักษาระบบปรับอากาศและเครื่องทำความเย็นอุตสาหกรรม',
+    defaultTask: 'ตรวจวัดกระแสคอมเพรสเซอร์ ล้างคอยล์ และตรวจเช็กคอนแทคเตอร์ควบคุม',
+    tools: 'Manifold Gauge, Clamp Meter, เทอร์โมมิเตอร์ดิจิทัล',
+  },
+  {
+    title: 'งานติดตั้งตู้ Distribution Board (MDB) & Wiring Control',
+    defaultTask: 'ติดตั้งตู้ MDB เข้าสายเมนแรงต่ำ ขันทอร์คบัสบาร์ และตรวจสอบเฟส',
+    tools: 'ประแจปอนด์, Insulation Tester, Phase Sequence Meter',
+  },
+  {
+    title: 'การประกอบวงจรควบคุมมอเตอร์ไฟฟ้า 3 เฟส (Magnetic & Overload)',
+    defaultTask: 'ประกอบวงจรสตาร์ทมอเตอร์ Star-Delta และทดสอบการทำงานของ Overload Relay',
+    tools: 'Digital Multimeter, ไขควงหุ้มฉนวน, เครื่องทดสอบมอเตอร์',
+  },
+  {
+    title: 'การตรวจซ่อมบำรุงหม้อแปลงไฟฟ้าระบบจำหน่ายและสวิตช์เกียร์',
+    defaultTask: 'ตรวจสอบระดับน้ำมันฉนวน ซิลิกาเจล และวัดค่าความเป็นฉนวนขดลวด',
+    tools: 'Megger 5kV, Infrared Thermometer, อุปกรณ์ LOTO',
+  },
+  {
+    title: 'งานระบบควบคุมอัตโนมัติ PLC และอินเวอร์เตอร์ (VFD)',
+    defaultTask: 'ต่อสาย I/O โมดูล PLC และตั้งค่าพารามิเตอร์ Inverter ควบคุมความเร็วมอเตอร์',
+    tools: 'Notebook โปรแกรม PLC, Multimeter, ชุดจั๊มเปอร์สายสัญญาณ',
+  },
+  {
+    title: 'งานติดตั้งและบำรุงรักษาระบบผลิตไฟฟ้าพลังงานแสงอาทิตย์ (Solar PV)',
+    defaultTask: 'ตรวจวัดแรงดัน DC String เชื่อมต่อ Combiner Box และตรวจเช็ก Inverter',
+    tools: 'Solar Clamp Meter, MC4 Crimping Tool, Pyranometer',
+  },
+  {
+    title: 'การตรวจวัดคุณภาพกำลังไฟฟ้า (Power Quality) และคาปาซิเตอร์แบงค์',
+    defaultTask: 'วัดค่า Power Factor, Harmonic และตรวจสอบสเต็ปคาปาซิเตอร์แบงค์',
+    tools: 'Power Quality Analyzer, Clamp Meter, Thermal Camera',
+  },
+  {
+    title: 'การบำรุงรักษาระบบไฟฟ้าฉุกเฉินและเครื่องกำเนิดไฟฟ้าสำรอง (Generator)',
+    defaultTask: 'ทดสอบตู้สลับแหล่งจ่ายอัตโนมัติ (ATS) และตรวจเช็กแบตเตอรี่สตาร์ทเครื่อง',
+    tools: 'Battery Tester, Digital Multimeter, เครื่องวัดความถี่',
+  },
+  {
+    title: 'การตรวจสอบระบบแจ้งเหตุเพลิงไหม้ (Fire Alarm) และความปลอดภัยอาคาร',
+    defaultTask: 'ทดสอบอุปกรณ์ Smoke Detector และวงจรแจ้งเตือนภัยในพื้นที่ปฏิบัติงาน',
+    tools: 'Smoke Tester, Multimeter, ชุดเครื่องมือซ่อมบำรุง',
+  },
+  {
+    title: 'งานตรวจวัดความร้อนด้วยกล้องอินฟราเรด (Thermoscan Preventive Maintenance)',
+    defaultTask: 'สแกนจุดต่อสายไฟ ตู้ MDB และขั้วเบรกเกอร์เพื่อป้องกันจุดร้อนผิดปกติ',
+    tools: 'Thermal Imaging Camera, Clamp Meter, กล้องบันทึกภาพ',
+  },
+  {
+    title: 'การสรุปผลวิเคราะห์ปัญหาทางเทคนิคและการจัดทำรายงานโครงงานฝึกอาชีพ',
+    defaultTask: 'รวบรวมข้อมูลผลการปฏิบัติงาน ทดสอบระบบ และปรับแก้ข้อบกพร่องหน้างาน',
+    tools: 'คู่มือซ่อมบำรุง, คอมพิวเตอร์, แบบแปลนไฟฟ้า As-Built',
+  },
+  {
+    title: 'ประเมินผลปลายภาคเรียน ส่งมอบงาน และสรุปสมรรถนะวิชาชีพ (ทว.04)',
+    defaultTask: 'ทบทวนมาตรฐานความปลอดภัย ส่งคืนอุปกรณ์ และรับการประเมินจากพี่เลี้ยง',
+    tools: 'แบบบันทึก ทว.04, เอกสารประเมินผลสถานประกอบการ',
+  },
+];
 
-  return dates.map((d, idx) => ({
-    id: `log-w${weekNum}-${idx + 1}`,
-    day: d.day,
-    date: d.dateStr,
-    taskDescription: `${meta.defaultTask} (ส่วนที่ ${idx + 1}/5)`,
-    toolsUsed: meta.tools,
-    hours: 8.0,
-    evaluation: 'ผ่าน (ดีเยี่ยม)'
-  }));
-}
+const SAMPLE_PHOTO_URLS = [
+  'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&auto=format&fit=crop&q=80',
+];
 
-/**
- * คำนวณสัปดาห์ฝึกงานปัจจุบัน (1 - 18) อ้างอิงจากสัปดาห์ของเวลาปัจจุบัน (Real-time Date)
- */
-export function getCurrentWeekInfo(currentDate: Date = new Date()) {
-  const now = new Date(currentDate);
-  const nowYear = now.getFullYear();
-  const nowMonth = now.getMonth(); // 0 = Jan, 9 = Oct
-
-  // กำหนดวันเริ่มต้นของภาคเรียน (เทอม 1 หรือ เทอม 2)
-  let baseTermStart: Date;
-  let termLabel = '';
-
-  if (nowMonth >= 4 && nowMonth <= 8) {
-    // ภาคเรียนที่ 1 (พฤษภาคม - กันยายน)
-    baseTermStart = new Date(nowYear, 4, 18);
-    const day = baseTermStart.getDay();
-    const diff = baseTermStart.getDate() - day + (day === 0 ? -6 : 1);
-    baseTermStart.setDate(diff);
-    baseTermStart.setHours(0, 0, 0, 0);
-    termLabel = `ภาคเรียนที่ 1/${nowYear + 543}`;
-  } else {
-    // ภาคเรียนที่ 2 (ตุลาคม - มีนาคม)
-    const termYear = nowMonth <= 3 ? nowYear - 1 : nowYear;
-    baseTermStart = new Date(termYear, 9, 19); // 19 ต.ค. (วันจันทร์)
-    const day = baseTermStart.getDay();
-    const diff = baseTermStart.getDate() - day + (day === 0 ? -6 : 1);
-    baseTermStart.setDate(diff);
-    baseTermStart.setHours(0, 0, 0, 0);
-    termLabel = `ภาคเรียนที่ 2/${termYear + 543}`;
-  }
-
-  // คำนวณจำนวนสัปดาห์ที่ผ่านไปจากวันเริ่มต้น
-  const diffMs = now.getTime() - baseTermStart.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  let calculatedWeek = Math.floor(diffDays / 7) + 1;
-
-  // จำกัดขอบเขตให้อยู่ในช่วง 1 - 18 สัปดาห์
-  if (calculatedWeek < 1) calculatedWeek = 1;
-  if (calculatedWeek > 18) calculatedWeek = 18;
-
-  // คำนวณวันที่เริ่มต้นและสิ้นสุดของสัปดาห์นี้
-  const weekStart = new Date(baseTermStart.getTime() + (calculatedWeek - 1) * 7 * 24 * 60 * 60 * 1000);
-  const weekEnd = new Date(weekStart.getTime() + 4 * 24 * 60 * 60 * 1000); // วันศุกร์
-
-  const thaiMonthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const startDay = weekStart.getDate();
-  const startMonth = thaiMonthsShort[weekStart.getMonth()];
-  const endDay = weekEnd.getDate();
-  const endMonth = thaiMonthsShort[weekEnd.getMonth()];
-  const yearBE = weekEnd.getFullYear() + 543;
-
-  const dateRangeStr = `${startDay} ${startMonth} - ${endDay} ${endMonth} ${yearBE}`;
-  const progressPercent = Math.min(100, Math.round((calculatedWeek / 18) * 100));
+export const WEEKS_1_TO_18: WeekMeta[] = WEEK_TOPIC_TEMPLATES.map((tpl, idx) => {
+  const weekNumber = idx + 1;
+  const startMs = SEMESTER_START_UTC + idx * 7 * 86400000;
+  const endMs = startMs + 4 * 86400000;
+  const dateRange = `${formatUtcThaiShort(startMs)} - ${formatUtcThaiShort(endMs)}`;
 
   return {
-    weekNumber: calculatedWeek,
+    weekNumber,
+    title: tpl.title,
+    dateRange,
+    startDateIso: formatUtcIso(startMs),
+    endDateIso: formatUtcIso(endMs),
+    defaultTask: tpl.defaultTask,
+    tools: tpl.tools,
+    samplePhotos: [
+      {
+        id: `sample-w${weekNumber}-1`,
+        url: SAMPLE_PHOTO_URLS[idx % SAMPLE_PHOTO_URLS.length],
+        title: `ปฏิบัติงานสัปดาห์ที่ ${weekNumber}`,
+        caption: `${tpl.title} (${dateRange})`,
+      },
+      {
+        id: `sample-w${weekNumber}-2`,
+        url: SAMPLE_PHOTO_URLS[(idx + 1) % SAMPLE_PHOTO_URLS.length],
+        title: `ตรวจเช็กมาตรฐานความปลอดภัยหน้างาน`,
+        caption: `ใช้เครื่องมือ: ${tpl.tools}`,
+      },
+    ],
+  };
+});
+
+export function getCurrentWeekInfo(): {
+  weekNumber: number;
+  totalWeeks: number;
+  dateRange: string;
+  title: string;
+  progressPercent: number;
+} {
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.floor((todayUtc - SEMESTER_START_UTC) / 86400000);
+  const rawWeek = Math.floor(diffDays / 7) + 1;
+  const weekNumber = Math.min(18, Math.max(1, rawWeek));
+  const meta = WEEKS_1_TO_18[weekNumber - 1] || WEEKS_1_TO_18[7];
+  return {
+    weekNumber,
     totalWeeks: 18,
-    dateRange: dateRangeStr,
-    termLabel,
-    progressPercent,
+    dateRange: meta.dateRange,
+    title: meta.title,
+    progressPercent: Math.round((weekNumber / 18) * 100),
   };
 }
 
+export function getDefaultDailyLogsForWeek(weekNumber: number): DailyLog[] {
+  const clamped = Math.min(18, Math.max(1, Math.round(Number(weekNumber) || 1)));
+  const meta = WEEKS_1_TO_18[clamped - 1] || WEEKS_1_TO_18[0];
+  const dates = getWeekDates(clamped);
+
+  const dayActions = [
+    `ศึกษาแบบงาน วางแผนปฏิบัติ และตรวจเช็กอุปกรณ์PPE (${meta.title})`,
+    `${meta.defaultTask} ส่วนที่ 1 ตามคำแนะนำของพี่เลี้ยง`,
+    `ปฏิบัติงานหลักหน้างาน: ${meta.defaultTask} และบันทึกค่าทางไฟฟ้า`,
+    `ตรวจสอบความถูกต้อง ทดสอบการทำงานและความปลอดภัยของระบบ`,
+    `บำรุงรักษาเครื่องมือ ทำความสะอาดพื้นที่ และสรุปรายงานประจำสัปดาห์`,
+  ];
+
+  return dates.map((d, idx) => ({
+    id: `dl-w${clamped}-d${idx + 1}`,
+    day: d.day,
+    date: d.dateStr,
+    taskDescription: dayActions[idx] || meta.defaultTask,
+    toolsUsed: meta.tools,
+    hours: 8,
+    evaluation: 'ผ่านเกณฑ์มาตรฐาน',
+  }));
+}

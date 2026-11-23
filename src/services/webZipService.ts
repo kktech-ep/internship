@@ -1,104 +1,84 @@
 import JSZip from 'jszip';
+import { getAllLoginSheetStudents, getAllLoginSheetTeachers } from './sheetAuthService';
+import { getCachedCourses } from './courseDataService';
+import { getLocalForm1Rows, getLocalForm3Rows } from './googleSheetsService';
+import { WEEKS_1_TO_18 } from '../data/weeksData';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
-export interface DownloadZipResult {
+export async function downloadAllWebZip(): Promise<{
   success: boolean;
-  sizeBytes?: number;
   message: string;
-}
-
-/**
- * Downloads all web files bundled as a deployment .zip package.
- * Uses programmatic fetch + Blob + ObjectURL for 100% reliable download behavior
- * across desktop, mobile, and sandboxed iframes, with automatic JSZip fallback.
- */
-export async function downloadAllWebZip(
-  onProgress?: (status: string) => void
-): Promise<DownloadZipResult> {
-  onProgress?.('กำลังรวบรวมไฟล์เว็บทั้งหมด...');
-
-  let blob: Blob | null = null;
-  const candidateUrls = [
-    './appserv_publish.zip',
-    '/appserv_publish.zip',
-    'appserv_publish.zip',
-    './docs/appserv_publish.zip'
-  ];
-
-  for (const url of candidateUrls) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const fetchedBlob = await res.blob();
-        if (fetchedBlob.size > 20000) {
-          blob = fetchedBlob;
-          break;
-        }
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  // Fallback: Bundle live using JSZip if prebuilt zip is not accessible
-  if (!blob) {
-    onProgress?.('กำลังรวบรวมไฟล์ HTML, สคริปต์ และไฟล์กำหนดค่าเซิร์ฟเวอร์...');
+  fileCount?: number;
+}> {
+  try {
     const zip = new JSZip();
+    const students = getAllLoginSheetStudents();
+    const teachers = getAllLoginSheetTeachers();
+    const courses = getCachedCourses();
+    const form1Rows = getLocalForm1Rows();
+    const form3Rows = getLocalForm3Rows();
+
+    const exportDate = new Date().toISOString();
 
     zip.file(
-      'README_INSTALL.txt',
-      `=== คู่มือการติดตั้งระบบบันทึกข้อมูลการฝึกงาน แผนกวิชาช่างไฟฟ้ากำลัง วท.ขอนแก่น บน Web Server จริง ===\n\n` +
-      `1. นำไฟล์และโฟลเดอร์ทั้งหมดใน zip นี้ ไปวางในโฟลเดอร์ Web Server ของวิทยาลัย:\n` +
-      `   - AppServ: C:\\AppServ\\www\\ หรือ C:\\AppServ\\www\\internship\\\n` +
-      `   - XAMPP: C:\\xampp\\htdocs\\ หรือ C:\\xampp\\htdocs\\internship\\\n` +
-      `   - Linux Apache: /var/www/html/ หรือ /var/www/html/internship/\n` +
-      `   - Nginx: /usr/share/nginx/html/\n\n` +
-      `2. เปิดเว็บบราวเซอร์ (Chrome, Edge, Firefox, Safari) เข้าใช้งาน:\n` +
-      `   - http://localhost/ หรือ http://[IP_เครื่อง_Server]/\n\n` +
-      `3. การเชื่อมต่อฐานข้อมูล:\n` +
-      `   - ระบบเชื่อมโยงฐานข้อมูล Google Cloud Firebase Firestore และ Google Sheets โดยตรงแบบเรียลไทม์\n`
+      'README.txt',
+      [
+        'KKTECH Dual Vocational Internship System (ภาคเรียนที่ 2/2569)',
+        'แผนกวิชาช่างไฟฟ้ากำลัง วิทยาลัยเทคนิคขอนแก่น',
+        `วันที่ส่งออกชุดข้อมูลสำรอง: ${new Date().toLocaleString('th-TH')}`,
+        `จำนวนนักศึกษา: ${students.length} คน`,
+        `จำนวนครูนิเทศก์: ${teachers.length} ท่าน`,
+        `จำนวนรายวิชา: ${courses.length} รายการ`,
+        `รายงานการนิเทศ (Form 3): ${form3Rows.length} รายการ`,
+      ].join('\n')
     );
+
+    zip.file('data/students.json', JSON.stringify(students, null, 2));
+    zip.file('data/teachers.json', JSON.stringify(teachers, null, 2));
+    zip.file('data/courses.json', JSON.stringify(courses, null, 2));
+    zip.file('data/form1_companies.json', JSON.stringify(form1Rows, null, 2));
+    zip.file('data/form3_supervisions.json', JSON.stringify(form3Rows, null, 2));
+    zip.file('data/weeks_1_to_18.json', JSON.stringify(WEEKS_1_TO_18, null, 2));
 
     zip.file(
-      '.htaccess',
-      `<IfModule mod_rewrite.c>\n  RewriteEngine On\n  RewriteBase /\n  RewriteRule ^index\\.html$ - [L]\n  RewriteCond %{REQUEST_FILENAME} !-f\n  RewriteCond %{REQUEST_FILENAME} !-d\n  RewriteRule . /index.html [L]\n</IfModule>\n`
+      'manifest.json',
+      JSON.stringify(
+        {
+          system: 'KKTECH Power Internship Portal',
+          semester: '2/2569',
+          exportedAt: exportDate,
+          counts: {
+            students: students.length,
+            teachers: teachers.length,
+            courses: courses.length,
+            form1: form1Rows.length,
+            form3: form3Rows.length,
+          },
+        },
+        null,
+        2
+      )
     );
 
-    zip.file(
-      'web.config',
-      `<?xml version="1.0" encoding="UTF-8"?>\n<configuration>\n  <system.webServer>\n    <rewrite>\n      <rules>\n        <rule name="SPA" stopProcessing="true">\n          <match url=".*" />\n          <conditions logicalGrouping="MatchAll">\n            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />\n            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />\n          </conditions>\n          <action type="Rewrite" url="/index.html" />\n        </rule>\n      </rules>\n    </rewrite>\n  </system.webServer>\n</configuration>`
-    );
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kktech-internship-2569-backup-${exportDate.slice(0, 10)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-    try {
-      const htmlRes = await fetch('./index.html');
-      if (htmlRes.ok) {
-        zip.file('index.html', await htmlRes.text());
-      } else {
-        zip.file('index.html', document.documentElement.outerHTML);
-      }
-    } catch {
-      zip.file('index.html', document.documentElement.outerHTML);
-    }
-
-    blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    return {
+      success: true,
+      message: 'ดาวน์โหลดไฟล์สำรองข้อมูลระบบ (.zip) เรียบร้อยแล้ว',
+      fileCount: 8,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: formatThaiErrorMessage(err, 'ไม่สามารถสร้างไฟล์สำรองข้อมูล .zip ได้'),
+    };
   }
-
-  onProgress?.('เตรียมไฟล์ .zip สำเร็จ! กำลังส่งไฟล์เพื่อดาวน์โหลด...');
-
-  const downloadUrl = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.download = `kktech_internship_web_server_${new Date().toISOString().slice(0, 10)}.zip`;
-  document.body.appendChild(a);
-  a.click();
-
-  setTimeout(() => {
-    window.URL.revokeObjectURL(downloadUrl);
-    a.remove();
-  }, 1000);
-
-  return {
-    success: true,
-    sizeBytes: blob.size,
-    message: `รวมไฟล์เว็บทั้งหมดสำเร็จ (ขนาด ${(blob.size / (1024 * 1024)).toFixed(2)} MB)`
-  };
 }

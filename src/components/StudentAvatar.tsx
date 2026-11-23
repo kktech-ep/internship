@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { Camera, CheckCircle2, Upload, User, Loader2 } from 'lucide-react';
+import { Camera, CheckCircle2, Upload, Loader2 } from 'lucide-react';
 import { Student } from '../types';
+import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
 export function getStudentGender(name: string): 'male' | 'female' {
   const trimmed = (name || '').trim();
@@ -98,7 +99,7 @@ interface StudentAvatarProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showUploadButton?: boolean;
   showUploadLink?: boolean;
-  onAvatarUpdated?: (dataUrl: string) => void;
+  onAvatarUpdated?: (dataUrl: string) => Promise<void> | void;
   className?: string;
 }
 
@@ -113,6 +114,7 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [justUploaded, setJustUploaded] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const gender = getStudentGender(student.name);
 
@@ -131,17 +133,20 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
 
     try {
       setIsUploading(true);
+      setUploadError(null);
       const dataUrl = await compressImageFile(file);
+      if (onAvatarUpdated) {
+        await onAvatarUpdated(dataUrl);
+      }
       setIsUploading(false);
       setJustUploaded(true);
       setTimeout(() => setJustUploaded(false), 3000);
-
-      if (onAvatarUpdated) {
-        onAvatarUpdated(dataUrl);
-      }
     } catch (err) {
       setIsUploading(false);
       console.error('Error compressing and uploading avatar:', err);
+      setUploadError(formatThaiErrorMessage(err, 'บันทึกรูปภาพลงฐานข้อมูลไม่สำเร็จ'));
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -227,6 +232,11 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
           <Upload className="w-3 h-3 text-sky-600" />
           <span>{student.avatarUrl ? 'เปลี่ยนรูปภาพ' : 'อัปโหลดรูปภาพ'}</span>
         </button>
+      )}
+      {uploadError && (
+        <span className="text-[10px] text-rose-600 font-medium text-center max-w-[160px] leading-tight">
+          {uploadError}
+        </span>
       )}
     </div>
   );

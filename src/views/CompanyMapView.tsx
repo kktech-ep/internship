@@ -34,7 +34,7 @@ import {
   School
 } from 'lucide-react';
 import { Company, Student, Form3SupervisionRecord, Form3Photo } from '../types';
-import { buildUnifiedCompanies } from '../utils/dataUnifier';
+import { buildUnifiedCompanies, matchesStudentRecord } from '../utils/dataUnifier';
 
 interface CompanyMapViewProps {
   companies: Company[];
@@ -788,7 +788,7 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
 
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                   {activeCompany.students.map((std, i) => {
-                    const stdForm3 = form3List.find(f => f.studentCode === std.studentCode || f.studentId === std.id);
+                    const stdForm3 = form3List.find((f) => matchesStudentRecord(f, std));
                     return (
                       <div
                         key={std.id || i}
@@ -805,11 +805,27 @@ export const CompanyMapView: React.FC<CompanyMapViewProps> = ({
                             <div className="text-xs text-slate-500">
                               รหัส: <span className="font-mono">{std.studentCode}</span> • ห้อง: <span className="font-semibold text-slate-700">{std.room}</span> ({std.level})
                             </div>
-                            {std.companyRegistration?.emergencyPhone && (
-                              <div className="text-xs text-slate-400 font-mono">
-                                โทร: {std.companyRegistration.emergencyPhone}
-                              </div>
-                            )}
+                            <div className="text-xs text-slate-600 flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3 text-sky-600 shrink-0" />
+                              <span>เบอร์นักศึกษา:</span>
+                              {std.phone && std.phone !== '-' ? (
+                                <a
+                                  href={`tel:${std.phone.replace(/[^0-9+]/g, '')}`}
+                                  className="font-mono font-semibold text-sky-700 hover:underline"
+                                >
+                                  {std.phone}
+                                </a>
+                              ) : (
+                                <span className="font-mono text-slate-400">-</span>
+                              )}
+                            </div>
+                            {std.companyRegistration?.emergencyPhone &&
+                              std.companyRegistration.emergencyPhone !== '-' &&
+                              std.companyRegistration.emergencyPhone !== std.phone && (
+                                <div className="text-xs text-slate-400 font-mono">
+                                  โทรฉุกเฉิน/บริษัท: {std.companyRegistration.emergencyPhone}
+                                </div>
+                              )}
                           </div>
                         </div>
 

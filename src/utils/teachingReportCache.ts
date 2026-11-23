@@ -1,48 +1,36 @@
 import { TeachingReportRecord } from '../types';
 
-const STORAGE_REPORTS_KEY = 'kktech_teaching_reports_local_v1';
-const STORAGE_PENDING_IDS_KEY = 'kktech_teaching_reports_pending_sync_v1';
+const LOCAL_TEACHING_REPORTS_KEY = 'kktech_teaching_reports_v1';
+const PENDING_TEACHING_REPORT_IDS_KEY = 'kktech_pending_teaching_reports_v1';
+
+function readPendingIds(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(PENDING_TEACHING_REPORT_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((x) => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writePendingIds(ids: Set<string>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(PENDING_TEACHING_REPORT_IDS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 
 export function getLocalTeachingReports(): TeachingReportRecord[] {
   if (typeof localStorage === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(STORAGE_REPORTS_KEY);
+    const raw = localStorage.getItem(LOCAL_TEACHING_REPORTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TeachingReportRecord[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalTeachingReportsList(list: TeachingReportRecord[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_REPORTS_KEY, JSON.stringify(list));
-  } catch {
-    // If localStorage is full due to base64 photos, store lightweight copies without inline data-URLs
-    try {
-      const compact = list.map((rep) => ({
-        ...rep,
-        weekPhotos: (rep.weekPhotos || []).map((p) => ({
-          ...p,
-          url: p.url && p.url.startsWith('data:') ? '' : p.url,
-        })),
-      }));
-      localStorage.setItem(STORAGE_REPORTS_KEY, JSON.stringify(compact));
-    } catch {
-      // Ignore storage quota errors gracefully
-    }
-  }
-}
-
-export function getPendingTeachingReportIds(): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_PENDING_IDS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    return Array.isArray(parsed) ? (parsed.filter((r) => r && r.id) as TeachingReportRecord[]) : [];
   } catch {
     return [];
   }
@@ -50,78 +38,82 @@ export function getPendingTeachingReportIds(): string[] {
 
 export function writeTeachingReportToLocalCache(
   report: TeachingReportRecord,
-  isSyncedToCloud: boolean
+  markPending = true
 ): void {
-  if (!report || !report.id) return;
-  const current = getLocalTeachingReports();
-  const next = [report, ...current.filter((r) => r.id !== report.id)];
-  saveLocalTeachingReportsList(next);
-
-  if (typeof localStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined' || !report?.id) return;
   try {
-    const pending = new Set(getPendingTeachingReportIds());
-    if (isSyncedToCloud) {
-      pending.delete(report.id);
-    } else {
+    const current = getLocalTeachingReports();
+    const next = [report, ...current.filter((r) => r.id !== report.id)];
+    localStorage.setItem(LOCAL_TEACHING_REPORTS_KEY, JSON.stringify(next));
+
+    const pending = readPendingIds();
+    if (markPending) {
       pending.add(report.id);
+    } else {
+      pending.delete(report.id);
     }
-    localStorage.setItem(STORAGE_PENDING_IDS_KEY, JSON.stringify(Array.from(pending)));
+    writePendingIds(pending);
   } catch {
-    // Ignore storage errors
+    // Ignore storage quota errors
   }
 }
 
 export function markTeachingReportSynced(reportId: string): void {
-  if (!reportId || typeof localStorage === 'undefined') return;
-  try {
-    const pending = getPendingTeachingReportIds().filter((id) => id !== reportId);
-    localStorage.setItem(STORAGE_PENDING_IDS_KEY, JSON.stringify(pending));
-  } catch {
-    // Ignore storage errors
+  if (!reportId) return;
+  const pending = readPendingIds();
+  if (pending.delete(reportId)) {
+    writePendingIds(pending);
   }
 }
 
 export function reconcileTeachingReportsWithCloud(
-  remoteReports: TeachingReportRecord[]
+  cloudReports: TeachingReportRecord[]
 ): TeachingReportRecord[] {
-  const localReports = getLocalTeachingReports();
-  const pendingIds = new Set(getPendingTeachingReportIds());
   const map = new Map<string, TeachingReportRecord>();
+  const cloudIds = new Set<string>();
 
-  localReports.forEach((r) => {
-    if (r && r.id) map.set(r.id, r);
-  });
-
-  remoteReports.forEach((remote) => {
-    if (!remote || !remote.id) return;
-    const local = map.get(remote.id);
-    if (!local) {
-      map.set(remote.id, remote);
-      return;
-    }
-
-    const remoteTime = new Date(remote.updatedAt || 0).getTime() || 0;
-    const localTime = new Date(local.updatedAt || 0).getTime() || 0;
-
-    if (pendingIds.has(remote.id) && localTime >= remoteTime) {
-      // Keep newer unsynced local edit until cloud sync finishes
-      return;
-    }
-
-    if (remoteTime >= localTime) {
-      map.set(remote.id, remote);
-      pendingIds.delete(remote.id);
-    }
-  });
-
-  const merged = Array.from(map.values());
-  saveLocalTeachingReportsList(merged);
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(STORAGE_PENDING_IDS_KEY, JSON.stringify(Array.from(pendingIds)));
-    } catch {
-      // Ignore
+  for (const r of cloudReports) {
+    if (r && r.id) {
+      cloudIds.add(r.id);
+      map.set(r.id, r);
     }
   }
-  return merged;
+
+  const pending = readPendingIds();
+  const stillPending = new Set<string>();
+  const local = getLocalTeachingReports();
+
+  for (const lr of local) {
+    if (!lr || !lr.id) continue;
+    if (cloudIds.has(lr.id)) {
+      const cloudTime = new Date(map.get(lr.id)?.updatedAt || 0).getTime() || 0;
+      const localTime = new Date(lr.updatedAt || 0).getTime() || 0;
+      if (pending.has(lr.id) && localTime > cloudTime) {
+        map.set(lr.id, lr);
+        stillPending.add(lr.id);
+      }
+      continue;
+    }
+    if (pending.has(lr.id)) {
+      stillPending.add(lr.id);
+      map.set(lr.id, lr);
+    }
+  }
+
+  writePendingIds(stillPending);
+  const reconciled = Array.from(map.values()).sort((a, b) => {
+    const timeDiff = (new Date(b.updatedAt || 0).getTime() || 0) - (new Date(a.updatedAt || 0).getTime() || 0);
+    if (timeDiff !== 0) return timeDiff;
+    return (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0);
+  });
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(LOCAL_TEACHING_REPORTS_KEY, JSON.stringify(reconciled));
+    } catch {
+      // Ignore quota errors
+    }
+  }
+
+  return reconciled;
 }
