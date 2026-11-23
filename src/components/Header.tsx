@@ -155,21 +155,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Looker</span>
             </button>
 
-            {/* Mobile Sim Toggle */}
-            <button
-              type="button"
-              onClick={onToggleMobileMode}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[14.5px] font-semibold border transition cursor-pointer ${
-                isMobileMode
-                  ? 'bg-sky-600 text-white border-sky-500 shadow-xs'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-              }`}
-              title="สลับมุมมองแอปพลิเคชันมือถือ"
-            >
-              <Smartphone className="w-4 h-4" />
-              <span className="hidden sm:inline">{isMobileMode ? 'มุมมองเดสก์ท็อป' : 'มุมมองมือถือ'}</span>
-            </button>
-
             {/* Admin Role Preview Switcher */}
             {currentUser?.role === 'admin' && (
               <select
@@ -184,32 +169,9 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             )}
 
-            {/* User Pill */}
+            {/* Sign Out */}
             {currentUser && (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
-                <button
-                  type="button"
-                  onClick={onOpenAuthModal}
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition cursor-pointer"
-                  title="สลับบัญชีผู้ใช้งาน"
-                >
-                  {userAvatarUrl ? (
-                    <img
-                      src={userAvatarUrl}
-                      alt={currentUser.name}
-                      className="w-6 h-6 rounded-full object-cover border border-sky-400"
-                    />
-                  ) : (
-                    <span className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-[13px] flex items-center justify-center">
-                      {currentUser.initials}
-                    </span>
-                  )}
-                  <span className="hidden sm:inline text-[14.5px] font-semibold text-slate-100 max-w-[160px] truncate">
-                    {currentUser.name}
-                  </span>
-                  <UserCheck className="w-4 h-4 text-emerald-400 hidden sm:inline" />
-                </button>
-
+              <div className="flex items-center gap-2 md:pl-2 md:border-l md:border-slate-700">
                 <button
                   type="button"
                   onClick={onSignOut}
@@ -224,23 +186,69 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center gap-1 overflow-x-auto pb-2.5 pt-1 scrollbar-thin">
+        <nav className="flex items-center gap-1.5 overflow-x-auto pb-2.5 pt-1 scrollbar-thin">
           {visibleNavItems.map((item) => {
             const active = !isMobileMode && currentView === item.id;
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onNavigate(item.id)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[14.5px] font-semibold whitespace-nowrap transition cursor-pointer ${
-                  active
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
+              <React.Fragment key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(item.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[14.5px] font-semibold whitespace-nowrap shrink-0 transition cursor-pointer ${
+                    active
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+
+                {item.id === 'guide' && (
+                  <>
+                    {/* Mobile Sim Toggle */}
+                    <button
+                      type="button"
+                      onClick={onToggleMobileMode}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[14.5px] font-semibold border whitespace-nowrap shrink-0 transition cursor-pointer ${
+                        isMobileMode
+                          ? 'bg-sky-600 text-white border-sky-500 shadow-xs'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                      }`}
+                      title="สลับมุมมองแอปพลิเคชันมือถือ"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>{isMobileMode ? 'มุมมองเดสก์ท็อป' : 'มุมมองมือถือ'}</span>
+                    </button>
+
+                    {/* User Pill */}
+                    {currentUser && (
+                      <button
+                        type="button"
+                        onClick={onOpenAuthModal}
+                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 whitespace-nowrap shrink-0 transition cursor-pointer"
+                        title="สลับบัญชีผู้ใช้งาน"
+                      >
+                        {userAvatarUrl ? (
+                          <img
+                            src={userAvatarUrl}
+                            alt={currentUser.name}
+                            className="w-6 h-6 rounded-full object-cover border border-sky-400 shrink-0"
+                          />
+                        ) : (
+                          <span className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-[13px] flex items-center justify-center shrink-0">
+                            {currentUser.initials}
+                          </span>
+                        )}
+                        <span className="text-[14.5px] font-semibold text-slate-100 max-w-[160px] truncate">
+                          {currentUser.name}
+                        </span>
+                        <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      </button>
+                    )}
+                  </>
+                )}
+              </React.Fragment>
             );
           })}
         </nav>

@@ -47,7 +47,9 @@ import {
 } from '../utils/submissionUtils';
 import {
   buildUnifiedCompanies,
+  compareForm3RecordsDesc,
   extractTeacherNames,
+  getForm3RecordTimestampMs,
   getStudentEvaluationSummary,
   matchesStudentRecord,
   normalizeStudentAcademicInfo,
@@ -278,17 +280,19 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       }
 
       return true;
+    }).sort((a, b) => {
+      const timeA = getForm3RecordTimestampMs(a.latestRecord);
+      const timeB = getForm3RecordTimestampMs(b.latestRecord);
+      if (timeB !== timeA) return timeB - timeA;
+      if (a.isSupervised !== b.isSupervised) return a.isSupervised ? -1 : 1;
+      return b.studentsCount - a.studentsCount || a.name.localeCompare(b.name, 'th');
     });
   }, [companySummaries, searchTerm, statusFilter, roomFilter, teacherFilter]);
 
   // Flat list of ALL supervision records across ALL supervising teachers & ALL companies
   const filteredAllForm3Records = useMemo(() => {
     if (statusFilter === 'pending') return [];
-    const sorted = [...form3List].sort((a, b) => {
-      const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-      const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-      return timeB - timeA;
-    });
+    const sorted = [...form3List].sort(compareForm3RecordsDesc);
     return sorted.filter(r => {
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
@@ -1192,9 +1196,16 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                                 ))}
                               </div>
                               {f3 ? (
-                                <div className="text-[11.5px] text-slate-500 mt-1 flex items-start gap-1">
-                                  <Calendar className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
-                                  <span className="font-mono break-words">{f3.visitDate || f3.timestamp}</span>
+                                <div className="mt-1 space-y-0.5">
+                                  <div className="text-[11.5px] text-slate-600 flex items-start gap-1">
+                                    <Calendar className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                                    <span className="font-mono break-words">{f3.visitDate || f3.timestamp}</span>
+                                  </div>
+                                  {f3.timestamp && f3.visitDate && f3.timestamp !== f3.visitDate && (
+                                    <div className="text-[11px] text-slate-400 font-mono pl-4 break-words">
+                                      บันทึก: {f3.timestamp}
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="text-[11.5px] text-slate-400 mt-1">

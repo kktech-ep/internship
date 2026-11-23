@@ -150,6 +150,141 @@ export function getGradeFromScore(score: number): string {
   return 'ควรปรับปรุง';
 }
 
+export function parseThaiOrIsoDateTimeMs(raw?: string | null): number {
+  if (!raw || typeof raw !== 'string') return 0;
+  const thaiDigits = '๐๑๒๓๔๕๖๗๘๙';
+  const normalized = raw
+    .replace(/[๐-๙]/g, (d) => String(thaiDigits.indexOf(d)))
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized || normalized === '-') return 0;
+
+  // 1. Thai / numeric D/M/YYYY or DD-MM-YYYY with optional time & AM/PM
+  const dmyMatch = normalized.match(
+    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[,\s]+(?:เวลา\s*)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?(?:\s*น\.?)?)?/i
+  );
+  if (dmyMatch) {
+    let p1 = Number(dmyMatch[1]);
+    let p2 = Number(dmyMatch[2]);
+    let year = Number(dmyMatch[3]);
+    let hour = dmyMatch[4] !== undefined ? Number(dmyMatch[4]) : 0;
+    const min = dmyMatch[5] !== undefined ? Number(dmyMatch[5]) : 0;
+    const sec = dmyMatch[6] !== undefined ? Number(dmyMatch[6]) : 0;
+    const meridiem = (dmyMatch[7] || '').toUpperCase();
+
+    if (meridiem === 'PM' && hour < 12) hour += 12;
+    if (meridiem === 'AM' && hour === 12) hour = 0;
+
+    // Handle US MM/DD/YYYY if second part exceeds 12
+    if (p2 > 12 && p1 <= 12) {
+      const tmp = p1;
+      p1 = p2;
+      p2 = tmp;
+    }
+
+    if (year >= 2400) year -= 543;
+    const ms = new Date(year, p2 - 1, p1, hour, min, sec).getTime();
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+
+  // 2. Thai formatted month names e.g. "21 ต.ค. 2569 (13:30 น.)"
+  const thaiMonthMap: Record<string, number> = {
+    'ม.ค.': 0, 'มกราคม': 0,
+    'ก.พ.': 1, 'กุมภาพันธ์': 1,
+    'มี.ค.': 2, 'มีนาคม': 2,
+    'เม.ย.': 3, 'เมษายน': 3,
+    'พ.ค.': 4, 'พฤษภาคม': 4,
+    'มิ.ย.': 5, 'มิถุนายน': 5,
+    'ก.ค.': 6, 'กรกฎาคม': 6,
+    'ส.ค.': 7, 'สิงหาคม': 7,
+    'ก.ย.': 8, 'กันยายน': 8,
+    'ต.ค.': 9, 'ตุลาคม': 9,
+    'พ.ย.': 10, 'พฤศจิกายน': 10,
+    'ธ.ค.': 11, 'ธันวาคม': 11,
+  };
+  const thaiTextMatch = normalized.match(
+    /(\d{1,2})\s+(ม\.ค\.|มกราคม|ก\.พ\.|กุมภาพันธ์|มี\.ค\.|มีนาคม|เม\.ย\.|เมษายน|พ\.ค\.|พฤษภาคม|มิ\.ย\.|มิถุนายน|ก\.ค\.|กรกฎาคม|ส\.ค\.|สิงหาคม|ก\.ย\.|กันยายน|ต\.ค\.|ตุลาคม|พ\.ย\.|พฤศจิกายน|ธ\.ค\.|ธันวาคม)\s+(\d{2,4})(?:[^0-9]*?(\d{1,2}):(\d{2})(?::(\d{2}))?)?/
+  );
+  if (thaiTextMatch) {
+    const day = Number(thaiTextMatch[1]);
+    const monthIdx = thaiMonthMap[thaiTextMatch[2]];
+    let year = Number(thaiTextMatch[3]);
+    const hour = thaiTextMatch[4] !== undefined ? Number(thaiTextMatch[4]) : 0;
+    const min = thaiTextMatch[5] !== undefined ? Number(thaiTextMatch[5]) : 0;
+    const sec = thaiTextMatch[6] !== undefined ? Number(thaiTextMatch[6]) : 0;
+
+    if (year < 100) year += 2500;
+    if (year >= 2400) year -= 543;
+    if (monthIdx !== undefined) {
+      const ms = new Date(year, monthIdx, day, hour, min, sec).getTime();
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+  }
+
+  // 3. ISO YYYY-MM-DD (including BE year like 2569-11-22)
+  const ymdMatch = normalized.match(
+    /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/
+  );
+  if (ymdMatch) {
+    let year = Number(ymdMatch[1]);
+    if (year >= 2400) {
+      year -= 543;
+      const month = Number(ymdMatch[2]);
+      const day = Number(ymdMatch[3]);
+      const hour = ymdMatch[4] !== undefined ? Number(ymdMatch[4]) : 0;
+      const min = ymdMatch[5] !== undefined ? Number(ymdMatch[5]) : 0;
+      const sec = ymdMatch[6] !== undefined ? Number(ymdMatch[6]) : 0;
+      const ms = new Date(year, month - 1, day, hour, min, sec).getTime();
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+  }
+
+  // 4. Native Date.parse fallback (ISO 8601 Z, RFC strings, etc.)
+  const nativeMs = Date.parse(normalized);
+  return Number.isFinite(nativeMs) && nativeMs > 0 ? nativeMs : 0;
+}
+
+export function extractForm3IdEpochMs(id?: string): number {
+  if (!id) return 0;
+  const match = id.match(/f3-visit-(\d{12,15})/);
+  if (!match) return 0;
+  const ms = Number(match[1]);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+export function getForm3RecordTimestampMs(rec?: Partial<Form3SupervisionRecord> | null): number {
+  if (!rec) return 0;
+  const tsMs = parseThaiOrIsoDateTimeMs(rec.timestamp);
+  if (tsMs > 0) return tsMs;
+
+  const idMs = extractForm3IdEpochMs(rec.id);
+  if (idMs > 0) return idMs;
+
+  const visitMs = parseThaiOrIsoDateTimeMs(rec.visitDate);
+  if (visitMs > 0) return visitMs;
+
+  return 0;
+}
+
+export function compareForm3RecordsDesc(
+  a: Partial<Form3SupervisionRecord>,
+  b: Partial<Form3SupervisionRecord>
+): number {
+  const timeA = getForm3RecordTimestampMs(a);
+  const timeB = getForm3RecordTimestampMs(b);
+  if (timeB !== timeA) return timeB - timeA;
+
+  const idTimeA = extractForm3IdEpochMs(a.id);
+  const idTimeB = extractForm3IdEpochMs(b.id);
+  if (idTimeB !== idTimeA) return idTimeB - idTimeA;
+
+  const visitA = parseThaiOrIsoDateTimeMs(a.visitDate);
+  const visitB = parseThaiOrIsoDateTimeMs(b.visitDate);
+  return visitB - visitA;
+}
+
 export function getStudentEvaluationSummary(
   student: Student,
   submissionsMap: Record<string, WeeklySubmission[]>,
@@ -169,11 +304,7 @@ export function getStudentEvaluationSummary(
 
   const matchedForm3 = form3List
     .filter((r) => matchesStudentRecord(r, student))
-    .sort((a, b) => {
-      const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-      const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-      return tB - tA;
-    });
+    .sort(compareForm3RecordsDesc);
 
   const latestForm3 = matchedForm3[0] || undefined;
 
@@ -302,11 +433,7 @@ export function buildUnifiedCompanies(
 
   return Array.from(groupMap.values())
     .map((grp, idx) => {
-      const sortedRecords = [...grp.records].sort((a, b) => {
-        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return tB - tA;
-      });
+      const sortedRecords = [...grp.records].sort(compareForm3RecordsDesc);
       const latestRecord = sortedRecords[0] || undefined;
       const isSupervised = sortedRecords.length > 0;
       const firstStudent = grp.students[0];
