@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
+  BookOpen,
   Building2,
   Camera,
   CheckCircle2,
@@ -27,6 +28,7 @@ import {
 } from '../types';
 import { StudentAvatar, compressImageFile } from '../components/StudentAvatar';
 import { resolveUserAvatarUrl } from '../services/firestoreService';
+import { getCoursesByTeacher } from '../services/courseDataService';
 import { getStudentEvaluationSummary, matchesStudentRecord } from '../utils/dataUnifier';
 import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
 
@@ -139,10 +141,82 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
 
   const supervisedStudentsCount = studentRows.filter((r) => r.hasForm3).length;
   const totalSubmissionsCount = Object.values(submissions).flat().length;
-  const teacherCoursesCount = useMemo(() => {
-    const cleanName = activeTeacher.name.replace(/^(นาย|นางสาว|นาง|ว่าที่ร้อยตรี|อาจารย์|ดร\.)\s*/, '').trim();
-    return courses.filter((c) => cleanName && c.teacherName.includes(cleanName)).length;
-  }, [courses, activeTeacher.name]);
+  const teacherCoursesBreakdown = useMemo(() => {
+    const courseSource = courses && courses.length > 0 ? courses : undefined;
+    const rawCourses = getCoursesByTeacher(activeTeacher.name, courseSource);
+
+    const normalizeRoom = (r?: string) => (r || '').replace(/\s+/g, '').trim().toLowerCase();
+    const roomCounts = new Map<string, number>();
+    students.forEach((s) => {
+      const key = normalizeRoom(s.room);
+      if (key) {
+        roomCounts.set(key, (roomCounts.get(key) || 0) + 1);
+      }
+    });
+
+    const subjectMap = new Map<
+      string,
+      {
+        subjectCode: string;
+        subjectName: string;
+        roomsMap: Map<string, number>;
+      }
+    >();
+    const uniqueRooms = new Map<string, string>();
+
+    rawCourses.forEach((c) => {
+      const code = (c.subjectCode || '').trim();
+      const name = (c.subjectName || '').trim();
+      const room = (c.room || '').trim();
+      if (!code && !name) return;
+
+      const key = `${code}__${name}`;
+      if (!subjectMap.has(key)) {
+        subjectMap.set(key, {
+          subjectCode: code || '-',
+          subjectName: name || '-',
+          roomsMap: new Map<string, number>(),
+        });
+      }
+      if (room) {
+        const normRoom = normalizeRoom(room);
+        const count = roomCounts.get(normRoom) || 0;
+        subjectMap.get(key)!.roomsMap.set(room, count);
+        if (!uniqueRooms.has(normRoom)) {
+          uniqueRooms.set(normRoom, room);
+        }
+      }
+    });
+
+    const subjects = Array.from(subjectMap.values())
+      .map((item) => {
+        const rooms = Array.from(item.roomsMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0], 'th'))
+          .map(([roomName, count]) => ({ room: roomName, count }));
+        const totalStudents = rooms.reduce((sum, r) => sum + r.count, 0);
+        return {
+          subjectCode: item.subjectCode,
+          subjectName: item.subjectName,
+          rooms,
+          totalStudents,
+        };
+      })
+      .sort((a, b) => a.subjectCode.localeCompare(b.subjectCode));
+
+    let totalUniqueStudents = 0;
+    uniqueRooms.forEach((_, normRoom) => {
+      totalUniqueStudents += roomCounts.get(normRoom) || 0;
+    });
+
+    return {
+      rawCount: rawCourses.length,
+      subjects,
+      totalRooms: uniqueRooms.size,
+      totalUniqueStudents,
+    };
+  }, [courses, activeTeacher.name, students]);
+
+  const teacherCoursesCount = teacherCoursesBreakdown.rawCount;
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -246,6 +320,69 @@ export const TeacherView: React.FC<TeacherViewProps> = ({
             </button>
           </div>
         </div>
+
+        {teacherCoursesBreakdown.subjects.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/10 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white">
+                <BookOpen className="w-4 h-4 text-sky-300 shrink-0" />
+                <span>รายวิชาและกลุ่มนักศึกษาที่ครูนิเทศก์รับผิดชอบ</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+                <span className="px-2 py-0.5 rounded-md bg-white/10 text-sky-200 border border-white/15">
+                  {teacherCoursesBreakdown.subjects.length} รายวิชา
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white/10 text-indigo-200 border border-white/15">
+                  {teacherCoursesBreakdown.totalRooms} กลุ่มนักศึกษา
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 font-bold">
+                  รวม {teacherCoursesBreakdown.totalUniqueStudents} คน
+                </span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl bg-slate-950/35 border border-white/10">
+              <table className="w-full text-left text-xs sm:text-[13px] border-collapse">
+                <thead className="bg-white/5 text-slate-300 font-semibold border-b border-white/10">
+                  <tr>
+                    <th className="py-2 px-3 w-[130px] whitespace-nowrap">รหัสวิชา</th>
+                    <th className="py-2 px-3">ชื่อรายวิชา</th>
+                    <th className="py-2 px-3">กลุ่มนักศึกษา</th>
+                    <th className="py-2 px-3 text-right w-[120px] whitespace-nowrap">จำนวนนักศึกษา</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {teacherCoursesBreakdown.subjects.map((subj) => (
+                    <tr key={`${subj.subjectCode}-${subj.subjectName}`} className="hover:bg-white/5 transition-colors">
+                      <td className="py-2 px-3 font-mono font-bold text-sky-300 whitespace-nowrap">
+                        {subj.subjectCode}
+                      </td>
+                      <td className="py-2 px-3 font-semibold text-white">
+                        {subj.subjectName}
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex flex-wrap gap-1">
+                          {subj.rooms.map((r) => (
+                            <span
+                              key={r.room}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-slate-100 border border-white/15 text-xs font-medium"
+                            >
+                              <span>{r.room}</span>
+                              <span className="text-sky-200 font-mono">({r.count} คน)</span>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-300 whitespace-nowrap">
+                        {subj.totalStudents} คน
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {(avatarNotice || avatarError) && (
           <div

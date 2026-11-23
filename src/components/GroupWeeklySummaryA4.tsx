@@ -541,7 +541,7 @@ export const GroupWeeklySummaryA4: React.FC<GroupWeeklySummaryA4Props> = ({
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full p-0.5 flex items-center justify-center bg-white shrink-0 overflow-hidden border border-slate-200">
                 <img
-                  src="./assets/aistudio/LogoKKTech_f25116a9.jpg"
+                  src={`${import.meta.env.BASE_URL}assets/aistudio/LogoKKTech.jpg`}
                   alt="ตราสัญลักษณ์ วิทยาลัยเทคนิคขอนแก่น"
                   className="w-full h-full object-contain"
                 />

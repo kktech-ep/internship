@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, Form3Photo, CourseDataRow } from '../types';
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
-import { getCoursesByRoom } from '../services/courseDataService';
+import { getCoursesByRoom, getCoursesByTeacher } from '../services/courseDataService';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
 import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
 import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
@@ -445,6 +445,91 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
   }, [currentStudent?.id, studentCourses, selectedCourseCode]);
 
   const matchedCourse = studentCourses.find(c => c.subjectCode === selectedCourseCode) || studentCourses[0];
+
+  const responsibleTeacherName = useMemo(() => {
+    if (currentUser && (currentUser.role === 'teacher' || currentUser.role === 'admin') && currentUser.name) {
+      return currentUser.name;
+    }
+    return teacherFilter !== 'all' ? teacherFilter : 'นายทักษิณ โสภาปิยะ';
+  }, [currentUser, teacherFilter]);
+
+  const responsibleCoursesInfo = useMemo(() => {
+    const courseSource = propCourses && propCourses.length > 0 ? propCourses : undefined;
+    let rawCourses = getCoursesByTeacher(responsibleTeacherName, courseSource);
+    if (rawCourses.length === 0 && currentUser?.role === 'admin' && teacherFilter !== 'all') {
+      rawCourses = getCoursesByTeacher(teacherFilter, courseSource);
+    }
+
+    const normalizeRoom = (r?: string) => (r || '').replace(/\s+/g, '').trim().toLowerCase();
+    const roomCounts = new Map<string, number>();
+    allSheetStudents.forEach((s) => {
+      const key = normalizeRoom(s.room);
+      if (key) {
+        roomCounts.set(key, (roomCounts.get(key) || 0) + 1);
+      }
+    });
+
+    const subjectMap = new Map<
+      string,
+      {
+        subjectCode: string;
+        subjectName: string;
+        roomsMap: Map<string, number>;
+      }
+    >();
+    const uniqueRooms = new Map<string, string>();
+
+    rawCourses.forEach((c) => {
+      const code = (c.subjectCode || '').trim();
+      const name = (c.subjectName || '').trim();
+      const room = (c.room || '').trim();
+      if (!code && !name) return;
+
+      const key = `${code}__${name}`;
+      if (!subjectMap.has(key)) {
+        subjectMap.set(key, {
+          subjectCode: code || '-',
+          subjectName: name || '-',
+          roomsMap: new Map<string, number>(),
+        });
+      }
+      if (room) {
+        const normRoom = normalizeRoom(room);
+        const count = roomCounts.get(normRoom) || 0;
+        subjectMap.get(key)!.roomsMap.set(room, count);
+        if (!uniqueRooms.has(normRoom)) {
+          uniqueRooms.set(normRoom, room);
+        }
+      }
+    });
+
+    const subjects = Array.from(subjectMap.values())
+      .map((item) => {
+        const rooms = Array.from(item.roomsMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0], 'th'))
+          .map(([roomName, count]) => ({ room: roomName, count }));
+        const totalStudents = rooms.reduce((sum, r) => sum + r.count, 0);
+        return {
+          subjectCode: item.subjectCode,
+          subjectName: item.subjectName,
+          rooms,
+          totalStudents,
+        };
+      })
+      .sort((a, b) => a.subjectCode.localeCompare(b.subjectCode));
+
+    let totalUniqueStudents = 0;
+    uniqueRooms.forEach((_, normRoom) => {
+      totalUniqueStudents += roomCounts.get(normRoom) || 0;
+    });
+
+    return {
+      teacherName: responsibleTeacherName,
+      subjects,
+      totalRooms: uniqueRooms.size,
+      totalUniqueStudents,
+    };
+  }, [responsibleTeacherName, propCourses, allSheetStudents, currentUser?.role, teacherFilter]);
 
   // Submissions already reconciled in App.tsx (Firestore authoritative + offline pending writes)
   const mergedSubmissions = submissions;
@@ -1662,6 +1747,69 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
         <div className="space-y-6 print:space-y-0">
           {/* Top Sub-View Switcher Bar */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
+            {!isStudentRole && responsibleCoursesInfo.subjects.length > 0 && (
+              <div className="rounded-xl border border-sky-200/80 bg-sky-50/50 p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                    <UserCheck className="w-4 h-4 text-sky-700 shrink-0" />
+                    <span>รายวิชาและกลุ่มนักศึกษาในความรับผิดชอบ ({responsibleCoursesInfo.teacherName})</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+                    <span className="px-2 py-0.5 rounded-md bg-white text-sky-800 border border-sky-200">
+                      {responsibleCoursesInfo.subjects.length} รายวิชา
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-white text-indigo-800 border border-indigo-200">
+                      {responsibleCoursesInfo.totalRooms} กลุ่มนักศึกษา
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white font-bold">
+                      รวม {responsibleCoursesInfo.totalUniqueStudents} คน
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto bg-white rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-xs sm:text-[13px] border-collapse">
+                    <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2 px-3 w-[130px] whitespace-nowrap">รหัสวิชา</th>
+                        <th className="py-2 px-3">ชื่อรายวิชา</th>
+                        <th className="py-2 px-3">กลุ่มนักศึกษา</th>
+                        <th className="py-2 px-3 text-right w-[120px] whitespace-nowrap">จำนวนนักศึกษา</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {responsibleCoursesInfo.subjects.map((subj) => (
+                        <tr key={`${subj.subjectCode}-${subj.subjectName}`} className="hover:bg-slate-50/80">
+                          <td className="py-2 px-3 font-mono font-bold text-sky-700 whitespace-nowrap">
+                            {subj.subjectCode}
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-slate-900">
+                            {subj.subjectName}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex flex-wrap gap-1">
+                              {subj.rooms.map((r) => (
+                                <span
+                                  key={r.room}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-xs font-medium"
+                                >
+                                  <span>{r.room}</span>
+                                  <span className="text-slate-500 font-mono">({r.count} คน)</span>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                            {subj.totalStudents} คน
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-base">
