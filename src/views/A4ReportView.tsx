@@ -31,7 +31,6 @@ import {
   ArrowRight,
   UserCheck,
   RotateCcw,
-  RotateCw,
   Loader2,
   Trash2,
   List
@@ -40,7 +39,6 @@ import { Student, Company, WeeklySubmission, AuthUser, Form3SupervisionRecord, F
 import { WEEKS_1_TO_18, getDefaultDailyLogsForWeek } from '../data/weeksData';
 import { getCoursesByRoom, getCoursesByTeacher } from '../services/courseDataService';
 import { getAllLoginSheetTeachers } from '../services/sheetAuthService';
-import { syncAllLoginSheetRowsToFirebase } from '../services/sheetFirebaseSyncService';
 import { GroupWeeklySummaryA4 } from '../components/GroupWeeklySummaryA4';
 import {
   computeSubmissionTotalHours,
@@ -152,24 +150,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
       }
     }
   }, [isStudentRole, currentUser]);
-
-  // Global Sync State
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
-
-  const handleSyncAllDatabases = async () => {
-    setIsSyncingAll(true);
-    try {
-      const res = await syncAllLoginSheetRowsToFirebase();
-      setSyncStatusMsg(res.message);
-      setTimeout(() => setSyncStatusMsg(null), 6000);
-    } catch (err: any) {
-      setSyncStatusMsg('เกิดข้อผิดพลาดในการเชื่อมโยงฐานข้อมูล: ' + (err.message || String(err)));
-      setTimeout(() => setSyncStatusMsg(null), 6000);
-    } finally {
-      setIsSyncingAll(false);
-    }
-  };
 
   // Use normalized students directly from authoritative App.tsx state
   const allSheetStudents = useMemo<Student[]>(() => {
@@ -790,45 +770,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               วิทยาลัยเทคนิคขอนแก่น • แผนกวิชาช่างไฟฟ้ากำลัง • ฐานข้อมูลการนิเทศและสถานประกอบการ
             </p>
           </div>
-
-          {/* Quick Action Tools */}
-          <div className="flex flex-wrap items-center gap-2">
-            {onOpenForm3 && (
-              <button
-                onClick={() => onOpenForm3(selectedStudentId)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white font-medium text-sm shadow-sm transition cursor-pointer"
-              >
-                <Camera className="w-4 h-4" />
-                <span>+ บันทึกการนิเทศ</span>
-              </button>
-            )}
-            <button
-              onClick={handleSyncAllDatabases}
-              disabled={isSyncingAll}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-sm font-semibold shadow-2xs transition disabled:opacity-60 cursor-pointer"
-              title="ซิงค์และอัปเดตข้อมูลจาก Google Sheets และ Firebase ทั้งหมดให้เป็นปัจจุบัน"
-            >
-              <RotateCw className={`w-4 h-4 text-emerald-700 ${isSyncingAll ? 'animate-spin' : ''}`} />
-              <span>{isSyncingAll ? 'กำลังซิงค์...' : 'ซิงค์ชีต & ฐานข้อมูล'}</span>
-            </button>
-          </div>
         </div>
-
-        {/* Sync Status Banner */}
-        {syncStatusMsg && (
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm flex items-center justify-between shadow-2xs">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{syncStatusMsg}</span>
-            </div>
-            <button 
-              onClick={() => setSyncStatusMsg(null)}
-              className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {/* View Switcher Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
