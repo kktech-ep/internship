@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>KKTECH POWER PORTAL</title>
+    <script>
+      (function () {
+        var l = window.location;
+        var base = l.pathname.split('/').slice(0, -1).join('/') || '';
+        window.location.replace(l.protocol + '//' + l.host + base + '/' + l.search + l.hash);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
