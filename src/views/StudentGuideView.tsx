@@ -159,7 +159,7 @@ export const StudentGuideView: React.FC<StudentGuideViewProps> = ({
             <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 space-y-2">
               <div className="flex items-center gap-2 font-bold text-emerald-950">
                 <Camera className="w-4 h-4 text-emerald-600" />
-                <span>บันทึกรายงานการนิเทศ (Form 3)</span>
+                <span>บันทึกรายงานการนิเทศ</span>
               </div>
               <p className="text-slate-600 leading-relaxed">
                 เลือกสถานประกอบการและนักศึกษาที่เข้ารับการนิเทศ ระบุคะแนนประเมิน (เต็ม 20) ความคิดเห็นพี่เลี้ยง และแนบภาพถ่าย 4 ช่องมาตรฐาน
