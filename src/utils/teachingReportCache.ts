@@ -53,6 +53,9 @@ export function writeTeachingReportToLocalCache(
       pending.delete(report.id);
     }
     writePendingIds(pending);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kktech_teaching_reports_updated'));
+    }
   } catch {
     // Ignore storage quota errors
   }
@@ -88,7 +91,7 @@ export function reconcileTeachingReportsWithCloud(
     if (cloudIds.has(lr.id)) {
       const cloudTime = new Date(map.get(lr.id)?.updatedAt || 0).getTime() || 0;
       const localTime = new Date(lr.updatedAt || 0).getTime() || 0;
-      if (pending.has(lr.id) && localTime > cloudTime) {
+      if (pending.has(lr.id) && localTime >= cloudTime) {
         map.set(lr.id, lr);
         stillPending.add(lr.id);
       }

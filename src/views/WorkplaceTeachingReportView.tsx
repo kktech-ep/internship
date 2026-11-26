@@ -50,7 +50,8 @@ import {
   writeTeachingReportToLocalCache,
 } from '../utils/teachingReportCache';
 import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
-import { matchesStudentRecord } from '../utils/dataUnifier';
+import { matchesStudentRecord, parseThaiOrIsoDateTimeMs } from '../utils/dataUnifier';
+import { getMergedStudentSubmissions } from '../utils/submissionUtils';
 import garudaEmblemImg from '../assets/images/garuda_emblem_1795399952410.jpg';
 
 interface WorkplaceTeachingReportViewProps {
@@ -315,14 +316,26 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return set;
   }, [remoteReportsMap, reporterName]);
 
-  // Sync from parent propTeachingReports if provided
+  // Sync from parent propTeachingReports + local cache so newly saved reports are immediately viewable
   useEffect(() => {
     if (!propTeachingReports) return;
     setRemoteReportsMap((prev) => {
       const map: Record<string, TeachingReportRecord> = { ...prev };
-      propTeachingReports.forEach((r) => {
-        if (r && r.id) map[r.id] = r;
-      });
+      const applyIfNewer = (r?: TeachingReportRecord | null) => {
+        if (!r || !r.id) return;
+        const existing = map[r.id];
+        if (!existing) {
+          map[r.id] = r;
+          return;
+        }
+        const incomingTime = new Date(r.updatedAt || 0).getTime() || 0;
+        const existingTime = new Date(existing.updatedAt || 0).getTime() || 0;
+        if (incomingTime >= existingTime) {
+          map[r.id] = r;
+        }
+      };
+      propTeachingReports.forEach(applyIfNewer);
+      getLocalTeachingReports().forEach(applyIfNewer);
       return map;
     });
   }, [propTeachingReports]);
@@ -1013,11 +1026,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
   const [weekPhotos, setWeekPhotos] = useState<GalleryPhotoItem[]>([]);
   const [hasManualPhotoEdits, setHasManualPhotoEdits] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
-  const [photoModalTab, setPhotoModalTab] = useState<'slots' | 'library'>('slots');
+  const [photoModalTab, setPhotoModalTab] = useState<'slots' | 'supervision' | 'internship'>('slots');
   const [targetSlotIdx, setTargetSlotIdx] = useState<number>(0);
-  const [librarySourceFilter, setLibrarySourceFilter] = useState<'supervision' | 'internship'>('supervision');
   const [libraryTeacherFilter, setLibraryTeacherFilter] = useState<string>('all');
   const [libraryCompanyFilter, setLibraryCompanyFilter] = useState<string>('all');
+  const [libraryWeekFilter, setLibraryWeekFilter] = useState<string>('all');
+  const [libraryStudentFilter, setLibraryStudentFilter] = useState<string>('all');
   const [librarySearch, setLibrarySearch] = useState<string>('');
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null);
   const [photoSyncNotice, setPhotoSyncNotice] = useState<string | null>(null);
@@ -1113,8 +1127,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
         updatedAt: nowIso,
       };
 
-      // Persist immediately in local cache & parent state so viewing/editing/printing always works
-      writeTeachingReportToLocalCache(payload, false);
+      // Mark pending and persist immediately in local cache & parent state so viewing/editing/printing always works
+      writeTeachingReportToLocalCache(payload, true);
       setRemoteReportsMap((prev) => ({ ...prev, [payload.id]: payload }));
       onReportSaved?.(payload);
 
@@ -1231,35 +1245,77 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return items;
   }, [form3List, courses]);
 
-  // Complete Database Library: ALL student weekly practice photos
+  // Complete Database Library: ALL student weekly practice photos from student internship submissions database
   const allDbInternshipPhotos = useMemo<GalleryPhotoItem[]>(() => {
     const c1 = courses[0] || { subjectCode: '30000-2005', subjectName: 'กิจกรรมในสถานประกอบการ 1' };
     const items: GalleryPhotoItem[] = [];
     const seenUrls = new Set<string>();
+    const seenSubmissionIds = new Set<string>();
 
-    const allSubs = Object.values(submissions).flat().sort((a, b) => {
-      if (a.weekNumber === selectedWeek && b.weekNumber !== selectedWeek) return -1;
-      if (a.weekNumber !== selectedWeek && b.weekNumber === selectedWeek) return 1;
-      return b.weekNumber - a.weekNumber;
+    const subEntries: { key: string; st?: Student; sub: WeeklySubmission }[] = [];
+
+    // 1. Gather authoritative merged submissions per known student
+    students.forEach((st) => {
+      const mergedSubs = getMergedStudentSubmissions(st, submissions);
+      mergedSubs.forEach((sub) => {
+        const dedupKey = sub.id || `${st.id}-w${sub.weekNumber}`;
+        if (seenSubmissionIds.has(dedupKey)) return;
+        seenSubmissionIds.add(dedupKey);
+        subEntries.push({ key: st.id, st, sub });
+      });
     });
 
-    allSubs.forEach((sub) => {
-      const st = students.find(s => s.id === sub.studentId || s.studentCode === sub.studentId?.replace(/^std-/, ''));
+    // 2. Also include any remaining buckets in submissions map
+    Object.entries(submissions).forEach(([subKey, list]) => {
+      (list || []).forEach((sub) => {
+        const dedupKey = sub.id || `${subKey}-w${sub.weekNumber}`;
+        if (seenSubmissionIds.has(dedupKey)) return;
+        seenSubmissionIds.add(dedupKey);
+        const cleanSubId = sub.studentId?.replace(/^std-/, '');
+        const cleanKeyId = subKey.replace(/^std-/, '');
+        const st = students.find(
+          (s) =>
+            s.id === sub.studentId ||
+            s.id === subKey ||
+            (s.studentCode && (s.studentCode === cleanSubId || s.studentCode === cleanKeyId))
+        );
+        subEntries.push({ key: subKey, st, sub });
+      });
+    });
+
+    subEntries.sort((a, b) => {
+      if (a.sub.weekNumber === selectedWeek && b.sub.weekNumber !== selectedWeek) return -1;
+      if (a.sub.weekNumber !== selectedWeek && b.sub.weekNumber === selectedWeek) return 1;
+      if (b.sub.weekNumber !== a.sub.weekNumber) return b.sub.weekNumber - a.sub.weekNumber;
+      const tA = parseThaiOrIsoDateTimeMs(a.sub.submittedAt || '');
+      const tB = parseThaiOrIsoDateTimeMs(b.sub.submittedAt || '');
+      return tB - tA;
+    });
+
+    subEntries.forEach(({ key: subKey, st, sub }) => {
       (sub.photos || []).forEach((p, pIdx) => {
         if (!p.url || seenUrls.has(p.url)) return;
         seenUrls.add(p.url);
-        const stName = st?.name || sub.studentId;
+        const stName = st?.name || sub.studentSignature || sub.studentId || 'นักศึกษา';
         const compName = st?.companyName || 'สถานประกอบการ';
+        const roomLabel = st?.room ? ` (${st.room})` : '';
+        const defaultCaption =
+          p.caption ||
+          p.title ||
+          (sub.taskTitle
+            ? `${sub.taskTitle} โดย ${stName} (${compName})`
+            : `การปฏิบัติงานบูรณาการวิชาชีพ วิชา ${c1.subjectCode} โดย ${stName} (${compName})`);
+
         items.push({
-          id: `lib-sub-${sub.id}-${pIdx}`,
+          id: `lib-sub-${sub.id || subKey}-${pIdx}`,
           url: p.url,
-          caption: p.caption || p.title || `การปฏิบัติงานบูรณาการวิชาชีพ วิชา ${c1.subjectCode} โดย ${stName} (${compName})`,
+          caption: defaultCaption,
           sourceType: 'internship',
-          sourceTitle: `บันทึกฝึกงาน สัปดาห์ที่ ${sub.weekNumber}: ${stName}`,
+          sourceTitle: `บันทึกฝึกงาน สัปดาห์ที่ ${sub.weekNumber}: ${stName}${roomLabel}`,
           studentName: stName,
           companyName: compName,
           subjectCode: c1.subjectCode,
-          visitDate: sub.submittedAt
+          visitDate: sub.submittedAt || sub.dateRange
         });
       });
     });
@@ -1279,20 +1335,49 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
   }, [allDbSupervisionPhotos]);
 
+  const libraryWeekOptions = useMemo(() => {
+    const weeks = new Set<number>();
+    allDbInternshipPhotos.forEach(p => {
+      const match = /สัปดาห์ที่\s*(\d+)/.exec(p.sourceTitle || '');
+      if (match) {
+        weeks.add(Number(match[1]));
+      }
+    });
+    return Array.from(weeks).sort((a, b) => b - a);
+  }, [allDbInternshipPhotos]);
+
+  const libraryStudentOptions = useMemo(() => {
+    const set = new Set<string>();
+    allDbInternshipPhotos.forEach(p => {
+      if (p.studentName && p.studentName.trim()) {
+        set.add(p.studentName.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
+  }, [allDbInternshipPhotos]);
+
   const libraryCompanyOptions = useMemo(() => {
-    const pool = librarySourceFilter === 'supervision' ? allDbSupervisionPhotos : allDbInternshipPhotos;
+    const pool = photoModalTab === 'internship' ? allDbInternshipPhotos : allDbSupervisionPhotos;
     const set = new Set<string>();
     pool.forEach(p => {
       if (p.companyName && p.companyName.trim()) set.add(p.companyName.trim());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
-  }, [librarySourceFilter, allDbSupervisionPhotos, allDbInternshipPhotos]);
+  }, [photoModalTab, allDbSupervisionPhotos, allDbInternshipPhotos]);
 
   const filteredLibraryPhotos = useMemo(() => {
-    const pool = librarySourceFilter === 'supervision' ? allDbSupervisionPhotos : allDbInternshipPhotos;
+    const isInternship = photoModalTab === 'internship';
+    const pool = isInternship ? allDbInternshipPhotos : allDbSupervisionPhotos;
     return pool.filter(item => {
-      if (librarySourceFilter === 'supervision' && libraryTeacherFilter !== 'all') {
+      if (!isInternship && libraryTeacherFilter !== 'all') {
         if (!(item.teacherName || '').includes(libraryTeacherFilter)) return false;
+      }
+      if (isInternship && libraryWeekFilter !== 'all') {
+        const match = /สัปดาห์ที่\s*(\d+)/.exec(item.sourceTitle || '');
+        if (!match || match[1] !== libraryWeekFilter) return false;
+      }
+      if (isInternship && libraryStudentFilter !== 'all') {
+        if ((item.studentName || '').trim() !== libraryStudentFilter) return false;
       }
       if (libraryCompanyFilter !== 'all') {
         if ((item.companyName || '').trim() !== libraryCompanyFilter) return false;
@@ -1304,12 +1389,13 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
           (item.teacherName || '').toLowerCase().includes(q) ||
           (item.studentName || '').toLowerCase().includes(q) ||
           (item.sourceTitle || '').toLowerCase().includes(q) ||
-          (item.caption || '').toLowerCase().includes(q);
+          (item.caption || '').toLowerCase().includes(q) ||
+          (item.visitDate || '').toLowerCase().includes(q);
         if (!match) return false;
       }
       return true;
     });
-  }, [librarySourceFilter, allDbSupervisionPhotos, allDbInternshipPhotos, libraryTeacherFilter, libraryCompanyFilter, librarySearch]);
+  }, [photoModalTab, allDbSupervisionPhotos, allDbInternshipPhotos, libraryTeacherFilter, libraryWeekFilter, libraryStudentFilter, libraryCompanyFilter, librarySearch]);
 
   // Photo source statistics summary
   const photoStats = useMemo(() => {
@@ -2730,8 +2816,10 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               <button
                 type="button"
                 onClick={() => {
-                  setPhotoModalTab('library');
-                  setLibrarySourceFilter('supervision');
+                  setPhotoModalTab('supervision');
+                  setLibraryCompanyFilter('all');
+                  setLibraryWeekFilter('all');
+                  setLibraryStudentFilter('all');
                   setTargetSlotIdx(0);
                   setIsPhotoModalOpen(true);
                 }}
@@ -2740,6 +2828,23 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span>เลือกรูปจากการนิเทศ ({allDbSupervisionPhotos.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoModalTab('internship');
+                  setLibraryCompanyFilter('all');
+                  setLibraryWeekFilter('all');
+                  setLibraryStudentFilter('all');
+                  setTargetSlotIdx(0);
+                  setIsPhotoModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition cursor-pointer"
+                title="เลือกรูปภาพจากคลังภาพของนักศึกษาที่ส่งภาพจากรายงานการฝึกปฏิบัติงานประจำสัปดาห์"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>เลือกรูปจากรายงานฝึกงาน นศ. ({allDbInternshipPhotos.length})</span>
               </button>
 
               <button
@@ -2817,7 +2922,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900 text-base">
-                      จัดการรูปภาพและดึงภาพจากการนิเทศในฐานข้อมูล (6 รูป)
+                      จัดการรูปภาพและคลังภาพจากฐานข้อมูล (6 รูป)
                     </h3>
                     <p className="text-xs text-slate-500">
                       สัปดาห์ที่ {selectedWeek} &bull; ครูนิเทศก์: {reporterName} &bull; วิชา: {courses.map(c => c.subjectCode).join(', ')}
@@ -2848,9 +2953,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 </div>
               </div>
 
-              {/* Modal Sub-Tabs: 6 Slots Editor vs Database Supervision Library */}
+              {/* Modal Sub-Tabs: 6 Slots Editor | Supervision Photo Library | Student Weekly Internship Photo Library */}
               <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-semibold">
+                <div className="inline-flex flex-wrap p-1 bg-slate-200/80 rounded-xl text-xs font-semibold gap-1">
                   <button
                     type="button"
                     onClick={() => setPhotoModalTab('slots')}
@@ -2865,15 +2970,37 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPhotoModalTab('library')}
+                    onClick={() => {
+                      setPhotoModalTab('supervision');
+                      setLibraryCompanyFilter('all');
+                      setLibraryWeekFilter('all');
+                      setLibraryStudentFilter('all');
+                    }}
                     className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
-                      photoModalTab === 'library'
+                      photoModalTab === 'supervision'
                         ? 'bg-white text-purple-900 shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <Camera className="w-3.5 h-3.5 text-purple-600" />
                     <span>คลังรูปภาพการนิเทศจากฐานข้อมูล ({allDbSupervisionPhotos.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhotoModalTab('internship');
+                      setLibraryCompanyFilter('all');
+                      setLibraryWeekFilter('all');
+                      setLibraryStudentFilter('all');
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition cursor-pointer ${
+                      photoModalTab === 'internship'
+                        ? 'bg-white text-sky-900 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-sky-600" />
+                    <span>คลังภาพรายงานฝึกงานประจำสัปดาห์ นศ. ({allDbInternshipPhotos.length})</span>
                   </button>
                 </div>
 
@@ -2939,13 +3066,29 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                               type="button"
                               onClick={() => {
                                 setTargetSlotIdx(idx);
-                                setLibrarySourceFilter('supervision');
-                                setPhotoModalTab('library');
+                                setLibraryCompanyFilter('all');
+                                setLibraryWeekFilter('all');
+                                setLibraryStudentFilter('all');
+                                setPhotoModalTab('supervision');
                               }}
                               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition cursor-pointer"
                             >
                               <Camera className="w-3 h-3" />
-                              <span>เลือกจากคลังนิเทศ</span>
+                              <span>คลังนิเทศ</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTargetSlotIdx(idx);
+                                setLibraryCompanyFilter('all');
+                                setLibraryWeekFilter('all');
+                                setLibraryStudentFilter('all');
+                                setPhotoModalTab('internship');
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition cursor-pointer"
+                            >
+                              <BookOpen className="w-3 h-3" />
+                              <span>คลังฝึกงาน นศ.</span>
                             </button>
                             <button
                               type="button"
@@ -2989,14 +3132,24 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               </div>
               )}
 
-              {/* TAB 2: DATABASE SUPERVISION & INTERNSHIP PHOTO LIBRARY PICKER */}
-              {photoModalTab === 'library' && (
+              {/* TAB 2 & TAB 3: DATABASE SUPERVISION LIBRARY OR STUDENT WEEKLY INTERNSHIP PHOTO LIBRARY */}
+              {(photoModalTab === 'supervision' || photoModalTab === 'internship') && (
               <div className="p-5 overflow-y-auto space-y-4">
                 {/* Target Slot Selector & Quick Batch Fill */}
-                <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className={`p-3.5 rounded-xl border flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${
+                  photoModalTab === 'internship'
+                    ? 'bg-sky-50/70 border-sky-200'
+                    : 'bg-purple-50/70 border-purple-200'
+                }`}>
                   <div className="space-y-1.5">
-                    <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
-                      <span>เลือกช่องเป้าหมายที่จะนำรูปลงรายงาน (คลิกที่รูปด้านล่างเพื่อใส่ทันที):</span>
+                    <div className={`text-xs font-bold flex items-center gap-1.5 ${
+                      photoModalTab === 'internship' ? 'text-sky-950' : 'text-purple-950'
+                    }`}>
+                      <span>
+                        {photoModalTab === 'internship'
+                          ? 'คลังภาพรายงานฝึกงานประจำสัปดาห์ของนักศึกษา (ดึงจากฐานข้อมูลรายงานการฝึกงาน): เลือกช่องเป้าหมายด้านล่าง'
+                          : 'คลังรูปภาพการนิเทศจากฐานข้อมูล: เลือกช่องเป้าหมายที่จะนำรูปลงรายงาน (คลิกที่รูปด้านล่างเพื่อใส่ทันที)'}
+                      </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       {Array.from({ length: 6 }, (_, sIdx) => (
@@ -3006,13 +3159,20 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                           onClick={() => setTargetSlotIdx(sIdx)}
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
                             targetSlotIdx === sIdx
-                              ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
+                              ? photoModalTab === 'internship'
+                                ? 'bg-sky-700 text-white border-sky-700 shadow-xs'
+                                : 'bg-purple-700 text-white border-purple-700 shadow-xs'
+                              : photoModalTab === 'internship'
+                              ? 'bg-white text-slate-700 border-slate-300 hover:bg-sky-100'
                               : 'bg-white text-slate-700 border-slate-300 hover:bg-purple-100'
                           }`}
                         >
                           <span>ภาพที่ {sIdx + 1}</span>
                           {weekPhotos[sIdx]?.sourceType === 'supervision' && (
                             <span className={`w-2 h-2 rounded-full ${targetSlotIdx === sIdx ? 'bg-emerald-300' : 'bg-emerald-500'}`} title="มีภาพจากการนิเทศแล้ว" />
+                          )}
+                          {weekPhotos[sIdx]?.sourceType === 'internship' && (
+                            <span className={`w-2 h-2 rounded-full ${targetSlotIdx === sIdx ? 'bg-sky-300' : 'bg-sky-500'}`} title="มีภาพจากรายงานฝึกงาน นศ. แล้ว" />
                           )}
                         </button>
                       ))}
@@ -3031,43 +3191,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                   </button>
                 </div>
 
-                {/* Filters Bar */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center text-xs">
-                  {/* Source Type Switch */}
-                  <div className="lg:col-span-4 inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLibrarySourceFilter('supervision');
-                        setLibraryCompanyFilter('all');
-                      }}
-                      className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                        librarySourceFilter === 'supervision'
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      📸 การนิเทศ ({allDbSupervisionPhotos.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLibrarySourceFilter('internship');
-                        setLibraryCompanyFilter('all');
-                      }}
-                      className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                        librarySourceFilter === 'internship'
-                          ? 'bg-sky-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      🛠️ บันทึกฝึกงาน ({allDbInternshipPhotos.length})
-                    </button>
-                  </div>
-
-                  {/* Teacher Filter (only for Supervision photos) */}
-                  {librarySourceFilter === 'supervision' && (
-                    <div className="lg:col-span-3">
+                {/* Filters Bar (Separate tailored filters per tab) */}
+                {photoModalTab === 'supervision' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center text-xs">
+                    {/* Teacher Filter */}
+                    <div className="lg:col-span-4">
                       <select
                         value={libraryTeacherFilter}
                         onChange={(e) => setLibraryTeacherFilter(e.target.value)}
@@ -3079,56 +3207,127 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                         ))}
                       </select>
                     </div>
-                  )}
 
-                  {/* Company Filter */}
-                  <div className={librarySourceFilter === 'supervision' ? 'lg:col-span-3' : 'lg:col-span-4'}>
-                    <select
-                      value={libraryCompanyFilter}
-                      onChange={(e) => setLibraryCompanyFilter(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 font-medium"
-                    >
-                      <option value="all">ทุกสถานประกอบการ ({libraryCompanyOptions.length} แห่ง)</option>
-                      {libraryCompanyOptions.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Search Input */}
-                  <div className={librarySourceFilter === 'supervision' ? 'lg:col-span-2 relative' : 'lg:col-span-4 relative'}>
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={librarySearch}
-                      onChange={(e) => setLibrarySearch(e.target.value)}
-                      placeholder="ค้นหา..."
-                      className="w-full pl-8 pr-7 py-2 rounded-xl border border-slate-300 text-xs text-slate-800"
-                    />
-                    {librarySearch && (
-                      <button
-                        type="button"
-                        onClick={() => setLibrarySearch('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    {/* Company Filter */}
+                    <div className="lg:col-span-4">
+                      <select
+                        value={libraryCompanyFilter}
+                        onChange={(e) => setLibraryCompanyFilter(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 font-medium"
                       >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                        <option value="all">ทุกสถานประกอบการ ({libraryCompanyOptions.length} แห่ง)</option>
+                        {libraryCompanyOptions.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="lg:col-span-4 relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={librarySearch}
+                        onChange={(e) => setLibrarySearch(e.target.value)}
+                        placeholder="ค้นหาชื่อครู นศ. หรือสถานประกอบการ..."
+                        className="w-full pl-8 pr-7 py-2 rounded-xl border border-slate-300 text-xs text-slate-800"
+                      />
+                      {librarySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setLibrarySearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center text-xs">
+                    {/* Week Filter */}
+                    <div className="lg:col-span-3">
+                      <select
+                        value={libraryWeekFilter}
+                        onChange={(e) => setLibraryWeekFilter(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 font-medium"
+                      >
+                        <option value="all">ทุกสัปดาห์ ({libraryWeekOptions.length} สัปดาห์)</option>
+                        {libraryWeekOptions.map(w => (
+                          <option key={w} value={String(w)}>
+                            สัปดาห์ที่ {w}{w === selectedWeek ? ' (สัปดาห์ปัจจุบัน)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Student Filter */}
+                    <div className="lg:col-span-3">
+                      <select
+                        value={libraryStudentFilter}
+                        onChange={(e) => setLibraryStudentFilter(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 font-medium"
+                      >
+                        <option value="all">นักศึกษาทุกคน ({libraryStudentOptions.length} คน)</option>
+                        {libraryStudentOptions.map(stName => (
+                          <option key={stName} value={stName}>{stName}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Company Filter */}
+                    <div className="lg:col-span-3">
+                      <select
+                        value={libraryCompanyFilter}
+                        onChange={(e) => setLibraryCompanyFilter(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 font-medium"
+                      >
+                        <option value="all">ทุกสถานประกอบการ ({libraryCompanyOptions.length} แห่ง)</option>
+                        {libraryCompanyOptions.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="lg:col-span-3 relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={librarySearch}
+                        onChange={(e) => setLibrarySearch(e.target.value)}
+                        placeholder="ค้นหา นศ. / งาน / บริษัท..."
+                        className="w-full pl-8 pr-7 py-2 rounded-xl border border-slate-300 text-xs text-slate-800"
+                      />
+                      {librarySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setLibrarySearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Reset Filters if active */}
-                {(libraryTeacherFilter !== 'all' || libraryCompanyFilter !== 'all' || librarySearch) && (
+                {(libraryTeacherFilter !== 'all' || libraryWeekFilter !== 'all' || libraryStudentFilter !== 'all' || libraryCompanyFilter !== 'all' || librarySearch) && (
                   <div className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                     <span>พบ {filteredLibraryPhotos.length} รูปภาพที่ตรงตามตัวกรอง</span>
                     <button
                       type="button"
                       onClick={() => {
                         setLibraryTeacherFilter('all');
+                        setLibraryWeekFilter('all');
+                        setLibraryStudentFilter('all');
                         setLibraryCompanyFilter('all');
                         setLibrarySearch('');
                       }}
-                      className="inline-flex items-center gap-1 text-purple-700 font-semibold hover:underline cursor-pointer"
+                      className={`inline-flex items-center gap-1 font-semibold hover:underline cursor-pointer ${
+                        photoModalTab === 'internship' ? 'text-sky-700' : 'text-purple-700'
+                      }`}
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>ล้างตัวกรอง</span>
@@ -3139,9 +3338,17 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                 {/* Photos Grid */}
                 {filteredLibraryPhotos.length === 0 ? (
                   <div className="py-12 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs space-y-1">
-                    <Camera className="w-8 h-8 text-slate-300 mx-auto" />
+                    {photoModalTab === 'internship' ? (
+                      <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+                    ) : (
+                      <Camera className="w-8 h-8 text-slate-300 mx-auto" />
+                    )}
                     <p className="font-semibold text-slate-700">ไม่พบรูปภาพในฐานข้อมูลตามตัวกรองที่เลือก</p>
-                    <p className="text-[11px] text-slate-400">ลองเลือก "ครูนิเทศก์ทุกคน" หรือ "ทุกสถานประกอบการ"</p>
+                    <p className="text-[11px] text-slate-400">
+                      {photoModalTab === 'internship'
+                        ? 'ลองเลือก "ทุกสัปดาห์", "นักศึกษาทุกคน" หรือ "ทุกสถานประกอบการ"'
+                        : 'ลองเลือก "ครูนิเทศก์ทุกคน" หรือ "ทุกสถานประกอบการ"'}
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -3149,6 +3356,7 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                       const usedSlots = weekPhotos
                         .map((wp, idx) => (wp.url === item.url ? idx + 1 : null))
                         .filter((v): v is number => v !== null);
+                      const weekMatch = item.sourceType === 'internship' ? /สัปดาห์ที่\s*(\d+)/.exec(item.sourceTitle || '') : null;
 
                       return (
                         <div
@@ -3156,6 +3364,8 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                           className={`rounded-xl border overflow-hidden flex flex-col justify-between transition bg-white shadow-2xs ${
                             usedSlots.length > 0
                               ? 'border-emerald-400 ring-1 ring-emerald-200'
+                              : item.sourceType === 'internship'
+                              ? 'border-slate-200 hover:border-sky-400'
                               : 'border-slate-200 hover:border-purple-400'
                           }`}
                         >
@@ -3171,6 +3381,12 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                                 <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900/85 text-white flex items-center gap-1">
                                   <UserCheck className="w-3 h-3 text-sky-300" />
                                   <span className="truncate max-w-[140px]">{item.teacherName}</span>
+                                </span>
+                              )}
+                              {!item.teacherName && weekMatch && (
+                                <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-700/90 text-white flex items-center gap-1 shadow-xs">
+                                  <BookOpen className="w-3 h-3 text-sky-200" />
+                                  <span>สัปดาห์ที่ {weekMatch[1]}</span>
                                 </span>
                               )}
                               {usedSlots.length > 0 && (
@@ -3198,7 +3414,11 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
                             <button
                               type="button"
                               onClick={() => handleSelectLibraryPhoto(item)}
-                              className="w-full py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                              className={`w-full py-1.5 px-3 rounded-lg text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                                item.sourceType === 'internship'
+                                  ? 'bg-sky-600 hover:bg-sky-700'
+                                  : 'bg-purple-600 hover:bg-purple-700'
+                              }`}
                             >
                               <Check className="w-3.5 h-3.5" />
                               <span>เลือกใส่ภาพที่ {targetSlotIdx + 1}</span>
@@ -3215,7 +3435,9 @@ export const WorkplaceTeachingReportView: React.FC<WorkplaceTeachingReportViewPr
               {/* Modal Footer */}
               <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
                 <span className="text-xs text-slate-500">
-                  ครูนิเทศก์ทุกคนสามารถดึงรูปภาพการนิเทศของทุกสถานประกอบการไปใช้ในรายงานได้ทันที
+                  {photoModalTab === 'internship'
+                    ? 'ดึงภาพจากฐานข้อมูลรายงานการฝึกปฏิบัติงานประจำสัปดาห์ของนักศึกษาโดยตรง'
+                    : 'ครูนิเทศก์ทุกคนสามารถดึงรูปภาพการนิเทศของทุกสถานประกอบการไปใช้ในรายงานได้ทันที'}
                 </span>
                 <button
                   type="button"

@@ -38,12 +38,13 @@ import { StudentAvatar } from '../StudentAvatar';
 import { 
   appendForm3ToGoogleSheet,
   GOOGLE_SHEET_CONFIG,
-  clearForm3PendingIds
+  clearForm3PendingIds,
+  markForm3PendingIds
 } from '../../services/googleSheetsService';
 import { saveForm3SupervisionToFirestore } from '../../services/firestoreService';
 import { getCachedAccessToken } from '../../services/authService';
 import { normalizeCompanyNameKey, normalizeStudentAcademicInfo } from '../../utils/dataUnifier';
-import { formatThaiErrorMessage } from '../../utils/thaiErrorUtils';
+import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../../utils/thaiErrorUtils';
 
 interface Form3SupervisionModalProps {
   isOpen: boolean;
@@ -666,11 +667,8 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
     };
 
     try {
-      // 1. Save 1 supervision record atomically to online Firebase Firestore
-      await saveForm3SupervisionToFirestore(recordToSave);
-      clearForm3PendingIds([recordToSave.id]);
-
-      // 2. Trigger parent callback to update all selected students' weekly evaluations & /companies
+      // 1. Mark pending & update parent UI/local cache immediately so new record displays right away
+      markForm3PendingIds([recordToSave.id]);
       if (onSaveEvaluation) {
         await onSaveEvaluation({
           studentIds: allStudentIds,
@@ -686,14 +684,34 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
         });
       }
 
+      // 2. Persist 1 supervision record atomically to online Firebase Firestore
+      let savedToCloud = false;
+      try {
+        await saveForm3SupervisionToFirestore(recordToSave);
+        clearForm3PendingIds([recordToSave.id]);
+        savedToCloud = true;
+      } catch (cloudErr) {
+        if (!isQuotaOrNetworkError(cloudErr)) {
+          throw cloudErr;
+        }
+      }
+
       // 3. Sync 1 single row to Google Sheets Form_3 tab & Local Storage
       const token = getCachedAccessToken();
       try {
         const sheetResult = await appendForm3ToGoogleSheet(recordToSave, token);
-        clearForm3PendingIds([recordToSave.id]);
-        setSheetSyncStatus(`บันทึกรายงานการนิเทศ 1 รายการ (1 สถานประกอบการ • นักศึกษา ${selectedStudents.length} คน) แล้ว • ${sheetResult.message}`);
+        if (savedToCloud) {
+          clearForm3PendingIds([recordToSave.id]);
+          setSheetSyncStatus(`บันทึกรายงานการนิเทศ 1 รายการ (1 สถานประกอบการ • นักศึกษา ${selectedStudents.length} คน) แล้ว • ${sheetResult.message}`);
+        } else {
+          setSheetSyncStatus(`บันทึกข้อมูลไว้ในระบบและแสดงผลทันทีแล้ว (ฐานข้อมูล Cloud เกินโควตาชั่วคราว รอซิงค์อัตโนมัติ)`);
+        }
       } catch {
-        setSheetSyncStatus(`บันทึกรายงานการนิเทศ 1 รายการ (${resolvedCompanyName} • ครอบคลุมนักศึกษา ${selectedStudents.length} คน) ลงฐานข้อมูลออนไลน์เรียบร้อยแล้ว`);
+        setSheetSyncStatus(
+          savedToCloud
+            ? `บันทึกรายงานการนิเทศ 1 รายการ (${resolvedCompanyName} • ครอบคลุมนักศึกษา ${selectedStudents.length} คน) ลงฐานข้อมูลออนไลน์เรียบร้อยแล้ว`
+            : `บันทึกข้อมูลไว้ในระบบและแสดงผลทันทีแล้ว (ฐานข้อมูล Cloud เกินโควตาชั่วคราว รอซิงค์อัตโนมัติ)`
+        );
       }
 
       setSavedStudentsSnapshot(selectedStudents);

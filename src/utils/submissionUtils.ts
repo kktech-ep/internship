@@ -252,19 +252,23 @@ export function reconcileSubmissionsWithCloud(
             keysToDelete.push(storageKey);
             continue;
           }
-          const inCloud = Boolean(localSub.id && cloudById.has(localSub.id));
-          if (inCloud) {
+          const cloudCopy = localSub.id ? cloudById.get(localSub.id) : undefined;
+          const isPending = Boolean(localSub.id && pendingIds.has(localSub.id));
+          if (isPending && localSub.id) {
+            // Preserve unsynced/optimistic local write even if an older doc with the same ID exists in cloud
+            if (cloudCopy && cloudCopy.status === 'graded' && localSub.status !== 'graded') {
+              localStorage.setItem(storageKey, JSON.stringify(cloudCopy));
+            } else {
+              stillPendingIds.add(localSub.id);
+              const bucket = (grouped[localSub.studentId] || []).filter(
+                (x) => x.id !== localSub.id && x.weekNumber !== localSub.weekNumber
+              );
+              grouped[localSub.studentId] = [localSub, ...bucket];
+            }
+          } else if (cloudCopy) {
             // Synced to cloud cleanly — keep cache refreshed with cloud copy
-            const cloudCopy = cloudById.get(localSub.id)!;
             if (cloudCopy.status === 'graded' && localSub.status !== 'graded') {
               localStorage.setItem(storageKey, JSON.stringify(cloudCopy));
-            }
-          } else if (localSub.id && pendingIds.has(localSub.id)) {
-            // Unsynced optimistic/offline write — preserve and include in grouped map
-            stillPendingIds.add(localSub.id);
-            const bucket = grouped[localSub.studentId] || [];
-            if (!bucket.some((x) => x.weekNumber === localSub.weekNumber)) {
-              grouped[localSub.studentId] = [...bucket, localSub];
             }
           } else {
             // Removed from cloud (e.g., deleted by Admin) — purge local copy so it cannot resurrect

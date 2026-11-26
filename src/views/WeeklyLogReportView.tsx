@@ -24,7 +24,7 @@ import {
   writeSubmissionToLocalCache,
   markSubmissionSyncedToCloud,
 } from '../utils/submissionUtils';
-import { formatThaiErrorMessage } from '../utils/thaiErrorUtils';
+import { formatThaiErrorMessage, isQuotaOrNetworkError } from '../utils/thaiErrorUtils';
 
 interface WeeklyLogReportViewProps {
   student: Student;
@@ -238,12 +238,16 @@ export const WeeklyLogReportView: React.FC<WeeklyLogReportViewProps> = ({
     } catch (err) {
       console.error('Error saving submission to Firestore:', err);
       setIsSaving(false);
-      setErrorMessage(
-        formatThaiErrorMessage(
-          err,
-          'ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง'
-        )
-      );
+      if (isQuotaOrNetworkError(err)) {
+        setSaveSuccessMessage(`บันทึกรายงานสัปดาห์ที่ ${selectedWeek} และแสดงผลในระบบเรียบร้อยแล้ว (ฐานข้อมูล Cloud เกินโควตาชั่วคราว ข้อมูลสำรองพร้อมเรียกดูและสั่งพิมพ์ ทว.04 ได้ทันที)`);
+      } else {
+        setErrorMessage(
+          formatThaiErrorMessage(
+            err,
+            'ไม่สามารถบันทึกลงฐานข้อมูลออนไลน์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง'
+          )
+        );
+      }
     }
   };
 

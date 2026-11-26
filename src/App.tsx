@@ -37,6 +37,7 @@ import {
   appendForm1ToGoogleSheet,
   deleteLocalForm3Row,
   getLocalForm3Rows,
+  markForm3PendingIds,
   reconcileForm3WithCloud,
   saveLocalForm3Rows,
 } from './services/googleSheetsService';
@@ -77,7 +78,7 @@ import {
   getLocalTeachingReports,
   reconcileTeachingReportsWithCloud,
 } from './utils/teachingReportCache';
-import { formatThaiErrorMessage } from './utils/thaiErrorUtils';
+import { formatThaiErrorMessage, isQuotaOrNetworkError } from './utils/thaiErrorUtils';
 import {
   getCandidateStudentKeys,
   getMergedStudentSubmissions,
@@ -93,7 +94,31 @@ import {
   getStudentEvaluationSummary,
   buildUnifiedCompanies,
   toFirestoreCompanies,
+  getForm3RecordTimestampMs,
 } from './utils/dataUnifier';
+
+const PENDING_FORM1_STUDENTS_KEY = 'kktech_pending_form1_students_v1';
+
+function readPendingForm1Students(): Record<string, Student> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(PENDING_FORM1_STUDENTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, Student>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePendingForm1Students(map: Record<string, Student>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(PENDING_FORM1_STUDENTS_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage quota errors
+  }
+}
 
 let hasRunStartupSheetSync = false;
 
@@ -112,7 +137,8 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>(() => {
     const sheetStudents = getAllLoginSheetStudents();
     const base = sheetStudents.length > 0 ? sheetStudents : mockStudents;
-    return base.map(normalizeStudentAcademicInfo);
+    const pendingForm1 = readPendingForm1Students();
+    return base.map((s) => normalizeStudentAcademicInfo(pendingForm1[s.id] || s));
   });
   const [companies, setCompanies] = useState<Company[]>(mockCompanies);
   const [submissions, setSubmissions] = useState<Record<string, WeeklySubmission[]>>(
@@ -134,8 +160,12 @@ export default function App() {
   const [teachingReportsVisitKey, setTeachingReportsVisitKey] = useState<number>(0);
 
   const hasCloudSubsRef = React.useRef<boolean>(false);
+  const remoteSubsRef = React.useRef<WeeklySubmission[]>([]);
   const hasCloudForm3Ref = React.useRef<boolean>(false);
   const remoteForm3Ref = React.useRef<Form3SupervisionRecord[]>([]);
+  const hasCloudTeachingReportsRef = React.useRef<boolean>(false);
+  const remoteTeachingReportsRef = React.useRef<TeachingReportRecord[]>([]);
+  const pendingForm1StudentsRef = React.useRef<Record<string, Student>>(readPendingForm1Students());
   const submissionsRef = React.useRef<Record<string, WeeklySubmission[]>>(submissions);
   submissionsRef.current = submissions;
   const userAvatarsRef = React.useRef<UserAvatarRecord[]>(userAvatars);
@@ -280,8 +310,9 @@ export default function App() {
         setStudents((prev) => {
           const prevById = new Map(prev.map((s) => [s.id, s]));
           return freshSheetStudents.map((fs) => {
-            const existing = prevById.get(fs.id) as (Student & { lastSyncSource?: string }) | undefined;
-            const keepForm1 = existing?.lastSyncSource === 'web_portal_form1';
+            const pendingEdit = pendingForm1StudentsRef.current[fs.id] as (Student & { lastSyncSource?: string }) | undefined;
+            const existing = pendingEdit || (prevById.get(fs.id) as (Student & { lastSyncSource?: string }) | undefined);
+            const keepForm1 = Boolean(pendingEdit) || existing?.lastSyncSource === 'web_portal_form1';
             return normalizeStudentAcademicInfo({
               ...fs,
               ...(existing?.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
@@ -358,14 +389,23 @@ export default function App() {
               studentCode: prev?.studentCode || rs.studentCode,
               name: rs.name || prev?.name,
             });
+            const pendingForm1 = pendingForm1StudentsRef.current[rs.id];
+            const effectiveRecord = pendingForm1
+              ? {
+                  ...rs,
+                  ...pendingForm1,
+                  companyName: pendingForm1.companyName || rs.companyName,
+                  companyRegistration: pendingForm1.companyRegistration || rs.companyRegistration,
+                }
+              : rs;
             mergedMap.set(
               rs.id,
               normalizeStudentAcademicInfo({
                 ...(prev || {}),
-                ...rs,
+                ...effectiveRecord,
                 email: prev?.email || rs.email || '',
                 studentCode: prev?.studentCode || rs.studentCode || '',
-                phone: rs.phone || prev?.phone,
+                phone: effectiveRecord.phone || prev?.phone,
                 avatarUrl: fromUserAvatars || rs.avatarUrl || prev?.avatarUrl || localCachedAvatar,
               } as Student)
             );
@@ -465,13 +505,23 @@ export default function App() {
     const unsubSubmissions = subscribeSubmissions(
       (remoteSubs) => {
         hasCloudSubsRef.current = true;
-        setSubmissions(reconcileSubmissionsWithCloud(remoteSubs || []));
+        const recs = remoteSubs || [];
+        remoteSubsRef.current = recs;
+        const reconciled = reconcileSubmissionsWithCloud(recs);
+        submissionsRef.current = reconciled;
+        setSubmissions(reconciled);
       },
       (err) => console.warn('Submissions firestore stream note:', err)
     );
 
     const handleSubLocalUpdate = () => {
-      setSubmissions((prev) => mergeSubmissionsWithLocalCache(prev, hasCloudSubsRef.current));
+      if (hasCloudSubsRef.current) {
+        const reconciled = reconcileSubmissionsWithCloud(remoteSubsRef.current);
+        submissionsRef.current = reconciled;
+        setSubmissions(reconciled);
+      } else {
+        setSubmissions((prev) => mergeSubmissionsWithLocalCache(prev, false));
+      }
     };
     window.addEventListener('kktech_submissions_updated', handleSubLocalUpdate);
 
@@ -508,7 +558,10 @@ export default function App() {
     // 11. Single authoritative real-time subscription to Workplace Teaching Reports (/teaching_reports)
     const unsubTeachingReports = subscribeTeachingReports(
       (remoteReports) => {
-        const merged = reconcileTeachingReportsWithCloud(remoteReports || []);
+        hasCloudTeachingReportsRef.current = true;
+        const recs = remoteReports || [];
+        remoteTeachingReportsRef.current = recs;
+        const merged = reconcileTeachingReportsWithCloud(recs);
         setTeachingReports(merged);
         setTeachingReportsNotice(null);
       },
@@ -523,6 +576,15 @@ export default function App() {
       }
     );
 
+    const handleTeachingReportLocalSync = () => {
+      if (hasCloudTeachingReportsRef.current) {
+        setTeachingReports(reconcileTeachingReportsWithCloud(remoteTeachingReportsRef.current));
+      } else {
+        setTeachingReports(getLocalTeachingReports());
+      }
+    };
+    window.addEventListener('kktech_teaching_reports_updated', handleTeachingReportLocalSync);
+
     return () => {
       unsubStudents();
       unsubCompanies();
@@ -535,6 +597,7 @@ export default function App() {
       unsubTeachingReports();
       window.removeEventListener('kktech_submissions_updated', handleSubLocalUpdate);
       window.removeEventListener('kktech_form3_updated', handleForm3LocalSync);
+      window.removeEventListener('kktech_teaching_reports_updated', handleTeachingReportLocalSync);
     };
   }, []);
 
@@ -584,6 +647,13 @@ export default function App() {
     const nextStudents = students.some((s) => s.id === updatedStudent.id)
       ? students.map((s) => (s.id === updatedStudent.id ? updatedStudent : s))
       : [updatedStudent, ...students];
+
+    // Persist locally immediately so Form 1 edits stay visible even if cloud snapshot lags or hits quota
+    pendingForm1StudentsRef.current = {
+      ...pendingForm1StudentsRef.current,
+      [updatedStudent.id]: updatedStudent,
+    };
+    writePendingForm1Students(pendingForm1StudentsRef.current);
     setStudents(nextStudents);
 
     let syncResult = {
@@ -597,6 +667,10 @@ export default function App() {
       syncResult = await saveAndSyncStudentBothWays(updatedStudent, token);
 
       if (syncResult.success) {
+        const nextPending = { ...pendingForm1StudentsRef.current };
+        delete nextPending[updatedStudent.id];
+        pendingForm1StudentsRef.current = nextPending;
+        writePendingForm1Students(nextPending);
         await syncDerivedCompaniesToFirestore(nextStudents, form3List);
       }
 
@@ -618,15 +692,28 @@ export default function App() {
           },
           token
         ).catch((sheetErr) => console.warn('Form 1 sheet append note:', sheetErr));
+      } else {
+        const isTransientCloudIssue =
+          syncResult.firestoreResult.includes('โควตา') ||
+          syncResult.firestoreResult.includes('เชื่อมต่อ') ||
+          syncResult.firestoreResult.includes('เครือข่าย');
+        if (isTransientCloudIssue) {
+          syncResult = {
+            success: true,
+            sheetResult: syncResult.sheetResult,
+            firestoreResult:
+              'บันทึกข้อมูลไว้ในระบบและแสดงผลทันทีแล้ว (ฐานข้อมูล Cloud เกินโควตาชั่วคราว รอซิงค์อัตโนมัติ)',
+          };
+        }
       }
     } catch (syncErr) {
       console.warn('Unified database sync note:', syncErr);
       syncResult = {
-        success: false,
+        success: isQuotaOrNetworkError(syncErr),
         sheetResult: syncResult.sheetResult || '',
         firestoreResult: formatThaiErrorMessage(
           syncErr,
-          'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลออนไลน์ได้ กรุณาลองใหม่อีกครั้ง'
+          'บันทึกข้อมูลไว้ในระบบและแสดงผลทันทีแล้ว (รอซิงค์ฐานข้อมูลออนไลน์)'
         ),
       };
     }
@@ -755,12 +842,13 @@ export default function App() {
     writeSubmissionToLocalCache(newSub, currentStudent);
 
     const nextSubsMap: Record<string, WeeklySubmission[]> = {
-      ...submissions,
+      ...submissionsRef.current,
       [currentStudent.id]: [
         newSub,
-        ...(submissions[currentStudent.id] || []).filter((s) => s.weekNumber !== newSub.weekNumber),
+        ...(submissionsRef.current[currentStudent.id] || []).filter((s) => s.weekNumber !== newSub.weekNumber),
       ],
     };
+    submissionsRef.current = nextSubsMap;
     setSubmissions(nextSubsMap);
     syncStudentLiveStats(currentStudent, nextSubsMap);
 
@@ -770,7 +858,9 @@ export default function App() {
       markSubmissionSyncedToCloud(newSub.id);
     } catch (e) {
       console.error('Error saving submission to Firestore:', e);
-      throw e;
+      if (!isQuotaOrNetworkError(e)) {
+        throw e;
+      }
     }
   };
 
@@ -803,11 +893,10 @@ export default function App() {
       incomingRecords.forEach((r) => {
         if (r && r.id) mergedMap.set(r.id, r);
       });
-      nextForm3List = Array.from(mergedMap.values()).sort((a, b) => {
-        const tA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-        const tB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-        return tB - tA;
-      });
+      nextForm3List = Array.from(mergedMap.values()).sort(
+        (a, b) => getForm3RecordTimestampMs(b) - getForm3RecordTimestampMs(a)
+      );
+      markForm3PendingIds(incomingRecords.map((r) => r.id));
       setForm3List(nextForm3List);
       saveLocalForm3Rows(nextForm3List);
       syncDerivedCompaniesToFirestore(students, nextForm3List).catch((err) =>
@@ -871,8 +960,15 @@ export default function App() {
       setSubmissions(nextSubs);
 
       // Persist all updated evaluations atomically and immediately to Firebase Firestore
-      await saveSubmissionsBatchToFirestore(modifiedSubs);
-      modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
+      try {
+        await saveSubmissionsBatchToFirestore(modifiedSubs);
+        modifiedSubs.forEach((sub) => markSubmissionSyncedToCloud(sub.id));
+      } catch (batchErr) {
+        console.warn('Submissions batch sync note:', batchErr);
+        if (!isQuotaOrNetworkError(batchErr)) {
+          throw batchErr;
+        }
+      }
 
       for (const sId of idsToUpdate) {
         const st = students.find(

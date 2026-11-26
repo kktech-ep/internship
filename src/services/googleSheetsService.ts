@@ -5,6 +5,7 @@
  */
 
 import { Form3SupervisionRecord } from '../types';
+import { getForm3RecordTimestampMs } from '../utils/dataUnifier';
 
 export const GOOGLE_SHEET_CONFIG = {
   spreadsheetId: '1wQWPpmbFof8HFZjofYz9DKWAYWpe9NngeUUCFdVVt28',
@@ -310,6 +311,10 @@ export function reconcileForm3WithCloud(cloudRecords: Form3SupervisionRecord[]):
   for (const lr of local) {
     if (!lr || !lr.id) continue;
     if (cloudIds.has(lr.id)) {
+      if (pending.has(lr.id)) {
+        stillPending.add(lr.id);
+        map.set(lr.id, lr);
+      }
       continue;
     }
     if (pending.has(lr.id)) {
@@ -319,11 +324,9 @@ export function reconcileForm3WithCloud(cloudRecords: Form3SupervisionRecord[]):
   }
 
   writePendingForm3Ids(stillPending);
-  const reconciled = Array.from(map.values()).sort((a, b) => {
-    const timeA = new Date(a.timestamp || a.visitDate).getTime() || 0;
-    const timeB = new Date(b.timestamp || b.visitDate).getTime() || 0;
-    return timeB - timeA;
-  });
+  const reconciled = Array.from(map.values()).sort(
+    (a, b) => getForm3RecordTimestampMs(b) - getForm3RecordTimestampMs(a)
+  );
 
   try {
     localStorage.setItem(LOCAL_FORM3_STORAGE_KEY, JSON.stringify(reconciled));

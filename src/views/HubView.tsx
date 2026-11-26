@@ -19,8 +19,7 @@ import {
   MessageSquare, 
   ChevronRight,
   Sparkles,
-  Download,
-  BookOpen
+  Download
 } from 'lucide-react';
 import { Announcement, Student, AuthUser, Company, WeeklySubmission, Form3SupervisionRecord, CourseDataRow } from '../types';
 import { getCurrentWeekInfo } from '../data/weeksData';
@@ -130,33 +129,6 @@ export const HubView: React.FC<HubViewProps> = ({
             </span>
           </div>
         )}
-      </div>
-
-      {/* Student User Manual Banner Card */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-indigo-700/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5 text-sky-400" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-base sm:text-lg text-white">คู่มือการใช้งานระบบสำหรับนักศึกษา (Student Guide)</span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-400/20 text-sky-300 border border-sky-400/30">
-                ดาวน์โหลดไฟล์ .PDF
-              </span>
-            </div>
-            <p className="text-sm text-slate-300 mt-0.5 leading-relaxed">
-              ขั้นตอนการเลือกบทบาท, บันทึกสถานประกอบการ (ฟ.1), ส่งรายงานประจำสัปดาห์ (ฟ.2), แนบรูปภาพหน้างาน และเช็คผลการตรวจนิเทศ พร้อมภาพประกอบหน้าจอจริง
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => onNavigate('guide')}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold shadow-md transition shrink-0 cursor-pointer"
-        >
-          <BookOpen className="w-4 h-4" />
-          <span>เปิดอ่านคู่มือ & ดาวน์โหลด PDF</span>
-        </button>
       </div>
 
       {/* Hero Section & Right Schedule Card */}
