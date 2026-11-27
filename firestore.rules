@@ -77,6 +77,25 @@ service cloud.firestore {
         && data.avatarUrl is string && data.avatarUrl.size() <= 900000;
     }
 
+    function isValidSiteStats(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'totalVisits', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'totalVisits', 'updatedAt'])
+        && data.id is string && data.id == 'portal'
+        && data.totalVisits is number && data.totalVisits >= 0 && data.totalVisits <= 100000000
+        && data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 64;
+    }
+
+    function isValidOnlineSession(data) {
+      return data is map
+        && data.keys().hasAll(['id', 'role', 'lastSeenMs', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'role', 'lastSeenMs', 'updatedAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.role is string && data.role in ['student', 'teacher', 'admin', 'guest']
+        && data.lastSeenMs is number && data.lastSeenMs >= 0
+        && data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 64;
+    }
+
     match /students/{studentId} {
       allow list: if true;
       allow get: if isValidId(studentId);
@@ -142,6 +161,24 @@ service cloud.firestore {
     match /login_sheet/{rowId} {
       allow list: if true;
       allow get, create, update, delete: if isValidId(rowId) && (request.method == 'get' || request.method == 'delete' || request.resource.data is map);
+    }
+
+    match /site_stats/{statId} {
+      allow list: if false;
+      allow get: if isValidId(statId) && statId == 'portal';
+      allow create: if isValidId(statId) && statId == 'portal' && isValidSiteStats(request.resource.data);
+      allow update: if isValidId(statId) && statId == 'portal' && isValidSiteStats(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalVisits', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /online_sessions/{sessionId} {
+      allow list: if true;
+      allow get: if isValidId(sessionId);
+      allow create: if isValidId(sessionId) && isValidOnlineSession(request.resource.data);
+      allow update: if isValidId(sessionId) && isValidOnlineSession(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'lastSeenMs', 'updatedAt']);
+      allow delete: if isValidId(sessionId);
     }
 
     match /test/{docId} {

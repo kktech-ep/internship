@@ -397,6 +397,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
     setSelectedStudentId(studentId);
     if (onSelectStudent) onSelectStudent(studentId);
     setActiveTab('a4');
+    setA4SubView('individual');
   };
 
   // Selected student for A4 Document View
@@ -774,8 +775,9 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
 
         {/* View Switcher Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl text-sm font-semibold">
+          <div className="inline-flex flex-wrap p-1 bg-slate-100 rounded-xl text-sm font-semibold">
             <button
+              type="button"
               onClick={() => setActiveTab('table')}
               className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
                 activeTab === 'table'
@@ -792,16 +794,37 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
               </span>
             </button>
             <button
-              onClick={() => setActiveTab('a4')}
+              type="button"
+              onClick={() => {
+                setActiveTab('a4');
+                setA4SubView('individual');
+              }}
               className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
-                activeTab === 'a4'
+                activeTab === 'a4' && a4SubView === 'individual'
                   ? 'bg-white text-slate-900 shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <FileText className={`w-4 h-4 ${activeTab === 'a4' ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <FileText className={`w-4 h-4 ${activeTab === 'a4' && a4SubView === 'individual' ? 'text-indigo-600' : 'text-slate-400'}`} />
               <span>แบบบันทึกและประเมินผลการฝึกงานของนักศึกษา</span>
             </button>
+            {!isStudentRole && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('a4');
+                  setA4SubView('group-summary');
+                }}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg transition cursor-pointer ${
+                  activeTab === 'a4' && a4SubView === 'group-summary'
+                    ? 'bg-white text-slate-900 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className={`w-4 h-4 ${activeTab === 'a4' && a4SubView === 'group-summary' ? 'text-sky-600' : 'text-slate-400'}`} />
+                <span>สรุปส่งงาน & คะแนนตามกลุ่มเรียน</span>
+              </button>
+            )}
           </div>
 
           {activeTab === 'table' && (
@@ -1698,7 +1721,8 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
           ========================================================================= */}
       {activeTab === 'a4' && (
         <div className="space-y-6 print:space-y-0">
-          {/* Top Sub-View Switcher Bar */}
+          {/* Top Sub-View Switcher Bar (Individual A4 View) */}
+          {a4SubView === 'individual' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-4 print:hidden">
             {!isStudentRole && responsibleCoursesInfo.subjects.length > 0 && (
               <div className="rounded-xl border border-sky-200/80 bg-sky-50/50 p-3.5 space-y-2.5">
@@ -1771,63 +1795,30 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                 <p className="text-sm text-slate-500">
                   {isStudentRole
                     ? 'ตรวจสอบข้อมูลการปฏิบัติงานรายสัปดาห์ที่บันทึกไว้ พร้อมสั่งพิมพ์บนกระดาษ A4 หรือดาวน์โหลดเป็น PDF'
-                    : 'เลือกดูใบแบบบันทึกรายบุคคล (ทว.04) หรือสรุปการส่งงาน & คะแนนประเมินตามกลุ่มเรียน'}
+                    : 'เลือกดูใบแบบบันทึกรายบุคคล (ทว.04) พร้อมสั่งพิมพ์บนกระดาษ A4 หรือดาวน์โหลดเป็น PDF'}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {!isStudentRole && (
-                <div className="inline-flex p-1 bg-slate-100 rounded-xl text-sm font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setA4SubView('individual')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      a4SubView === 'individual'
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <FileText className={`w-4 h-4 ${a4SubView === 'individual' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                    <span>ใบรายบุคคล (ทว.04)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setA4SubView('group-summary')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      a4SubView === 'group-summary'
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Users className={`w-4 h-4 ${a4SubView === 'group-summary' ? 'text-sky-600' : 'text-slate-400'}`} />
-                    <span>สรุปส่งงาน & คะแนนตามกลุ่มเรียน</span>
-                  </button>
-                </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-2xs transition cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-sky-400" />
+                  <span>สั่งพิมพ์ A4</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  disabled={isPrinting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-2xs transition cursor-pointer disabled:opacity-60"
+                >
+                  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  <span>{isPrinting ? 'กำลังสร้าง PDF...' : 'ดาวน์โหลด PDF'}</span>
+                </button>
 
-                {a4SubView === 'individual' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-2xs transition cursor-pointer"
-                    >
-                      <Printer className="w-4 h-4 text-sky-400" />
-                      <span>สั่งพิมพ์ A4</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePrint}
-                      disabled={isPrinting}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-2xs transition cursor-pointer disabled:opacity-60"
-                    >
-                      {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                      <span>{isPrinting ? 'กำลังสร้าง PDF...' : 'ดาวน์โหลด PDF'}</span>
-                    </button>
-                  </>
-                )}
-
-                {a4SubView === 'individual' && currentUser?.role === 'admin' && foundSub && onDeleteSubmission && (
+                {currentUser?.role === 'admin' && foundSub && onDeleteSubmission && (
                   pendingDeleteKey === `sub-${foundSub.id}` ? (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-300 text-xs font-semibold text-rose-800">
                       <span>ยืนยันลบบันทึกสัปดาห์ที่ {selectedWeek}?</span>
@@ -1865,16 +1856,6 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
                       <span>ลบบันทึกสัปดาห์นี้ (Admin)</span>
                     </button>
                   )
-                )}
-
-                {!isStudentRole && (
-                <button
-                  onClick={() => setActiveTab('table')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer"
-                >
-                  <ArrowRight className="w-4 h-4 rotate-180" />
-                  <span>กลับสู่ตารางสรุปสถานประกอบการ</span>
-                </button>
                 )}
               </div>
             </div>
@@ -1970,6 +1951,7 @@ export const A4ReportView: React.FC<A4ReportViewProps> = ({
             </>
             )}
           </div>
+          )}
 
           {a4SubView === 'group-summary' ? (
             <GroupWeeklySummaryA4

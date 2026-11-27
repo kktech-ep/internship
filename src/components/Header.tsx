@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookOpen,
   ClipboardCheck,
+  Eye,
   FileText,
   GraduationCap,
   Home,
@@ -29,6 +30,8 @@ interface HeaderProps {
   userAvatarUrl?: string | null;
   onOpenAuthModal: () => void;
   onSignOut: () => void;
+  totalVisits?: number | null;
+  onlineUsersCount?: number | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -43,6 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   userAvatarUrl,
   onOpenAuthModal,
   onSignOut,
+  totalVisits = null,
+  onlineUsersCount = 1,
 }) => {
   const role = currentUser?.role || currentRole;
 
@@ -144,6 +149,39 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Action Controls */}
           <div className="flex items-center gap-2">
+            {/* Page Views & Live Online Users Stats */}
+            <div
+              className="inline-flex items-center gap-2 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/85 border border-slate-700/80 text-[12.5px] sm:text-[13.5px] whitespace-nowrap shrink-0"
+              title="สถิติจำนวนผู้เข้าชมเว็บเพจและผู้ที่กำลังใช้งานออนไลน์"
+            >
+              <span
+                className="inline-flex items-center gap-1.5 text-slate-200"
+                title="จำนวนผู้เข้าชมเว็บเพจทั้งหมด"
+              >
+                <Eye className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="hidden sm:inline text-slate-400">ผู้เข้าชม:</span>
+                <span className="font-bold text-white tabular-nums">
+                  {typeof totalVisits === 'number' ? totalVisits.toLocaleString('th-TH') : '—'}
+                </span>
+                <span className="hidden lg:inline text-slate-400 text-[12px]">ครั้ง</span>
+              </span>
+              <span className="h-3.5 w-px bg-slate-700" aria-hidden="true" />
+              <span
+                className="inline-flex items-center gap-1.5 text-slate-200"
+                title="จำนวนผู้ที่กำลังใช้งานออนไลน์ขณะนี้"
+              >
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="hidden sm:inline text-slate-400">ออนไลน์:</span>
+                <span className="font-bold text-emerald-300 tabular-nums">
+                  {(onlineUsersCount ?? 1).toLocaleString('th-TH')}
+                </span>
+                <span className="hidden lg:inline text-slate-400 text-[12px]">คน</span>
+              </span>
+            </div>
+
             {/* Looker Studio Analytics */}
             <button
               type="button"

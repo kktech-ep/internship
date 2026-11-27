@@ -56,6 +56,7 @@ import {
   syncAllLoginSheetRowsToFirebase,
   syncDerivedCompaniesToFirestore,
 } from './services/sheetFirebaseSyncService';
+import { testConnection } from './firebase';
 import {
   subscribeStudents,
   subscribeCompanies,
@@ -73,6 +74,12 @@ import {
   deleteSubmissionFromFirestore,
   deleteForm3SupervisionFromFirestore,
   subscribeTeachingReports,
+  recordPageVisitToFirestore,
+  subscribeSiteStats,
+  upsertOnlineSessionToFirestore,
+  removeOnlineSessionFromFirestore,
+  subscribeOnlineSessions,
+  OnlineSessionRecord,
 } from './services/firestoreService';
 import {
   getLocalTeachingReports,
@@ -120,7 +127,26 @@ function writePendingForm1Students(map: Record<string, Student>): void {
   }
 }
 
+const SITE_VISITS_CACHE_KEY = 'kktech_site_total_visits_v1';
+const VISITOR_SESSION_ID_KEY = 'kktech_visitor_session_id_v1';
+
+function getOrCreateVisitorSessionId(): string {
+  const fallback = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof sessionStorage === 'undefined') return fallback;
+  try {
+    const existing = sessionStorage.getItem(VISITOR_SESSION_ID_KEY);
+    if (existing && /^[a-zA-Z0-9_\-]{6,120}$/.test(existing)) {
+      return existing;
+    }
+    sessionStorage.setItem(VISITOR_SESSION_ID_KEY, fallback);
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 let hasRunStartupSheetSync = false;
+let hasRecordedPageVisitThisLoad = false;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredAuthUser);
@@ -158,6 +184,18 @@ export default function App() {
     weekNumber: number;
   } | null>(null);
   const [teachingReportsVisitKey, setTeachingReportsVisitKey] = useState<number>(0);
+  const [totalVisits, setTotalVisits] = useState<number | null>(() => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(SITE_VISITS_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [onlineUsersCount, setOnlineUsersCount] = useState<number>(1);
 
   const hasCloudSubsRef = React.useRef<boolean>(false);
   const remoteSubsRef = React.useRef<WeeklySubmission[]>([]);
@@ -585,6 +623,8 @@ export default function App() {
     };
     window.addEventListener('kktech_teaching_reports_updated', handleTeachingReportLocalSync);
 
+    void testConnection();
+
     return () => {
       unsubStudents();
       unsubCompanies();
@@ -600,6 +640,103 @@ export default function App() {
       window.removeEventListener('kktech_teaching_reports_updated', handleTeachingReportLocalSync);
     };
   }, []);
+
+  // Real-time Page Visit Counter & Live Online Presence Tracker (Firestore)
+  useEffect(() => {
+    const sessionId = getOrCreateVisitorSessionId();
+    const presenceRole: 'student' | 'teacher' | 'admin' | 'guest' = currentUser
+      ? currentUser.role
+      : 'guest';
+    const activeWindowMs = 150_000; // 2.5 minutes active window
+    let latestSessions: OnlineSessionRecord[] = [];
+
+    const recomputeOnlineCount = () => {
+      const cutoff = Date.now() - activeWindowMs;
+      const activeIds = new Set<string>([sessionId]);
+      for (const s of latestSessions) {
+        if (s.lastSeenMs >= cutoff) {
+          activeIds.add(s.id);
+        }
+      }
+      setOnlineUsersCount(Math.max(1, activeIds.size));
+    };
+
+    if (!hasRecordedPageVisitThisLoad) {
+      hasRecordedPageVisitThisLoad = true;
+      recordPageVisitToFirestore().catch((err) => {
+        console.warn('Page visit counter note:', err);
+        setTotalVisits((prev) => {
+          const next = (prev ?? 0) + 1;
+          try {
+            localStorage.setItem(SITE_VISITS_CACHE_KEY, String(next));
+          } catch {
+            // ignore storage errors
+          }
+          return next;
+        });
+      });
+    }
+
+    const unsubSiteStats = subscribeSiteStats(
+      (count) => {
+        setTotalVisits(count);
+        try {
+          localStorage.setItem(SITE_VISITS_CACHE_KEY, String(count));
+        } catch {
+          // ignore storage errors
+        }
+      },
+      (err) => console.warn('Site stats stream note:', err)
+    );
+
+    const sendHeartbeat = () => {
+      upsertOnlineSessionToFirestore(sessionId, presenceRole).catch((err) => {
+        console.warn('Online presence heartbeat note:', err);
+      });
+    };
+
+    sendHeartbeat();
+    const heartbeatTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    }, 60_000);
+
+    const pruneTimer = window.setInterval(recomputeOnlineCount, 20_000);
+
+    const unsubOnlineSessions = subscribeOnlineSessions(
+      Date.now() - 180_000,
+      (sessions) => {
+        latestSessions = sessions;
+        recomputeOnlineCount();
+      },
+      (err) => console.warn('Online sessions stream note:', err)
+    );
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    };
+
+    const handlePageHide = () => {
+      removeOnlineSessionFromFirestore(sessionId).catch(() => {});
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handlePageHide);
+
+    return () => {
+      unsubSiteStats();
+      unsubOnlineSessions();
+      window.clearInterval(heartbeatTimer);
+      window.clearInterval(pruneTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handlePageHide);
+    };
+  }, [currentUser?.email, currentUser?.role]);
 
   const handleTeachingReportSaved = (saved: TeachingReportRecord) => {
     setTeachingReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
@@ -1239,6 +1376,8 @@ export default function App() {
         userAvatarUrl={currentUserAvatarUrl}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onSignOut={handleSignOut}
+        totalVisits={totalVisits}
+        onlineUsersCount={onlineUsersCount}
       />
 
       <div className="flex-1 flex flex-col">

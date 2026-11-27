@@ -7,6 +7,8 @@ import {
   onSnapshot,
   query,
   limit,
+  where,
+  increment,
   writeBatch
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError, stripUndefinedDeep } from '../firebase';
@@ -24,6 +26,8 @@ export const COLLECTIONS = {
   TEACHERS: 'teachers',
   TEACHING_REPORTS: 'teaching_reports',
   USER_AVATARS: 'user_avatars',
+  SITE_STATS: 'site_stats',
+  ONLINE_SESSIONS: 'online_sessions',
 } as const;
 
 export function toSafeUserAvatarId(identifier: string): string {
@@ -595,3 +599,123 @@ export async function deleteForm3SupervisionFromFirestore(recordId: string): Pro
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+export interface OnlineSessionRecord {
+  id: string;
+  role: 'student' | 'teacher' | 'admin' | 'guest';
+  lastSeenMs: number;
+  updatedAt: string;
+}
+
+/**
+ * Increment aggregate portal page visits counter in Firestore
+ */
+export async function recordPageVisitToFirestore(): Promise<void> {
+  const path = `${COLLECTIONS.SITE_STATS}/portal`;
+  try {
+    await setDoc(
+      doc(db, COLLECTIONS.SITE_STATS, 'portal'),
+      {
+        id: 'portal',
+        totalVisits: increment(1),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Listen for real-time updates to total portal page visits
+ */
+export function subscribeSiteStats(
+  onData: (totalVisits: number) => void,
+  onError?: (err: Error) => void
+) {
+  const docPath = `${COLLECTIONS.SITE_STATS}/portal`;
+  return onSnapshot(
+    doc(db, COLLECTIONS.SITE_STATS, 'portal'),
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as { totalVisits?: unknown };
+        const count = typeof data.totalVisits === 'number' && Number.isFinite(data.totalVisits)
+          ? Math.max(0, Math.floor(data.totalVisits))
+          : 0;
+        onData(count);
+      } else {
+        onData(0);
+      }
+    },
+    (error) => {
+      logSubscriptionError(docPath, error, onError);
+    }
+  );
+}
+
+/**
+ * Upsert an active browser session heartbeat for live online user counting
+ */
+export async function upsertOnlineSessionToFirestore(
+  sessionId: string,
+  role: 'student' | 'teacher' | 'admin' | 'guest'
+): Promise<void> {
+  const path = `${COLLECTIONS.ONLINE_SESSIONS}/${sessionId}`;
+  try {
+    const payload: OnlineSessionRecord = {
+      id: sessionId,
+      role,
+      lastSeenMs: Date.now(),
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, COLLECTIONS.ONLINE_SESSIONS, sessionId), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Remove an active browser session document when the tab/session closes
+ */
+export async function removeOnlineSessionFromFirestore(sessionId: string): Promise<void> {
+  const path = `${COLLECTIONS.ONLINE_SESSIONS}/${sessionId}`;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.ONLINE_SESSIONS, sessionId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Listen for real-time changes to currently active online sessions
+ */
+export function subscribeOnlineSessions(
+  cutoffMs: number,
+  onData: (sessions: OnlineSessionRecord[]) => void,
+  onError?: (err: Error) => void
+) {
+  const colPath = COLLECTIONS.ONLINE_SESSIONS;
+  return onSnapshot(
+    query(collection(db, colPath), where('lastSeenMs', '>=', cutoffMs), limit(300)),
+    (snapshot) => {
+      const items: OnlineSessionRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Partial<OnlineSessionRecord>;
+        if (data && typeof data.id === 'string' && typeof data.lastSeenMs === 'number') {
+          items.push({
+            id: data.id,
+            role: data.role || 'guest',
+            lastSeenMs: data.lastSeenMs,
+            updatedAt: data.updatedAt || '',
+          });
+        }
+      });
+      onData(items);
+    },
+    (error) => {
+      logSubscriptionError(colPath, error, onError);
+    }
+  );
+}
+

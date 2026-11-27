@@ -984,7 +984,7 @@ export const Form3SupervisionModal: React.FC<Form3SupervisionModalProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                         <Building2 className="w-4 h-4 text-indigo-600" />
-                        <span>เลือกสถานประกอบการ (ตาราง Company ในแผ่นงาน Login):</span>
+                        <span className="text-xs">เลือกสถานประกอบการ:</span>
                       </label>
                       <span className="text-[10px] text-slate-500">
                         มีทั้งหมด {companyGroups.length} สถานประกอบการ

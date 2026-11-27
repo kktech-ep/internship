@@ -95,6 +95,29 @@
         "avatarUrl": { "type": "string", "maxLength": 900000 }
       },
       "required": ["id", "email", "avatarUrl"]
+    },
+    "SiteStats": {
+      "title": "SiteStats",
+      "description": "Aggregate portal page visit counter.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "totalVisits": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "totalVisits", "updatedAt"]
+    },
+    "OnlineSession": {
+      "title": "OnlineSession",
+      "description": "Active browser session heartbeat for live online user count.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["student", "teacher", "admin", "guest"] },
+        "lastSeenMs": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "role", "lastSeenMs", "updatedAt"]
     }
   },
   "firestore": {
@@ -121,6 +144,14 @@
     "/user_avatars/{avatarId}": {
       "schema": { "$ref": "#/entities/UserAvatarRecord" },
       "description": "Compressed profile photos"
+    },
+    "/site_stats/{statId}": {
+      "schema": { "$ref": "#/entities/SiteStats" },
+      "description": "Aggregate portal visit statistics"
+    },
+    "/online_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/OnlineSession" },
+      "description": "Active online presence heartbeat records"
     }
   }
 }
